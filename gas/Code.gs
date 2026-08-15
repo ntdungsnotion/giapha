@@ -1,7 +1,7 @@
 // ============================================================
 // giapha · gas/Code.gs   (đặt trong Apps Script)
 // Vai trò  : API máy chủ. Trình duyệt gọi qua google.script.run.
-// Phiên bản: 0.2.0 · Cập nhật: 15/08/2026 12:16
+// Phiên bản: 0.3.0 · Cập nhật: 15/08/2026 16:10
 // ============================================================
 //
 // Triển khai BẮT BUỘC đặt:
@@ -64,6 +64,7 @@ function layPhien() {
     suaDuoc:              false,
     vaiTro:               'khong',
     nguoiTrungTamMacDinh: null,
+    loiUserProperties:    null,   // chỉ dùng cho phép thử 0.11
     tenHo:                TEN_HO,
     nguoiQuanLy:          NGUOI_QUAN_LY,
     loi:                  null,
@@ -106,11 +107,18 @@ function layPhien() {
   // ⚠ CHƯA KIỂM CHỨNG (mục 0.11 của KE-HOACH): getUserProperties có thật
   // sự tách theo người dùng ngoài ở chế độ "thực thi bằng người truy cập"
   // hay không. Bọc try/catch để nếu hỏng cũng không chặn việc mở app.
+  //
+  // PHÂN BIỆT HAI THỨ KHÁC NHAU, đừng gộp thành null:
+  //   nguoiTrungTamMacDinh = null, loiUserProperties = null  -> chưa đặt
+  //   loiUserProperties có chữ                               -> KHÔNG ĐỌC ĐƯỢC
+  // Gộp lại thì phép thử 0.11 không phân biệt được "kho tách đúng, người này
+  // chưa đặt gì" với "kho không dùng được cho người này".
   try {
     phien.nguoiTrungTamMacDinh =
       PropertiesService.getUserProperties().getProperty('nguoiTrungTamMacDinh');
   } catch (e) {
     phien.nguoiTrungTamMacDinh = null;
+    phien.loiUserProperties    = e.message;
   }
 
   return phien;
@@ -118,12 +126,43 @@ function layPhien() {
 
 /**
  * Ghi người trung tâm mặc định của riêng người đang đăng nhập.
- * Gọi từ màn hình Cài đặt (chat 1.5).
+ * Gọi từ màn hình Cài đặt (chat 1.5), và từ phép thử 0.11.
+ *
+ * Ghi xong thì ĐỌC LẠI rồi trả về, không tin lời khai của chính mình.
+ * Nếu kho không tách theo người, chỗ này vẫn báo ok — cái phát hiện được
+ * điều đó là bước mở bằng tài khoản thứ hai, không phải hàm này.
+ *
+ * @returns {{ ok: boolean, daGhi: string|null, email: string, loi: string|null }}
  */
 function datNguoiTrungTamMacDinh(personId) {
-  PropertiesService.getUserProperties()
-    .setProperty('nguoiTrungTamMacDinh', String(personId));
-  return { ok: true };
+  var email = '';
+  try { email = Session.getActiveUser().getEmail() || ''; } catch (e) {}
+
+  try {
+    var kho = PropertiesService.getUserProperties();
+    kho.setProperty('nguoiTrungTamMacDinh', String(personId));
+    return {
+      ok:    true,
+      daGhi: kho.getProperty('nguoiTrungTamMacDinh'),
+      email: email,
+      loi:   null,
+    };
+  } catch (e) {
+    return { ok: false, daGhi: null, email: email, loi: e.message };
+  }
+}
+
+/** Xoá giá trị đã đặt, để chạy lại phép thử từ đầu. */
+function xoaNguoiTrungTamMacDinh() {
+  var email = '';
+  try { email = Session.getActiveUser().getEmail() || ''; } catch (e) {}
+
+  try {
+    PropertiesService.getUserProperties().deleteProperty('nguoiTrungTamMacDinh');
+    return { ok: true, daGhi: null, email: email, loi: null };
+  } catch (e) {
+    return { ok: false, daGhi: null, email: email, loi: e.message };
+  }
 }
 
 // ============================================================

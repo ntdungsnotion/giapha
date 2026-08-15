@@ -4,7 +4,7 @@
 //            Bọc google.script.run thành hàm Promise dùng await được.
 // Lớp      : services — được gọi bởi: services/repo · gọi: (không)
 // Phụ thuộc: (không)
-// Phiên bản: 0.2.0 · Cập nhật: 15/08/2026 12:16
+// Phiên bản: 0.3.0 · Cập nhật: 15/08/2026 16:10
 // ============================================================
 //
 // ĐÂY LÀ RANH GIỚI GIỮA TRÌNH DUYỆT VÀ MÁY CHỦ.
@@ -64,6 +64,11 @@ export function luuCay(cay, revisionDaBiet) {
 /** Ghi người trung tâm mặc định của riêng người đang đăng nhập. */
 export function datNguoiTrungTamMacDinh(personId) {
   return goi('datNguoiTrungTamMacDinh', personId);
+}
+
+/** Xoá giá trị đã đặt, để chạy lại phép thử 0.11 từ đầu. */
+export function xoaNguoiTrungTamMacDinh() {
+  return goi('xoaNguoiTrungTamMacDinh');
 }
 
 /** Tải ảnh lên. Truyền chuỗi base64 đã nén sẵn phía trình duyệt. */
