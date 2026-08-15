@@ -7,8 +7,8 @@
 // ============================================================
 //
 // NHẮC LẠI HAI ĐIỀU HAY BỊ LẪN:
-// - partners là MẢNG, không phải husband/wife. Hôn nhân đồng giới phải chạy.
-//   Chỉ ánh xạ sang HUSB/WIFE lúc xuất GEDCOM.
+// - partners là MẢNG, không phải hai trường vợ/chồng riêng. Hôn nhân đồng
+//   giới phải chạy. Chỉ ánh xạ sang thẻ GEDCOM lúc xuất, ở domains/gedcom.js.
 // - partnerOrder = vị trí trái/phải trên sơ đồ.
 //   rank         = thứ bậc vợ cả (1) / vợ thứ (2).
 //   Hai thứ KHÁC NHAU. Không gộp.
