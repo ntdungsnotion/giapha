@@ -4,7 +4,7 @@
 //            báo lỗi rõ ràng nếu người dùng không có quyền xem.
 // Lớp      : pages
 // Phụ thuộc: state, services/repo, services/gas
-// Phiên bản: 0.3.0 · Cập nhật: 15/08/2026 16:10
+// Phiên bản: 0.4.0 · Cập nhật: 15/08/2026 20:22
 // ============================================================
 
 import * as repo from '../services/repo.js';
@@ -102,6 +102,13 @@ function hienManHinhDaKetNoi(el, phien) {
     ? 'KHÔNG ĐỌC ĐƯỢC — ' + phien.loiUserProperties
     : 'đọc được';
 
+  // Chat 1.1 — điểm dừng của phiên: con số này phải ra 32 người, 13 hôn nhân.
+  const soDoc = state.index
+    ? state.index.personById.size + ' người · ' +
+      state.index.unionById.size + ' hôn nhân' +
+      (state.daLocNguoiConSong ? ' · đã ẩn chi tiết người còn sống' : '')
+    : '(chưa nạp được)';
+
   el.innerHTML = '';
   el.append(khung([
     tieuDe('Đã kết nối máy chủ'),
@@ -112,6 +119,7 @@ function hienManHinhDaKetNoi(el, phien) {
       ['Sửa được',               phien.suaDuoc ? 'có' : 'không'],
       ['Kho cài đặt riêng',      khoUP],
       ['Người trung tâm mặc định', phien.nguoiTrungTamMacDinh || '(chưa đặt)'],
+      ['Số người đọc được',      soDoc],
     ]),
     khoiThuUserProperties(el),
     nhoMo('Đây là màn hình tạm của mục 0.12. Sơ đồ cây làm ở chat 1.4.'),

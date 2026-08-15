@@ -3,7 +3,7 @@
 // Vai trò  : Trạng thái dùng chung toàn app. CHỈ lớp pages được ghi.
 // Lớp      : (đặc biệt) — chỉ đọc/ghi dữ liệu, không chứa logic
 // Phụ thuộc: config
-// Phiên bản: 0.2.0 · Cập nhật: 15/08/2026 12:16
+// Phiên bản: 0.3.0 · Cập nhật: 15/08/2026 20:22
 // ============================================================
 import { DEFAULT_SCOPE } from './config.js';
 
@@ -15,6 +15,11 @@ const MAC_DINH = {
   scope:          { ...DEFAULT_SCOPE },
   dirty:          false,  // có thay đổi chưa lưu hay không
   phien:          null,   // kết quả layPhien() của máy chủ, xem gas/Code.gs
+
+  // Máy chủ có cắt chi tiết người còn sống trước khi trả cây hay không.
+  // Giữ riêng để không lẫn "bị ẩn" với "gia phả còn thiếu" — hai thứ trông
+  // giống hệt nhau trên màn hình mà kết luận ngược nhau.
+  daLocNguoiConSong: false,
 };
 
 export const state = { ...MAC_DINH, scope: { ...DEFAULT_SCOPE } };
