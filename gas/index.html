@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<!-- ============================================================
+     giapha · gas/index.html   (đặt trong Apps Script, tên file: index)
+     Vai trò  : Vỏ mỏng. Nạp mã thật từ GitHub Pages.
+     Phiên bản: 0.2.0 · Cập nhật: 15/08/2026 12:16
+
+     KHÔNG sửa file này — địa chỉ GitHub lấy tự động từ Config.gs.
+     ============================================================ -->
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <base target="_top">
+  <style>
+    body { margin:0; font-family: system-ui, sans-serif;
+           background:#faf8f5; color:#2a2622; overscroll-behavior:none; }
+    #app { position:fixed; inset:0; }
+    #loi { position:fixed; inset:0; padding:24px; background:#faf8f5;
+           color:#c62828; line-height:1.6; }
+    #loi code { background:#f0ece6; padding:2px 5px; border-radius:4px;
+                color:#2a2622; word-break:break-all; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div id="loi" hidden>
+    <p><b>Không tải được ứng dụng.</b></p>
+    <p>Trình duyệt không lấy được mã từ địa chỉ:<br>
+       <code id="loi-dia-chi"></code></p>
+    <p>Ba nguyên nhân thường gặp, theo thứ tự hay xảy ra:</p>
+    <ol>
+      <li>Repo GitHub đang để <b>Private</b> — phải để <b>Public</b>.</li>
+      <li>GitHub Pages chưa bật, hoặc mới đẩy mã lên chưa đến một phút.</li>
+      <li><code>GITHUB_PAGES</code> trong <code>Config.gs</code> gõ sai,
+          hoặc còn dấu <code>/</code> ở cuối.</li>
+    </ol>
+  </div>
+
+  <script>
+    // githubPages do Code.gs chèn vào từ Config.gs
+    var duongDan = '<?= githubPages ?>' + '/js/app.js';
+
+    var s = document.createElement('script');
+    s.type = 'module';
+    s.src  = duongDan;
+    s.onerror = function () {
+      document.getElementById('loi-dia-chi').textContent = duongDan;
+      document.getElementById('loi').hidden = false;
+    };
+    document.head.appendChild(s);
+  </script>
+</body>
+</html>
