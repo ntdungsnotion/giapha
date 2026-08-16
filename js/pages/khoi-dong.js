@@ -3,13 +3,14 @@
 // Vai trò  : Màn hình mở đầu — chờ máy chủ trả danh tính và quyền,
 //            báo lỗi rõ ràng nếu người dùng không có quyền xem.
 // Lớp      : pages
-// Phụ thuộc: state, services/repo, services/gas
-// Phiên bản: 0.4.0 · Cập nhật: 15/08/2026 20:22
+// Phụ thuộc: state, services/repo, services/gas, pages/tree-view
+// Phiên bản: 0.5.0 · Cập nhật: 16/08/2026 23:45
 // ============================================================
 
 import * as repo from '../services/repo.js';
 import * as gas from '../services/gas.js';
 import { state } from '../state.js';
+import { mountTreeView } from './tree-view.js';
 
 /** Kết quả thao tác gần nhất của phép thử 0.11, giữ qua một lần vẽ lại. */
 let thongDiepThu = null;
@@ -39,9 +40,13 @@ export async function mountKhoiDong(containerEl) {
     return false;
   }
 
-  // TODO — chat 1.4: chỗ này chuyển sang mountTreeView(containerEl).
-  // Tới khi có sơ đồ, hiện bảng xác nhận kết nối để còn kiểm hạ tầng.
-  hienManHinhDaKetNoi(containerEl, phien);
+  // Chat 1.4: đọc được cây thì mở thẳng sơ đồ.
+  //
+  // Bảng xác nhận kết nối của mục 0.12 từ nay không còn tự hiện ra — cùng với
+  // nó là khối thử 0.11 ở cuối file. Phép thử 0.11 đã ĐẠT (xem KE-HOACH), nên
+  // đây không phải mất mát gì; mã của cả hai giữ nguyên tới chat 1.5 mới gỡ,
+  // để nếu hạ tầng trục trặc thì còn gọi tay lại được ngay.
+  mountTreeView(containerEl);
   return true;
 }
 

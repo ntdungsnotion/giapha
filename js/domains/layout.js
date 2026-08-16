@@ -3,7 +3,7 @@
 // Vai trò  : Tính TOẠ ĐỘ các ô người, đường nối và nốt cụt. Không vẽ gì cả.
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: config (LAYOUT)
-// Phiên bản: 1.0.0 · Cập nhật: 17/08/2026 00:20
+// Phiên bản: 1.1.0 · Cập nhật: 17/08/2026 05:54
 // ============================================================
 //
 // Tách khỏi render.js có chủ ý: chỉnh giao diện (màu, phông, bo góc) không
@@ -744,14 +744,32 @@ function viTriNotCut(ct, treoCua, sp, nut) {
   const thieuBanDoi = partnersGoc.some((pid) => pid && !ct.visibleSet.has(pid));
 
   if (thieuBanDoi || !u) {
-    const huong = dai ? dai.huong : (gioiTinh(ct, sp.personId) === 'F' ? -1 : 1);
-    const mepDai = dai
-      ? (huong > 0 ? nut.x - dai.dxP + dai.rong : nut.x - dai.dxP)
+    // HAI thứ phải đúng cùng lúc, thiếu một là nốt tròn nằm đè lên ô người
+    // bên cạnh (16/08/2026, chat 1.4 — đo được 14/120 nốt hỏng, đúng bằng
+    // TOÀN BỘ số nốt nằm ngang; sáu bất biến của chat 1.3 chỉ xét ô với ô nên
+    // không bắt được, lỗi chỉ lộ ra khi xem ảnh chụp):
+    //
+    // 1. ĐỘ DÀI RIÊNG. Chiều dọc có vGap = 90px để mọc ra, chiều ngang chỉ có
+    //    hGap = 28px giữa hai khối anh em. Dùng chung stubLength = 34 thì nốt
+    //    rơi hẳn sang khối bên cạnh.
+    // 2. MỌC RA TỪ MÉP NGOÀI CỦA CẢ DẢI, không phải mép ô người đó. Người bị
+    //    HẤP THỤ vào dải của bạn đời thì ngay cạnh họ là ô bạn đời, chỉ cách
+    //    spouseGap = 16px — hẹp hơn cả hGap.
+    const LN = LAYOUT.stubLengthNgang;
+
+    const ht     = ct.hapThuBoi.get(sp.personId);
+    const neoId  = ct.dai.has(sp.personId) ? sp.personId : (ht ? ht.neoId : null);
+    const daiNg  = neoId ? ct.dai.get(neoId) : null;
+    const nutNeo = neoId ? ct.nodeById.get(neoId) : null;
+
+    const huong = daiNg ? daiNg.huong : (gioiTinh(ct, sp.personId) === 'F' ? -1 : 1);
+    const mepDai = (daiNg && nutNeo)
+      ? (huong > 0 ? nutNeo.x - daiNg.dxP + daiNg.rong : nutNeo.x - daiNg.dxP)
       : (huong > 0 ? nut.x + RONG : nut.x);
     const y = dai
       ? nut.y + CAO / 2 - (dai.mucNet.get(sp.unionId) || 0) * dai.buocNet
       : nut.y + CAO / 2;
-    return { x: mepDai + huong * L, y, x1: mepDai, y1: y, angle: huong > 0 ? 0 : 180 };
+    return { x: mepDai + huong * LN, y, x1: mepDai, y1: y, angle: huong > 0 ? 0 : 180 };
   }
 
   // Cặp đủ, thiếu con. Né sang bên cạnh chùm con đang vẽ nếu có.

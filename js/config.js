@@ -3,7 +3,7 @@
 // Vai trò  : Hằng số hiển thị phía trình duyệt.
 // Lớp      : config — không gọi file nào khác
 // Phụ thuộc: (không)
-// Phiên bản: 0.4.0 · Cập nhật: 16/08/2026 23:10
+// Phiên bản: 0.5.0 · Cập nhật: 17/08/2026 05:54
 // ============================================================
 //
 // LƯU Ý: từ khi chuyển sang kiến trúc Apps Script, file này KHÔNG còn
@@ -29,8 +29,21 @@ export const LAYOUT = {
   hGap:        28,   // cách ngang giữa 2 người
   vGap:        90,   // cách dọc giữa 2 đời
   spouseGap:   16,
-  stubLength:  34,   // độ dài đường kẻ dẫn tới nốt cụt
+  stubLength:  34,   // độ dài đường kẻ dẫn tới nốt cụt, hướng LÊN và XUỐNG
   stubRadius:   6,
+
+  // Nốt cụt nằm NGANG phải ngắn hơn, và đây là lý do — đừng gộp lại làm một
+  // con số (16/08/2026, chat 1.4).
+  //
+  // Chiều dọc có vGap = 90px để mọc ra, chiều ngang chỉ có hGap = 28px giữa
+  // hai khối anh em. Dùng chung 34px thì nốt tròn rơi hẳn vào trong ô người
+  // bên cạnh: đo trên bản 57 người, 14/120 nốt đè lên ô, và ĐÚNG BẰNG toàn bộ
+  // số nốt nằm ngang — tức mọi nốt ngang đều hỏng. Sáu bất biến của chat 1.3
+  // không bắt được vì chúng chỉ xét ô với ô; lỗi này chỉ lộ ra khi xem hình.
+  //
+  // 14 + stubRadius 6 = 20 < 28, còn chừa 8px hở. Đổi hGap thì phải đổi cả
+  // con số này.
+  stubLengthNgang: 14,
 
   // Nét vợ chồng chồng nấc khi một người có nhiều bạn đời — QUY-TAC-VE §3.
   // Nét thứ nhất luôn nằm giữa khung; nét thứ k lùi lên spouseStepMax pixel
