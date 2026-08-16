@@ -3,7 +3,7 @@
 // Vai trò  : Duyệt đồ thị dùng chung. MỌI hàm ở đây bắt buộc có tập visited.
 // Lớp      : utils
 // Phụ thuộc: (không)
-// Phiên bản: 0.2.0 · Cập nhật: 15/08/2026 20:22
+// Phiên bản: 0.3.0 · Cập nhật: 15/08/2026 23:52
 // ============================================================
 //
 // CẢNH BÁO: Gia phả là ĐỒ THỊ, không phải cây. Hôn nhân giữa hai nhánh
@@ -12,11 +12,62 @@
 
 /**
  * Duyệt theo chiều rộng, có chống lặp sẵn.
+ *
+ * Tập visited nằm TRONG hàm này, không nhờ nơi gọi tự lo. Đây là lý do
+ * mọi lần duyệt đồ thị trong app đều phải đi qua đây thay vì tự viết
+ * vòng lặp tại chỗ.
+ *
  * @param {string|string[]} startIds
  * @param {(id: string) => string[]} getNeighbors
  * @returns {Set<string>}
  */
-export function bfs(startIds, getNeighbors) { /* TODO — chat 1.2 */ }
+export function bfs(startIds, getNeighbors) {
+  return new Set(bfsLevels(startIds, getNeighbors).keys());
+}
+
+/**
+ * Như `bfs()` nhưng giữ luôn số bước đã đi tới từng đỉnh, và cho phép
+ * dừng ở một độ sâu.
+ *
+ * Cần thêm hàm này vì thuật toán tập hiển thị phải biết SỐ ĐỜI, không chỉ
+ * biết "có nằm trong tập hay không": số đời quyết định union nào là trực hệ
+ * đời mấy, và quyết định chỗ cắt khi người dùng giới hạn số đời.
+ *
+ * @param {string|string[]} startIds  các đỉnh xuất phát, đều mang độ sâu 0
+ * @param {(id: string) => string[]} getNeighbors
+ * @param {number} [maxDepth=0]  0 = không giới hạn (cùng quy ước với
+ *                               ancestors/descendants trong DEFAULT_SCOPE)
+ * @returns {Map<string, number>}  id -> độ sâu
+ */
+export function bfsLevels(startIds, getNeighbors, maxDepth = 0) {
+  const doSau   = new Map();   // VỪA là kết quả VỪA là tập visited
+  const hangDoi = [];
+
+  const dau = Array.isArray(startIds) ? startIds : [startIds];
+  for (const id of dau) {
+    if (!id || doSau.has(id)) continue;
+    doSau.set(id, 0);
+    hangDoi.push(id);
+  }
+
+  // Đọc bằng con trỏ chứ không dùng shift(): shift() phải dời cả mảng mỗi
+  // lần gọi, gia phả lớn thì tốn thấy rõ.
+  let viTri = 0;
+  while (viTri < hangDoi.length) {
+    const id  = hangDoi[viTri++];
+    const doi = doSau.get(id);
+    if (maxDepth > 0 && doi >= maxDepth) continue;
+
+    const cacKe = getNeighbors(id) || [];
+    for (const ke of cacKe) {
+      if (!ke || doSau.has(ke)) continue;   // ← ĐÚNG CHỖ NÀY chống lặp vô hạn
+      doSau.set(ke, doi + 1);
+      hangDoi.push(ke);
+    }
+  }
+
+  return doSau;
+}
 
 /**
  * Dựng chỉ mục tra cứu nhanh, gọi MỘT LẦN sau khi đọc file.
