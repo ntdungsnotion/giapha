@@ -3,7 +3,7 @@
 // Vai trò  : Hằng số hiển thị phía trình duyệt.
 // Lớp      : config — không gọi file nào khác
 // Phụ thuộc: (không)
-// Phiên bản: 0.3.0 · Cập nhật: 15/08/2026 12:16
+// Phiên bản: 0.4.0 · Cập nhật: 16/08/2026 23:10
 // ============================================================
 //
 // LƯU Ý: từ khi chuyển sang kiến trúc Apps Script, file này KHÔNG còn
@@ -20,6 +20,9 @@ export const PHOTO = {
 };
 
 // Kích thước sơ đồ (pixel)
+//
+// nodeHeight là chiều cao CỐ ĐỊNH của mọi ô, dù người đó có một dòng hay hai.
+// Để ô co lại theo nội dung thì các ô cùng một đời sẽ so le, sơ đồ nhìn gãy.
 export const LAYOUT = {
   nodeWidth:  120,
   nodeHeight:  64,
@@ -28,6 +31,18 @@ export const LAYOUT = {
   spouseGap:   16,
   stubLength:  34,   // độ dài đường kẻ dẫn tới nốt cụt
   stubRadius:   6,
+
+  // Nét vợ chồng chồng nấc khi một người có nhiều bạn đời — QUY-TAC-VE §3.
+  // Nét thứ nhất luôn nằm giữa khung; nét thứ k lùi lên spouseStepMax pixel
+  // mỗi nấc, nhưng tự co lại để nấc trên cùng còn cách mép trên
+  // spouseStepPadTop pixel. Cộng dồn cứng 8px thì đến người thứ tư nét tràn
+  // ra khỏi khung.
+  spouseStepMax:    8,
+  spouseStepPadTop: 6,
+
+  // Cách ngang giữa hai KHỐI gốc rời nhau (hai gia đình không nối với nhau
+  // trong cùng một sơ đồ). Rộng hơn hGap để mắt tách được hai khối.
+  blockGap:    56,
 };
 
 // Bốn con số điều khiển tập người được vẽ. Xem KE-HOACH_V08.
