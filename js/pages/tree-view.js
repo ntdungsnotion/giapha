@@ -3,7 +3,7 @@
 // Vai trò  : MÀN HÌNH CHÍNH — sơ đồ cây, đổi người trung tâm
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render}, utils/text
-// Phiên bản: 1.1.0 · Cập nhật: 17/08/2026 08:58
+// Phiên bản: 1.2.0 · Cập nhật: 17/08/2026 11:40
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -18,13 +18,19 @@
 //
 // showInLaws là BỘ LỌC HẬU KỲ (QUY-TAC-VE §1) — lọc sau computeVisibleSet,
 // KHÔNG sửa vào trong nó, để bộ số kiểm thử của chat 1.2 còn nguyên giá trị.
-// Núm bật/tắt làm ở chat 1.6; chỗ lọc đã chừa sẵn trong refresh().
+// Công tắc bật/tắt nằm cuối cột nút dưới trái (chat 1.6).
 //
 // Bố cục nút, đối chiếu Quick Family Tree (chat 1.5 và 1.6):
 //   Trên trái  — cột 4 nút chọn số đời TỔ TIÊN
-//   Dưới trái  — cột 4 nút chọn phạm vi HẬU DUỆ
+//   Dưới trái  — cột 4 nút chọn phạm vi HẬU DUỆ + công tắc dâu/rể
 //   Trên phải  — Cài đặt · Tìm kiếm · Chụp ảnh sơ đồ
 //   Dưới phải  — Phóng to · Thu nhỏ · Đưa người trung tâm về giữa
+//
+// Cả ba cụm nút neo vào `vungSoDo`, KHÔNG vào `khungCuon`: `donKhung()` dọn
+// sạch ruột khung cuộn mỗi lần vẽ lại, và mọi thứ trong đó còn trôi theo khi
+// người dùng kéo sơ đồ. Neo vào `vungSoDo` chứ không vào `containerEl` để khỏi
+// phải đo chiều cao `thanhTren` — thanh trên cao bao nhiêu là do nội dung nó
+// quyết định, mà đo DOM đúng lúc là chỗ chat 1.5 đã sai một lần.
 //
 // ============================================================
 // ZOOM VÀ KÉO (chat 1.5) — LUẬT QUAN TRỌNG NHẤT CỦA FILE NÀY
@@ -61,6 +67,7 @@ import { renderTree } from '../domains/render.js';
 import { fullName, doiSongNguoi } from '../utils/text.js';
 
 let khungCuon = null;   // div cuộn được, bọc quanh SVG
+let vungSoDo  = null;   // bọc khungCuon + ba cụm nút nổi; mốc neo của các nút
 let svgEl     = null;
 let thanhTren = null;
 let nhanTyLe  = null;   // ô chữ "100%" cạnh hai nút phóng to / thu nhỏ
@@ -107,9 +114,16 @@ export function mountTreeView(containerEl) {
   svgEl.style.cssText = 'display:block';
   khungCuon.append(svgEl);
 
+  // min-height:0 — không có nó thì phần tử flex không co xuống dưới chiều cao
+  // nội dung, và khung cuộn dài quá màn hình thay vì tự cuộn bên trong.
+  vungSoDo = document.createElement('div');
+  vungSoDo.style.cssText =
+    'position:relative;flex:1 1 auto;min-height:0;display:flex;flex-direction:column';
+
   // Nút nằm ngoài khungCuon: donKhung() dọn sạch ruột khung cuộn mỗi lần vẽ
   // lại, để nút bên trong đó là mỗi lần bấm nốt cụt lại mất hết nút.
-  containerEl.append(thanhTren, khungCuon, veHopNut());
+  vungSoDo.append(khungCuon, veCotToTien(), veCotHauDue(), veHopNut());
+  containerEl.append(thanhTren, vungSoDo);
   ganCuChi();
   refresh();
 }
@@ -124,6 +138,11 @@ export function refresh() {
   if (!svgEl) return;
   donKhung();
 
+  // Đặt trước mọi đường `return` bên dưới: nút phải nói đúng phạm vi đang chọn
+  // kể cả khi sơ đồ không vẽ được. Hàm này chỉ đọc `state`, không đo DOM, nên
+  // gọi ở đâu cũng cho cùng kết quả — khác hẳn ba việc cuối hàm.
+  capNhatNutPhamVi();
+
   const index = state.index;
   const focus = state.focusPersonId;
 
@@ -136,9 +155,8 @@ export function refresh() {
   // --- Ba bước, đúng thứ tự ------------------------------------------------
   let visible = computeVisibleSet(index, focus, state.scope);
 
-  // Bộ lọc hậu kỳ showInLaws. Núm bật/tắt làm ở chat 1.6; tới lúc đó chỉ cần
-  // đặt state.showInLaws = false là chỗ này tự chạy. layout.js không cần biết
-  // núm này tồn tại — đã chạy thử cả 56 sơ đồ ở nấc tắt.
+  // Bộ lọc hậu kỳ showInLaws, bật/tắt bằng công tắc cuối cột nút dưới trái.
+  // layout.js không cần biết núm này tồn tại — đã chạy thử cả 56 sơ đồ ở nấc tắt.
   if (state.showInLaws === false) {
     visible = new Map([...visible].filter(([, kieu]) => kieu !== 'edge'));
   }
@@ -709,8 +727,251 @@ function hienDanhSachChon(danhSachId) {
 }
 
 // ============================================================
-// Còn khung — chat 1.6
+// Nút lọc phạm vi — chat 1.6
+// ============================================================
+//
+// Bốn nấc mỗi cột, đúng bốn nấc của Quick Family Tree (KE-HOACH §"Bốn nấc
+// điều khiển của QFT"). Bấm một nút chỉ làm đúng hai việc: đổi `state.scope`
+// rồi gọi `refresh()`. KHÔNG đụng vào `bloodline.js` — bộ số kiểm thử năm con
+// số của chat 1.2 đo chính hàm đó, sửa nó là mất căn cứ chấm điểm.
+//
+// Nấc "Con và Vợ/Chồng" KHÔNG phải một đời khác: nó cùng `descendants = 1` với
+// nấc "Con", chỉ khác `spouseOfDescendants`. Vì thế phải so CẢ HAI trường mới
+// biết nút nào đang được chọn.
+
+const NAC_TO_TIEN = [
+  { nhan: 'Không giới hạn', ancestors: 0, moTa: 'Vẽ lên hết các đời tổ tiên' },
+  { nhan: '4 đời trước',    ancestors: 4, moTa: 'Chỉ vẽ lên 4 đời tổ tiên' },
+  { nhan: '3 đời trước',    ancestors: 3, moTa: 'Chỉ vẽ lên 3 đời tổ tiên' },
+  { nhan: '2 đời trước',    ancestors: 2, moTa: 'Chỉ vẽ lên 2 đời tổ tiên' },
+];
+
+const NAC_HAU_DUE = [
+  { nhan: 'Con', descendants: 1, spouseOfDescendants: false,
+    moTa: 'Chỉ vẽ xuống một đời, không vẽ vợ/chồng của con' },
+  { nhan: 'Con và Vợ/Chồng', descendants: 1, spouseOfDescendants: true, canDauRe: true,
+    moTa: 'Vẽ xuống một đời, kèm vợ/chồng của con' },
+  { nhan: 'Cháu', descendants: 2, spouseOfDescendants: true,
+    moTa: 'Vẽ xuống hai đời' },
+  { nhan: 'Không giới hạn', descendants: 0, spouseOfDescendants: true,
+    moTa: 'Vẽ xuống hết các đời hậu duệ' },
+];
+
+// --- Vì sao hai cột nút THU GỌN được -------------------------------------
+//
+// Bản đầu để cả tám nút hiện thường trực, đúng như Quick Family Tree. Ảnh chụp
+// khung 390px cho thấy ngay: cột 132px × 250px che hẳn nhánh trái của sơ đồ và
+// đè lên chính ô người trung tâm. QFT chạy trên màn hình máy tính rộng gấp ba,
+// nên chép nguyên bố cục của nó xuống điện thoại là hỏng.
+//
+// Thu gọn: mỗi cột chỉ để lại MỘT nút tóm tắt cao 32px ghi rõ nấc đang chọn,
+// chạm vào mới xổ đủ bốn nấc, chọn xong tự thu lại. Nút tóm tắt nói luôn nấc
+// hiện tại nên không giấu thông tin — thứ mất đi chỉ là ba nút chưa cần tới.
+
+let nutToTien = [];
+let nutHauDue = [];
+let nutDauRe  = null;
+
+let thanToTien = null, tomTatToTien = null, xoToTien = false;
+let thanHauDue = null, tomTatHauDue = null, xoHauDue = false;
+
+/** Cột trên trái — chọn vẽ lên bao nhiêu đời tổ tiên. */
+function veCotToTien() {
+  const hop = veCotNut('left:12px;top:12px');
+  thanToTien = veThanCot('Đời trên');
+  nutToTien = NAC_TO_TIEN.map((nac) => {
+    const nut = nutChu(nac.nhan, nac.moTa, () => datPhamViToTien(nac));
+    thanToTien.append(nut);
+    return nut;
+  });
+  tomTatToTien = nutTomTat(() => datXo('tren', !xoToTien));
+  // Nút tóm tắt ở TRÊN, bốn nấc xổ xuống dưới — cột này neo mép trên.
+  hop.append(tomTatToTien, thanToTien);
+  return hop;
+}
+
+/** Cột dưới trái — chọn phạm vi hậu duệ, và công tắc dâu/rể. */
+function veCotHauDue() {
+  const hop = veCotNut('left:12px;bottom:12px');
+  thanHauDue = veThanCot('Đời dưới');
+  nutHauDue = NAC_HAU_DUE.map((nac) => {
+    const nut = nutChu(nac.nhan, nac.moTa, () => datPhamViHauDue(nac));
+    thanHauDue.append(nut);
+    return nut;
+  });
+  nutDauRe = nutChu('Dâu/rể', '', () => datDauRe(state.showInLaws === false));
+  thanHauDue.append(nutDauRe);
+  tomTatHauDue = nutTomTat(() => datXo('duoi', !xoHauDue));
+  // Nút tóm tắt ở DƯỚI, các nấc mọc NGƯỢC LÊN — cột này neo mép dưới, để nút
+  // tóm tắt đứng yên một chỗ khi xổ ra và thu lại.
+  hop.append(thanHauDue, tomTatHauDue);
+  return hop;
+}
+
+/**
+ * Xổ ra hoặc thu lại một cột. Xổ cột này thì thu cột kia: hai cột cùng xổ trên
+ * màn hình 390px là che gần hết sơ đồ, đúng cái lỗi vừa sửa.
+ */
+function datXo(cot, xo) {
+  if (cot === 'tren') { xoToTien = xo; if (xo) xoHauDue = false; }
+  else                { xoHauDue = xo; if (xo) xoToTien = false; }
+  if (thanToTien) thanToTien.style.display = xoToTien ? 'flex' : 'none';
+  if (thanHauDue) thanHauDue.style.display = xoHauDue ? 'flex' : 'none';
+}
+
+function datPhamViToTien(nac) {
+  datXo('tren', false);
+  // Bấm lại đúng nấc đang chọn thì không vẽ lại: sơ đồ nháy một cái mà không
+  // đổi gì là thứ nhìn thấy được bằng mắt.
+  if (state.scope.ancestors === nac.ancestors) { capNhatNutPhamVi(); return; }
+  state.scope.ancestors = nac.ancestors;
+  notify();
+  refresh();
+}
+
+function datPhamViHauDue(nac) {
+  const sc = state.scope;
+  datXo('duoi', false);
+  if (sc.descendants === nac.descendants &&
+      sc.spouseOfDescendants === nac.spouseOfDescendants) { capNhatNutPhamVi(); return; }
+  sc.descendants         = nac.descendants;
+  sc.spouseOfDescendants = nac.spouseOfDescendants;
+  notify();
+  refresh();
+}
+
+function datDauRe(bat) {
+  if (state.showInLaws === bat) return;
+  state.showInLaws = bat;
+  notify();
+  refresh();
+}
+
+/**
+ * Tô lại tám nút theo `state` hiện tại.
+ *
+ * Nấc "Con và Vợ/Chồng" MỜ ĐI khi đã tắt dâu/rể, vì lúc đó bộ lọc hậu kỳ gạt
+ * hết nút biên và nấc này cho ra đúng cùng một sơ đồ với nấc "Con" — để nó
+ * sáng như thường là hứa một thứ không xảy ra. Vẫn bấm được, có chủ ý: khoá
+ * hẳn thì người dùng phải đoán vì sao nút chết.
+ */
+function capNhatNutPhamVi() {
+  const sc = state.scope || {};
+  const hienDauRe = state.showInLaws !== false;
+
+  nutToTien.forEach((nut, i) => {
+    datVeChon(nut, NAC_TO_TIEN[i].ancestors === (sc.ancestors || 0));
+  });
+
+  nutHauDue.forEach((nut, i) => {
+    const nac = NAC_HAU_DUE[i];
+    datVeChon(nut, nac.descendants === (sc.descendants || 0) &&
+                   nac.spouseOfDescendants === (sc.spouseOfDescendants !== false));
+    const mo = nac.canDauRe === true && !hienDauRe;
+    nut.style.opacity = mo ? '0.45' : '1';
+    nut.title = mo
+      ? 'Đang ẩn dâu/rể nên nấc này vẽ ra đúng như nấc "Con"'
+      : nac.moTa;
+  });
+
+  if (nutDauRe) {
+    nutDauRe.textContent = (hienDauRe ? '☑' : '☐') + ' Dâu/rể';
+    nutDauRe.title = hienDauRe
+      ? 'Đang vẽ dâu/rể. Bấm để ẩn họ đi.'
+      : 'Đang ẩn dâu/rể. Bấm để vẽ họ trở lại.';
+    datVeChon(nutDauRe, hienDauRe);
+  }
+
+  // Nút tóm tắt phải nói được nấc đang chọn, nếu không thì thu gọn xong là
+  // người dùng mất hẳn thông tin đó — cả cụm nút chỉ còn là hai mũi tên câm.
+  const nacTren = NAC_TO_TIEN.find((n) => n.ancestors === (sc.ancestors || 0));
+  const nacDuoi = NAC_HAU_DUE.find((n) => n.descendants === (sc.descendants || 0) &&
+                    n.spouseOfDescendants === (sc.spouseOfDescendants !== false));
+  if (tomTatToTien) {
+    tomTatToTien.textContent = '▲ ' + (nacTren ? nacTren.nhan : sc.ancestors + ' đời trước');
+    tomTatToTien.title = 'Đời trên — bấm để đổi';
+  }
+  if (tomTatHauDue) {
+    tomTatHauDue.textContent = '▼ ' + (nacDuoi ? nacDuoi.nhan : 'Tuỳ chọn riêng') +
+                               (hienDauRe ? '' : ' · ẩn dâu/rể');
+    tomTatHauDue.title = 'Đời dưới — bấm để đổi';
+  }
+}
+
+// ============================================================
+// Mấy mẩu dựng nút, dùng chung cho hai cột
 // ============================================================
 
-/** Nút lọc phạm vi tổ tiên (góc trên trái) và hậu duệ (góc dưới trái). */
-function setupScopeControls() { /* TODO — chat 1.6 */ }  // eslint-disable-line no-unused-vars
+/** Hộp dọc chứa một cột nút. `viTri` là hai thuộc tính neo, ví dụ 'left:12px;top:12px'. */
+function veCotNut(viTri) {
+  const hop = document.createElement('div');
+  hop.style.cssText =
+    'position:absolute;' + viTri + ';z-index:10;' +
+    // flex-start, KHÔNG stretch: nút tóm tắt co theo chữ của nấc đang chọn,
+    // còn tấm xổ giữ bề rộng cố định của nút bên trong nó.
+    'display:flex;flex-direction:column;align-items:flex-start;gap:6px';
+  return hop;
+}
+
+/** Nút tóm tắt của một cột: thấp hơn nút nấc, và rộng vừa đúng chữ bên trong. */
+function nutTomTat(chay) {
+  const nut = nutChu('', '', chay);
+  nut.style.width   = 'auto';
+  nut.style.height  = '32px';
+  nut.style.padding = '0 12px';
+  nut.style.fontSize = '12px';
+  return nut;
+}
+
+/**
+ * Phần xổ ra của một cột: nhãn + các nấc, gói trong một tấm NỀN ĐẶC.
+ *
+ * Nền của tấm gói là bắt buộc, không phải trang trí. Luật của bước 12: mọi thứ
+ * vẽ đè lên nét phải tự mang nền đặc. Từng nút đã có nền riêng, nhưng khe hở
+ * 6px giữa hai nút thì để lọt nét sơ đồ chạy xuyên qua cụm nút.
+ */
+function veThanCot(tieuDe) {
+  const than = document.createElement('div');
+  than.style.cssText =
+    'display:none;flex-direction:column;align-items:stretch;gap:6px;' +
+    'background:#fffdf9;border:1px solid #e6e0d8;border-radius:10px;padding:6px;' +
+    'box-shadow:0 2px 8px rgba(42,38,34,.16)';
+
+  const nhan = document.createElement('div');
+  nhan.textContent = tieuDe;
+  nhan.style.cssText =
+    'font-size:11px;font-weight:600;letter-spacing:.04em;color:#8a8078;' +
+    'text-align:center;user-select:none';
+  than.append(nhan);
+  return than;
+}
+
+/**
+ * Nút chữ của hai cột trái.
+ *
+ * Cao 36px chứ không 44px như nút tròn góc dưới phải: nút này rộng 132px nên
+ * diện tích chạm đã thừa, mà năm nút chồng lên nhau ở mức 44px thì cột dưới
+ * trái ăn hết nửa màn hình điện thoại.
+ */
+function nutChu(chu, nhan, chay) {
+  const nut = document.createElement('button');
+  nut.type = 'button';
+  nut.textContent = chu;
+  nut.title = nhan;
+  nut.style.cssText =
+    'width:132px;height:36px;font-size:12.5px;line-height:1;' +
+    'font-family:system-ui,sans-serif;' +
+    'border:1px solid #e6e0d8;border-radius:8px;' +
+    'box-shadow:0 1px 4px rgba(42,38,34,.12);cursor:pointer;' +
+    'touch-action:manipulation;white-space:nowrap';
+  datVeChon(nut, false);
+  nut.addEventListener('click', chay);
+  return nut;
+}
+
+/** Nút đang chọn: đảo màu. Tương phản mạnh để đọc được cả trên ảnh chụp. */
+function datVeChon(nut, dangChon) {
+  nut.style.background = dangChon ? '#2a2622' : '#fffdf9';
+  nut.style.color      = dangChon ? '#fffdf9' : '#2a2622';
+  nut.style.fontWeight = dangChon ? '600' : '400';
+}

@@ -3,7 +3,7 @@
 // Vai trò  : Trạng thái dùng chung toàn app. CHỈ lớp pages được ghi.
 // Lớp      : (đặc biệt) — chỉ đọc/ghi dữ liệu, không chứa logic
 // Phụ thuộc: config
-// Phiên bản: 0.4.0 · Cập nhật: 17/08/2026 05:54
+// Phiên bản: 0.4.1 · Cập nhật: 17/08/2026 11:40
 // ============================================================
 import { DEFAULT_SCOPE } from './config.js';
 
@@ -19,7 +19,7 @@ const MAC_DINH = {
   // Có vẽ dâu/rể (nút biên) hay không. KHÔNG nằm trong `scope`: đây là bộ lọc
   // HẬU KỲ chạy sau computeVisibleSet, thuộc tuỳ chọn hiển thị chứ không thuộc
   // thuật toán — layout.js không cần biết nó tồn tại (QUY-TAC-VE §1).
-  // pages/tree-view.js đã đọc sẵn; núm bật/tắt làm ở chat 1.6.
+  // Công tắc bật/tắt nằm cuối cột nút dưới trái của pages/tree-view.js.
   showInLaws: true,
 
   // Máy chủ có cắt chi tiết người còn sống trước khi trả cây hay không.
