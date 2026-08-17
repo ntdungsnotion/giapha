@@ -3,7 +3,7 @@
 // Vai trò  : Xử lý ngày tháng — phân tích, hiển thị, tính tuổi
 // Lớp      : utils
 // Phụ thuộc: (không)
-// Phiên bản: 0.2.0 · Cập nhật: 17/08/2026 14:05
+// Phiên bản: 0.3.0 · Cập nhật: 17/08/2026 21:10
 // ============================================================
 //
 // MỌI HÀM Ở ĐÂY LÀ HÀM THUẦN, trừ stampNow() đọc đồng hồ máy.
@@ -15,6 +15,18 @@
 // `iso` chỉ dài bốn chữ số, và phải nói ra khi con số mình trả về là xấp xỉ —
 // "74 tuổi" và "khoảng 74 tuổi" là hai câu khác nhau về mức độ chắc chắn, mà
 // gia phả thì sống bằng sự khác nhau đó.
+//
+// --- LUẬT BA KẾT QUẢ (chốt 17/08/2026, bước 17) --------------
+//
+// Rất nhiều người trong gia phả chỉ có năm mất mà không có năm sinh, hoặc chỉ
+// có năm sinh mà không có năm mất — người đi chiến trường không về là ca điển
+// hình. Đó là bản ghi HỢP LỆ VÀ ĐẦY ĐỦ theo mức hiểu biết hiện nay, không phải
+// dữ liệu lỗi.
+//
+// Vì vậy mọi phép so sánh ngày ở đây có BA kết quả, không phải hai: trước ·
+// sau · KHÔNG ĐỦ DỮ LIỆU ĐỂ KẾT LUẬN. Kết quả thứ ba trả về `null`, và nơi gọi
+// phải im lặng bỏ qua — không chặn, không cảnh báo, và tuyệt đối không suy đoán
+// cái mốc còn thiếu.
 
 /**
  * Cố đoán ngày ISO từ chuỗi người dùng gõ.
@@ -88,8 +100,18 @@ export function calcAge(birth, death, isLiving) {
 /**
  * Rút { nam, thang, ngay, duNgay } từ một khối ngày.
  * Chấp nhận "1927", "1927-03", "1927-03-12", và mò bốn chữ số trong `raw`.
+ *
+ * `thang` và `ngay` bằng 0 nghĩa là KHÔNG BIẾT, không phải bằng không. Nhờ vậy
+ * nơi gọi phân biệt được "sinh tháng 1" với "chỉ biết năm sinh".
+ *
+ * Trả `null` khi không mò ra nổi một con số bốn chữ số nào — tức khối ngày này
+ * trống, và đó là chuyện bình thường của gia phả.
+ *
+ * Export ra ngoài từ bước 17 để `domains/validate.js` dùng chung. Quy tắc đọc
+ * một khối ngày phải nằm ở ĐÚNG MỘT chỗ; mỗi nơi tự bới `iso` một kiểu là cách
+ * chắc chắn nhất để hai màn hình kết luận khác nhau về cùng một bản ghi.
  */
-function mocNgay(khoiNgay) {
+export function mocNgay(khoiNgay) {
   if (!khoiNgay || typeof khoiNgay !== 'object') return null;
 
   const iso = typeof khoiNgay.iso === 'string' ? khoiNgay.iso.trim() : '';
@@ -104,6 +126,49 @@ function mocNgay(khoiNgay) {
     if (khop) return { nam: +khop[0], thang: 0, ngay: 0, duNgay: false };
   }
   return null;
+}
+
+/**
+ * So thứ tự hai khối ngày, CHỈ kết luận khi độ chính xác cho phép.
+ *
+ * @returns {-1|0|1|null}
+ *          -1  a trước b
+ *           0  a đúng bằng b (chỉ khi cả hai đủ ngày–tháng–năm)
+ *           1  a sau b
+ *         null KHÔNG ĐỦ DỮ LIỆU ĐỂ KẾT LUẬN
+ *
+ * Hai người cùng năm mà chỉ biết năm thì trả `null`, không trả 0. Đây là chỗ
+ * dễ làm sai nhất: coi "cùng năm" là "bằng nhau" thì một người mất tháng 3 mà
+ * sinh tháng 9 cùng năm sẽ lọt qua phép rà, còn coi nó là "trước" thì hàng loạt
+ * bản ghi đúng bị chặn oan. Cả hai đều tệ hơn việc thú nhận là không biết.
+ */
+export function soSanhNgay(a, b) {
+  const x = mocNgay(a);
+  const y = mocNgay(b);
+  if (!x || !y) return null;
+
+  if (x.nam !== y.nam) return x.nam < y.nam ? -1 : 1;
+  if (!x.thang || !y.thang) return null;      // cùng năm, thiếu tháng ở một bên
+  if (x.thang !== y.thang) return x.thang < y.thang ? -1 : 1;
+  if (!x.ngay || !y.ngay) return null;        // cùng tháng, thiếu ngày ở một bên
+  if (x.ngay !== y.ngay) return x.ngay < y.ngay ? -1 : 1;
+  return 0;
+}
+
+/**
+ * Số năm từ `a` đến `b`, tính bằng phép trừ NĂM và chỉ năm.
+ *
+ * @returns {number|null} null khi một trong hai khối không có năm.
+ *
+ * Con số này luôn có thể lệch một tuổi, và đó là chấp nhận được vì mọi nơi gọi
+ * nó đều là phép rà mức CẢNH BÁO với ngưỡng cách xa vài chục năm — không phép
+ * nào dùng nó để CHẶN theo một tuổi lẻ.
+ */
+export function chenhNam(a, b) {
+  const x = mocNgay(a);
+  const y = mocNgay(b);
+  if (!x || !y) return null;
+  return y.nam - x.nam;
 }
 
 /** Dấu thời gian dạng dd/mm/yyyy HH:mm cho tài liệu và changeLog. */

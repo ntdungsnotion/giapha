@@ -1,9 +1,9 @@
 // ============================================================
 // giapha · js/pages/settings.js
-// Vai trò  : Màn hình Cài đặt — người trung tâm mặc định, thông tin phiên
+// Vai trò  : Màn hình Cài đặt — người trung tâm mặc định, tự kiểm ghi và rà soát
 // Lớp      : pages — được phép gọi mọi lớp dưới
-// Phụ thuộc: state, services/gas, services/repo, utils/text, utils/date
-// Phiên bản: 1.1.0 · Cập nhật: 17/08/2026 19:10
+// Phụ thuộc: state, services/gas, services/repo, domains/validate, utils/text, utils/date
+// Phiên bản: 1.2.0 · Cập nhật: 17/08/2026 21:40
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
@@ -33,6 +33,7 @@ import { coMayChu, datNguoiTrungTamMacDinh, xoaNguoiTrungTamMacDinh } from '../s
 import { luuCay, suaDuoc } from '../services/repo.js';
 import { fullName, coGiaTri, doiSongNguoi } from '../utils/text.js';
 import { stampNow } from '../utils/date.js';
+import { validateAll } from '../domains/validate.js';
 
 let lopPhu = null;
 let xuLyNgoai = {};   // { onDoiMacDinh } — nơi gọi truyền vào
@@ -46,6 +47,7 @@ let xuLyNgoai = {};   // { onDoiMacDinh } — nơi gọi truyền vào
 // gọi sai thời điểm.
 let khoiMacDinh = null;
 let khoiThuGhi  = null;
+let khoiRaSoat  = null;
 
 /**
  * Mở màn hình Cài đặt.
@@ -79,6 +81,7 @@ export function openSettings(xuLy = {}) {
 
   veKhoiMacDinh(hop);
   veKhoiThuGhi(hop);
+  veKhoiRaSoat(hop);
   veKhoiPhien(hop);
 
   const dong = document.createElement('button');
@@ -101,6 +104,7 @@ export function closeSettings() {
   lopPhu = null;
   khoiMacDinh = null;
   khoiThuGhi  = null;
+  khoiRaSoat  = null;
 }
 
 // ============================================================
@@ -329,6 +333,135 @@ function moTaSaoLuu(ma) {
   if (ma === 'loi')            return 'Ghi được gia phả, nhưng KHÔNG cất được bản phòng hờ ' +
                                       '(thư mục Sao_luu chỉ chủ dự án mới ghi được).';
   return '';
+}
+
+// ============================================================
+// Khối "Rà soát dữ liệu" — chat 2.2
+// ============================================================
+//
+// Cùng lý lẽ với khối bên trên: `domains/validate.js` mãi chat 2.3 mới có form
+// nhập liệu gọi tới. Không có nút bấm thì bộ luật rà soát nằm đó không ai kiểm,
+// và nó sẽ chỉ lộ mặt đúng lúc người trong họ đang gõ dở một bản ghi.
+//
+// HAI NÚT NÀY KHÔNG GHI GÌ XUỐNG DRIVE. Phép thử chặn chạy trên một BẢN SAO
+// trong bộ nhớ; `state.tree` không bị đụng tới một chữ. Nhờ vậy nút bấm được cả
+// khi người dùng chỉ có quyền xem — rà soát là việc đọc.
+
+const SO_DONG_TOI_DA = 6;   // dài hơn thì màn hình điện thoại không đọc nổi
+
+function veKhoiRaSoat(vao) {
+  khoiRaSoat = document.createElement('div');
+  khoiRaSoat.style.cssText = 'margin-top:20px';
+  vao.append(khoiRaSoat);
+  veLaiKhoiRaSoat();
+  return khoiRaSoat;
+}
+
+/** @param {{chu:string, laLoi:boolean, dong?:string[]}} [ketQua] */
+function veLaiKhoiRaSoat(ketQua) {
+  const khoi = khoiRaSoat;
+  if (!khoi) return;
+  khoi.innerHTML = '';
+
+  khoi.append(veNhanKhoi('Rà soát dữ liệu'));
+
+  const coCay = !!(state.tree && state.index);
+
+  const giaiThich = document.createElement('div');
+  giaiThich.style.cssText = 'font-size:13px;line-height:1.55;color:#8a8078;margin-bottom:10px';
+  giaiThich.textContent =
+    'Chín phép rà soi ngày tháng và quan hệ trong gia phả. Người chỉ biết năm mất, ' +
+    'hoặc chỉ biết năm sinh, thì phép rà bỏ qua chứ không báo lỗi — thiếu thông tin ' +
+    'là chuyện bình thường của gia phả, không phải dữ liệu sai. Hai nút này chỉ đọc, ' +
+    'không ghi gì xuống Google Drive.';
+  khoi.append(giaiThich);
+
+  const dangXem = state.index && state.focusPersonId
+    ? state.index.personById.get(state.focusPersonId) : null;
+
+  khoi.append(nut('Rà soát cả gia phả', false, coCay, raSoatCaCay));
+
+  const oNut = document.createElement('div');
+  oNut.style.cssText = 'margin-top:8px';
+  oNut.append(nut('Thử phép chặn: năm mất trước năm sinh', false,
+                  coCay && !!dangXem, () => thuPhepChan(dangXem)));
+  khoi.append(oNut);
+
+  if (ketQua) {
+    khoi.append(veLoiNhan(ketQua.chu, ketQua.laLoi));
+    for (const d of (ketQua.dong || [])) khoi.append(veDongRaSoat(d));
+  }
+}
+
+/**
+ * Rà cả cây và kể lại bằng câu người thường đọc được.
+ *
+ * Bản báo cáo LUÔN nói ra số phép "chưa kiểm được", không giấu đi. Câu
+ * *"0 lỗi"* một mình có thể có nghĩa là gia phả sạch, mà cũng có thể có nghĩa
+ * là chẳng phép nào rà nổi vì thiếu năm — hai tình trạng ngược nhau, cùng một
+ * con số. Giấu phần chưa kiểm được là tự khen mình sạch nhờ chỗ mình chưa biết.
+ */
+function raSoatCaCay() {
+  const kq = validateAll(state.tree, state.index, 'tree');
+  const c  = kq.counts;
+
+  const soNguoi = state.index.personById.size;
+  const dau = kq.errors.length > 0
+    ? 'Có ' + kq.errors.length + ' lỗi phải sửa trước khi lưu.'
+    : (kq.warnings.length > 0
+        ? 'Không có lỗi nào phải chặn, nhưng có ' + kq.warnings.length + ' chỗ đáng xem lại.'
+        : 'Không tìm thấy lỗi nào, cũng không có chỗ nào đáng ngờ.');
+
+  veLaiKhoiRaSoat({
+    laLoi: kq.errors.length > 0,
+    chu: dau + ' Đã soi ' + soNguoi + ' người bằng ' + c.total + ' phép rà: ' +
+         c.ok + ' phép kết luận là ổn, ' + c.skip + ' phép chưa kiểm được vì ' +
+         'người đó thiếu năm sinh hoặc năm mất.',
+    dong: kq.errors.concat(kq.warnings).slice(0, SO_DONG_TOI_DA).map((m) => m.message),
+  });
+}
+
+/**
+ * Điểm dừng của chat 2.2, bấm được bằng ngón tay.
+ *
+ * Đặt năm sinh 1950 và năm mất 1940 lên một BẢN SAO của người đang xem, rồi hỏi
+ * bộ luật rà soát xem có cho lưu không. Dùng số cố định chứ không lấy năm thật
+ * của người đó, vì rất nhiều người trong gia phả không có năm nào cả — phép thử
+ * phải chạy được với mọi người trung tâm.
+ */
+function thuPhepChan(nguoi) {
+  const banSao = JSON.parse(JSON.stringify(nguoi));
+  banSao.birth = { iso: '1950', raw: '1950', place: '' };
+  banSao.death = { iso: '1940', raw: '1940', place: '' };
+  banSao.living = false;
+
+  const kq = validateAll(state.tree, state.index, 'person', { person: banSao });
+  const chan = kq.errors.filter((m) => m.check === 'checkDeathAfterBirth');
+
+  if (chan.length > 0) {
+    veLaiKhoiRaSoat({
+      laLoi: false,
+      chu: 'Đúng như phải thế: thử đặt cho ' + fullName(nguoi) +
+           ' năm sinh 1950 và năm mất 1940 thì app KHÔNG cho lưu. ' +
+           'Bản gia phả thật không bị đụng tới — đây chỉ là bản thử trong bộ nhớ.',
+      dong: chan.map((m) => m.message),
+    });
+  } else {
+    veLaiKhoiRaSoat({
+      laLoi: true,
+      chu: 'HỎNG: năm mất 1940 đứng trước năm sinh 1950 mà app vẫn cho lưu. ' +
+           'Phép chặn trong domains/validate.js không chạy.',
+    });
+  }
+}
+
+function veDongRaSoat(chu) {
+  const d = document.createElement('div');
+  d.textContent = '• ' + chu;
+  d.style.cssText =
+    'margin-top:6px;padding:7px 10px;font-size:12px;line-height:1.5;' +
+    'border-radius:8px;background:#faf8f5;border:1px solid #f0ebe4;color:#5c554e';
+  return d;
 }
 
 // ============================================================
