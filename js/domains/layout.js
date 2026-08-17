@@ -3,7 +3,7 @@
 // Vai trò  : Tính TOẠ ĐỘ các ô người, đường nối và nốt cụt. Không vẽ gì cả.
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: config (LAYOUT)
-// Phiên bản: 1.1.0 · Cập nhật: 17/08/2026 16:20
+// Phiên bản: 1.2.0 · Cập nhật: 17/08/2026 17:05
 // ============================================================
 //
 // Tách khỏi render.js có chủ ý: chỉnh giao diện (màu, phông, bo góc) không
@@ -123,6 +123,7 @@ export function computeLayout(index, focusPersonId, visibleSet, scope, stubPoint
 
   ganMucDoi(ct);
   const viTriX = datMoiKhoi(ct);
+  canChumConVaoGiua(ct, viTriX);
 
   const nodes = [];
   const nodeById = new Map();
@@ -171,6 +172,7 @@ function dungNguCanh(index, visibleSet) {
     dai:           new Map(),    // neoId -> mô tả dải (xem layDai)
     muc:           new Map(),
     toTien:        new Map(),    // personId -> Set tổ tiên hiển thị (đệm, xem toTienDong)
+    cumCon:        new Map(),    // unionId -> [personId] cả cụm con cháu đặt dưới union đó
     daDat:         new Set(),
   };
 
@@ -581,7 +583,12 @@ function datCum(ct, neoId) {
       const k = datCum(ct, c.personId);
       if (k) khoi.push(k);
     }
-    if (khoi.length > 0) chum.push({ unionId: uid, khoi });
+    if (khoi.length > 0) {
+      chum.push({ unionId: uid, khoi });
+      const ids = [];
+      for (const k of khoi) for (const it of k.items) ids.push(it.id);
+      ct.cumCon.set(uid, ids);
+    }
   }
 
   if (chum.length === 0) {
@@ -653,6 +660,77 @@ function datMoiKhoi(ct) {
   for (const id of ct.dsNguoi) if (!ct.daDat.has(id)) datMot(id);
 
   return viTri;
+}
+
+/**
+ * Căn chùm con vào GIỮA HAI VỢ CHỒNG khi hai người đứng rời nhau (chat 1.7).
+ *
+ * `datCum()` đặt chùm con ngay dưới dải của người NEO, vì lúc đệ quy nó chưa
+ * biết người kia sẽ nằm ở đâu — người kia thuộc một nhánh khác, do một lượt
+ * đệ quy khác đặt chỗ. Với cặp kề nhau thì không sao: người kia nằm ngay trong
+ * dải. Với cặp RỜI NHAU, chùm con dính hẳn về phía một người và trông như con
+ * của riêng người ấy.
+ *
+ * Chạy SAU `datMoiKhoi()` vì lúc đó mới biết đủ toạ độ cả hai vợ chồng.
+ *
+ * Dịch cả CỤM con cháu, không dịch riêng mấy ô con: dịch mỗi hàng con thì cháu
+ * chắt ở dưới đứng nguyên và nét nối gãy chéo hết.
+ *
+ * ⚠ Dịch xong phải KIỂM CHỒNG Ô rồi mới nhận. Khoảng trống giữa hai nhánh
+ * không phải lúc nào cũng đủ rộng, và bất biến "không ô nào chồng ô nào" đứng
+ * trên tính thẩm mỹ: thà chùm con lệch còn hơn hai cái tên đè lên nhau.
+ */
+function canChumConVaoGiua(ct, viTriX) {
+  for (const uid of [...ct.unionHT.keys()].sort()) {
+    const u = ct.unionHT.get(uid);
+    if (u.partners.length < 2) continue;
+
+    const ids = ct.cumCon.get(uid);
+    if (!ids || ids.length === 0) continue;
+
+    // Cặp kề nhau (một người bị hấp thụ vào dải người kia) đã đúng chỗ rồi.
+    const ht = ct.hapThuBoi.get(u.partners[0]) || ct.hapThuBoi.get(u.partners[1]);
+    if (ht && ht.unionId === uid) continue;
+
+    const xa = viTriX.get(u.partners[0]);
+    const xb = viTriX.get(u.partners[1]);
+    if (xa === undefined || xb === undefined) continue;
+    const giua = (xa + xb) / 2 + RONG / 2;
+
+    let trai = Infinity, phai = -Infinity;
+    for (const id of ids) {
+      const x = viTriX.get(id);
+      if (x === undefined) continue;
+      if (x < trai) trai = x;
+      if (x + RONG > phai) phai = x + RONG;
+    }
+    if (!Number.isFinite(trai)) continue;
+
+    const d = giua - (trai + phai) / 2;
+    if (Math.abs(d) < 1) continue;
+
+    const cum = new Set(ids);
+    if (deLenNhau(ct, viTriX, cum, d)) continue;
+    for (const id of ids) viTriX.set(id, viTriX.get(id) + d);
+  }
+}
+
+/** Dịch cụm đi `d` thì có ô nào của cụm đè lên ô ngoài cụm không (cùng hàng)? */
+function deLenNhau(ct, viTriX, cum, d) {
+  for (const id of cum) {
+    const x = viTriX.get(id);
+    if (x === undefined) continue;
+    const m = ct.muc.get(id);
+    const t = x + d, p = t + RONG;
+    for (const kh of ct.dsNguoi) {
+      if (cum.has(kh)) continue;
+      if (ct.muc.get(kh) !== m) continue;
+      const xk = viTriX.get(kh);
+      if (xk === undefined) continue;
+      if (t < xk + RONG + LAYOUT.hGap && xk < p + LAYOUT.hGap) return true;
+    }
+  }
+  return false;
 }
 
 // ============================================================
