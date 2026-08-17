@@ -3,7 +3,7 @@
 // Vai trò  : Vẽ SVG từ kết quả layout. Chỉ vẽ, không tính toạ độ sơ đồ.
 // Lớp      : domains — được gọi bởi: pages · được phép gọi: utils, config
 // Phụ thuộc: config (LAYOUT), utils/text
-// Phiên bản: 1.0.0 · Cập nhật: 16/08/2026 23:45
+// Phiên bản: 1.1.0 · Cập nhật: 17/08/2026 07:40
 // ============================================================
 //
 // Đây là file sẽ sửa nhiều nhất khi chỉnh giao diện. Giữ nó chỉ chứa việc vẽ,
@@ -20,8 +20,23 @@
 //    baseline, chỗ ngắt dòng của tên dài. Đó là việc của tầng vẽ, layout.js
 //    chỉ hứa mỗi ô rộng LAYOUT.nodeWidth và cao LAYOUT.nodeHeight.
 //
-// 2. VẼ HAI LƯỢT (QUY-TAC-VE §7): hết đường nối rồi mới đến ô, ô tô NỀN ĐẶC.
-//    Đây là thứ khiến nét chéo và nét chồng nấc không cần tính giao điểm với
+// 2. VẼ HAI LƯỢT (QUY-TAC-VE §7): hết đường nối rồi mới đến ô.
+//
+//    Luật đầy đủ KHÔNG phải "ô thì tô nền đặc" — mà là:
+//
+//        MỌI THỨ VẼ ĐÈ LÊN NÉT ĐỀU PHẢI TỰ MANG NỀN ĐẶC.
+//
+//    Ô người chỉ là ca đầu tiên của luật đó, không phải toàn bộ luật. Vẽ sau
+//    mới chỉ giải quyết được thứ tự; cái làm nét biến mất là NỀN, không phải
+//    thứ tự. Bất cứ hình nào trong suốt — chữ, con số, ký hiệu — vẽ sau đến
+//    mấy thì nét vẫn chạy xuyên qua nó.
+//
+//    Đã sập đúng chỗ này một lần (17/08/2026): số đếm cạnh nốt cụt gộp vẽ ở
+//    lượt cuối cùng, đúng thứ tự, nhưng không có nền — nên đường kẻ ngang gom
+//    các con chạy thẳng qua con số. Sửa bằng cách cho con số một đĩa nền đặc,
+//    xem `chuCoNen()`. Thêm hình mới vẽ chồng lên nét thì dùng lại hàm đó.
+//
+//    Nhờ luật này mà nét chéo và nét chồng nấc không cần tính giao điểm với
 //    mép ô — cứ vẽ tâm → tâm rồi để ô đè lên.
 //    Nốt cụt tách làm hai phần: đoạn kẻ đi cùng lượt đường nối, còn NỐT TRÒN
 //    vẽ sau cùng — nốt phải bấm được nên không được để ô nào che mất.
@@ -60,6 +75,11 @@ export const VE = {
 
   lotO:        '#ffffff',
   lotOBien:    '#f6f2ec',   // nút biên (dâu/rể) — nhạt hơn
+
+  // Nền của cả trang sơ đồ. Phải khớp `background` trong gas/index.html và
+  // trong pages/tree-view.js — đây là màu mà `chuCoNen()` dùng để xoá nét
+  // chạy phía dưới chữ. Lệch màu là hiện ra một vệt sáng quanh con số.
+  nenTrang:    '#faf8f5',
   chuChinh:    '#2a2622',
   chuPhu:      '#8a8078',
 
@@ -410,7 +430,10 @@ function renderStub(stub, onClick) {
     const ngang = goc === 0 || goc === 180;
     const x = ngang ? stub.x : stub.x + Math.cos(goc * Math.PI / 180) * d;
     const y = ngang ? stub.y - d : stub.y + Math.sin(goc * Math.PI / 180) * d;
-    nut.append(chu(String(dem), x, y + VE.chuDem * 0.35, VE.chuDem, VE.notCut));
+
+    // CÓ NỀN, không phải chữ trần: chỗ này rơi trúng thanh ngang gom các con
+    // là chuyện thường (luật 2 ở đầu file).
+    for (const el of chuCoNen(String(dem), x, y, VE.chuDem, VE.notCut)) nut.append(el);
   }
 
   const nhan = tao('title');
@@ -448,6 +471,28 @@ function tao(ten, thuoc) {
  * cho trình duyệt tự bóp lại. Thà chữ hơi chật còn hơn tên thò ra khỏi ô và
  * đè lên ô bên cạnh.
  */
+/**
+ * Chữ CÓ NỀN ĐẶC — dùng cho mọi chữ vẽ đè lên đường nối.
+ *
+ * Đây là luật 2 ở đầu file, viết thành hàm. Vẽ sau mới chỉ giải quyết được
+ * THỨ TỰ; cái làm nét biến mất là NỀN. Chữ trần thì vẽ cuối cùng đến mấy,
+ * đường kẻ vẫn chạy xuyên qua giữa con số.
+ *
+ * Đĩa nền tô đúng màu nền trang (`VE.nenTrang`) chứ không phải trắng: nền
+ * trang là #faf8f5, tô trắng thì hiện ra một đốm sáng quanh con số.
+ *
+ * `y` là TÂM chữ, không phải baseline — nơi gọi không phải tự cộng trừ.
+ *
+ * @returns {SVGElement[]} [đĩa nền, chữ] — nơi gọi append theo đúng thứ tự
+ */
+function chuCoNen(noiDung, x, y, coChu, mau) {
+  const r = coChu * 0.78 + 2;
+  return [
+    tao('circle', { cx: x, cy: y, r, fill: VE.nenTrang }),
+    chu(noiDung, x, y + coChu * 0.35, coChu, mau),
+  ];
+}
+
 function chu(noiDung, x, y, coChu, mau, rongToiDa) {
   const t = tao('text', {
     x, y,
