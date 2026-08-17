@@ -2,8 +2,8 @@
 // giapha · js/pages/person-detail.js
 // Vai trò  : Thẻ thông tin hiện ra khi chạm giữ vào một người
 // Lớp      : pages — được phép gọi mọi lớp dưới
-// Phụ thuộc: state, domains/person, utils/{text,date}
-// Phiên bản: 1.0.0 · Cập nhật: 17/08/2026 14:05
+// Phụ thuộc: state, domains/person, services/repo, utils/{text,date}
+// Phiên bản: 1.1.0 · Cập nhật: 17/08/2026 23:10
 // ============================================================
 //
 // Trường trống thì ẨN CẢ HÀNG: không nhãn, không giá trị, không "Không rõ".
@@ -29,6 +29,7 @@
 // trên ô sơ đồ, chứ không làm nửa vời ở đây.
 
 import { state } from '../state.js';
+import { suaDuoc } from '../services/repo.js';
 import { getAlternateNames } from '../domains/person.js';
 import { fullName, coGiaTri, doiSongNguoi } from '../utils/text.js';
 import { formatDate, calcAge } from '../utils/date.js';
@@ -41,9 +42,10 @@ const GIOI = { M: 'Nam', F: 'Nữ' };   // 'U' cố ý KHÔNG có mặt — xem 
  * Mở thẻ thông tin của một người.
  *
  * @param {string} personId
- * @param {{onChonNguoi?:function(string)}} [xuLy]
+ * @param {{onChonNguoi?:function(string), onSuaNguoi?:function(string)}} [xuLy]
  *        `onChonNguoi` chạy khi người dùng bấm một người trong phần quan hệ,
  *        hoặc bấm nút "Đưa ra giữa sơ đồ". Thẻ tự đóng trước khi gọi.
+ *        `onSuaNguoi` chạy khi bấm "Sửa hồ sơ"; không truyền thì nút không mọc.
  */
 export function openPersonDetail(personId, xuLy = {}) {
   closePersonDetail();
@@ -347,7 +349,22 @@ function veNhom(tieuDe, danhSach, xuLy) {
 
 function veChanThe(p, xuLy) {
   const chan = document.createElement('div');
-  chan.style.cssText = 'display:flex;gap:8px;margin-top:18px';
+  chan.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:18px';
+
+  // Nút Sửa chỉ mọc ra khi nơi gọi có chỗ nhận. Thẻ này không tự mở form được:
+  // `person-edit.js` cũng thuộc lớp `pages`, mà hai file `pages` không import
+  // lẫn nhau (chốt 17/08/2026, chat 1.6).
+  if (xuLy.onSuaNguoi) {
+    const coQuyen = suaDuoc();
+    const sua = nutChan(
+      coQuyen ? 'Sửa hồ sơ' : 'Sửa hồ sơ — bạn chỉ có quyền xem',
+      false,
+      () => { closePersonDetail(); xuLy.onSuaNguoi(p.id); },
+      !coQuyen
+    );
+    sua.style.flex = '1 1 100%';
+    chan.append(sua);
+  }
 
   const giua = nutChan('Đưa ra giữa sơ đồ', true, () => {
     closePersonDetail();
@@ -359,18 +376,20 @@ function veChanThe(p, xuLy) {
   return chan;
 }
 
-function nutChan(chu, chinh, chay) {
+function nutChan(chu, chinh, chay, tat) {
   const nut = document.createElement('button');
   nut.type = 'button';
   nut.textContent = chu;
+  nut.disabled = !!tat;
   nut.style.cssText =
-    'flex:' + (chinh ? '1 1 auto' : '0 0 auto') + ';height:42px;padding:0 14px;' +
-    'font-size:14px;font-family:inherit;border-radius:9px;cursor:pointer;' +
+    'flex:' + (chinh ? '1 1 auto' : '0 0 auto') + ';min-height:42px;padding:0 14px;' +
+    'font-size:14px;font-family:inherit;border-radius:9px;line-height:1.3;' +
     'touch-action:manipulation;' +
+    'cursor:' + (tat ? 'not-allowed' : 'pointer') + ';opacity:' + (tat ? '.45' : '1') + ';' +
     (chinh
       ? 'background:#2a2622;color:#fffdf9;border:1px solid #2a2622;font-weight:600'
       : 'background:#faf8f5;color:#2a2622;border:1px solid #e6e0d8');
-  nut.addEventListener('click', chay);
+  if (!tat) nut.addEventListener('click', chay);
   return nut;
 }
 

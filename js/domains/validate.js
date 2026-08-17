@@ -3,7 +3,7 @@
 // Vai trò  : Rà soát dữ liệu gia phả — chặn cái sai chắc chắn, cảnh báo cái đáng ngờ
 // Lớp      : domains — được gọi bởi: pages · được phép gọi: utils, config
 // Phụ thuộc: utils/date.js, utils/graph.js, utils/text.js
-// Phiên bản: 1.0.0 · Cập nhật: 17/08/2026 21:10
+// Phiên bản: 1.1.0 · Cập nhật: 17/08/2026 23:35
 // ============================================================
 //
 // HÀM THUẦN. Không gọi services, không chạm DOM, không đọc state.
@@ -375,7 +375,7 @@ export function validateAll(tree, index, changeType, payload) {
   if (changeType === 'person') {
     const nguoi = p.person || layNguoi(index, p.personId);
     if (!nguoi) return ketThuc(ra);
-    raSoatMotNguoi(ra, tree, index, nguoi);
+    raSoatMotNguoi(ra, tree, index, nguoi, true);
 
   } else if (changeType === 'child') {
     const cacCha = p.parentId ? [p.parentId] : partnersCuaUnion(index, p.unionId);
@@ -392,8 +392,12 @@ export function validateAll(tree, index, changeType, payload) {
     ghi(ra, 'checkSpouseAgeGap', checkSpouseAgeGap(index, p.unionId), { unionId: p.unionId });
 
   } else if (changeType === 'tree') {
+    // KHÔNG rà chiều xuống ở đây: vòng lặp này đi qua mọi người, nên mỗi cạnh
+    // cha–con đã được rà đúng một lần từ phía người con rồi. Bật thêm chiều
+    // xuống là rà mỗi cạnh hai lượt — số phép phồng lên gấp rưỡi và mỗi cảnh
+    // báo hiện hai lần, mà không bắt thêm được gì.
     for (const nguoi of index.personById.values()) {
-      raSoatMotNguoi(ra, tree, index, nguoi);
+      raSoatMotNguoi(ra, tree, index, nguoi, false);
     }
     for (const unionId of index.unionById.keys()) {
       ghi(ra, 'checkSpouseAgeGap', checkSpouseAgeGap(index, unionId), { unionId });
@@ -409,8 +413,19 @@ export function validateAll(tree, index, changeType, payload) {
  * Sửa năm sinh của một người thì hỏng ra ngoài chính bản ghi ấy: tuổi của mẹ
  * người đó, tuổi của chính người đó khi sinh con, khoảng lệch với vợ/chồng. Nên
  * nhánh `'person'` phải rà cả các cạnh chạm vào họ, không chỉ rà hai cái ngày.
+ *
+ * @param {boolean} caChieuXuong  có rà cả các cạnh ĐI XUỐNG (con) và các union
+ *        của người này hay không.
+ *
+ * ⚠ HAI CHIỀU LÀ HAI VIỆC KHÁC NHAU, và bản 1.0.0 chỉ làm một chiều.
+ * `chaMeCua()` cho các cạnh đi LÊN — tức chỉ soi được "cha mẹ của người này có
+ * sinh sau họ không". Sửa năm sinh của một người CHA thì lỗi nằm ở chiều
+ * ngược lại: *ông ấy hoá ra sinh sau con mình*, và cạnh đó không ai rà. Lỗ hổng
+ * lộ ra ở chat 2.3 khi form nhập liệu chạy phép rà thật trên một cặp cha–con
+ * có thật trong dữ liệu; ghi chú của bản 1.0.0 hứa "rà cả các cạnh chạm vào
+ * họ" trong khi mã mới làm một nửa.
  */
-function raSoatMotNguoi(ra, tree, index, nguoi) {
+function raSoatMotNguoi(ra, tree, index, nguoi, caChieuXuong) {
   const id = nguoi.id;
   ghi(ra, 'checkDeathAfterBirth', checkDeathAfterBirth(nguoi), { personId: id });
   ghi(ra, 'checkLifespan',        checkLifespan(nguoi),        { personId: id });
@@ -427,6 +442,29 @@ function raSoatMotNguoi(ra, tree, index, nguoi) {
     ghi(ra, 'checkNoAncestorCycle', checkNoAncestorCycle(index, id, ch.parentId),
         { personId: id });
     ghi(ra, 'checkParentAge', checkParentAge(index, ch.parentId, id), { personId: id });
+  }
+
+  if (!caChieuXuong) return;
+
+  // ⚠ Vòng này KHÔNG phải phép duyệt đồ thị nên không cần tập `visited`: nó đi
+  // đúng MỘT bước từ người đang xét sang các con rồi dừng, không đi tiếp từ
+  // những người tìm được. Ai cho nó đi sâu thêm một bậc ("rà luôn các cháu")
+  // thì phải thêm `visited` — gia phả là đồ thị, bản dữ liệu làm việc có hai
+  // vòng. Phép duy nhất ở file này thật sự duyệt đồ thị là
+  // `checkNoAncestorCycle`, và nó đi qua `bfs()` của utils/graph.js.
+  //
+  // Cùng một người con có thể xuất hiện ở hai union (bộ đẻ và bộ nuôi của
+  // `P0020`), nên lọc trùng — nếu không thì một lỗi được kể tên hai lần.
+  for (const conId of new Set(conCua(index, id))) {
+    ghi(ra, 'checkNoAncestorCycle', checkNoAncestorCycle(index, conId, id),
+        { personId: conId });
+    ghi(ra, 'checkParentAge', checkParentAge(index, id, conId), { personId: conId });
+    ghi(ra, 'checkBirthAfterMotherDeath', checkBirthAfterMotherDeath(index, conId),
+        { personId: conId });
+  }
+
+  for (const unionId of index.unionsAsPartner.get(id) || []) {
+    ghi(ra, 'checkSpouseAgeGap', checkSpouseAgeGap(index, unionId), { unionId });
   }
 }
 

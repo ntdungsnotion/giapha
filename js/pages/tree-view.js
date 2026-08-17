@@ -3,8 +3,8 @@
 // Vai trò  : MÀN HÌNH CHÍNH — sơ đồ cây, đổi người trung tâm
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render}, utils/text,
-//            pages/{person-detail,settings}
-// Phiên bản: 1.4.0 · Cập nhật: 17/08/2026 14:40
+//            pages/{person-detail,person-edit,settings}
+// Phiên bản: 1.5.0 · Cập nhật: 17/08/2026 23:10
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -67,6 +67,7 @@ import { computeLayout } from '../domains/layout.js';
 import { renderTree } from '../domains/render.js';
 import { fullName, doiSongNguoi } from '../utils/text.js';
 import { openPersonDetail, closePersonDetail } from './person-detail.js';
+import { openPersonForm, closePersonForm } from './person-edit.js';
 import { openSettings, closeSettings } from './settings.js';
 
 let khungCuon = null;   // div cuộn được, bọc quanh SVG
@@ -96,6 +97,7 @@ export function mountTreeView(containerEl) {
   // Thẻ thông tin và màn hình Cài đặt sống ở `document.body`, ngoài
   // `containerEl` — dọn ruột container không đụng tới chúng, nên phải đóng tay.
   closePersonDetail();
+  closePersonForm();
   closeSettings();
   containerEl.innerHTML = '';
   containerEl.style.cssText =
@@ -463,7 +465,7 @@ function henChamGiu(e) {
     if (daKeo || dangCham.size !== 1) return;   // đã kéo, hoặc đã thêm ngón thứ hai
     daKeo = true;                               // nuốt cú click sắp bắn ra
     keo = null;
-    openPersonDetail(personId, { onChonNguoi: (id) => setFocusPerson(id) });
+    openPersonDetail(personId, { onChonNguoi: (id) => setFocusPerson(id), onSuaNguoi: moFormSua });
   }, CHO_CHAM_GIU);
 }
 
@@ -655,7 +657,19 @@ function veHopNutTrenPhai() {
 
 function moTheNguoiTrungTam() {
   if (!state.focusPersonId) return;
-  openPersonDetail(state.focusPersonId, { onChonNguoi: (id) => setFocusPerson(id) });
+  openPersonDetail(state.focusPersonId,
+                   { onChonNguoi: (id) => setFocusPerson(id), onSuaNguoi: moFormSua });
+}
+
+/**
+ * Mở form sửa hồ sơ, rồi vẽ lại sơ đồ sau khi máy chủ đã ghi xong.
+ *
+ * `refresh()` chứ không phải `setFocusPerson()`: người trung tâm không đổi, chỉ
+ * nội dung ô đổi. Lúc `onDaLuu` chạy thì `repo.luuCay()` đã thay `state.tree`
+ * và dựng lại `state.index` — vẽ lại là thấy tên mới, năm mới trên ô.
+ */
+function moFormSua(personId) {
+  openPersonForm(personId, { onDaLuu: () => refresh() });
 }
 
 function nutTron(chu, nhan, chay) {

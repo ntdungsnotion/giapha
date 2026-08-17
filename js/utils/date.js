@@ -3,7 +3,7 @@
 // Vai trò  : Xử lý ngày tháng — phân tích, hiển thị, tính tuổi
 // Lớp      : utils
 // Phụ thuộc: (không)
-// Phiên bản: 0.3.0 · Cập nhật: 17/08/2026 21:10
+// Phiên bản: 0.4.0 · Cập nhật: 17/08/2026 23:10
 // ============================================================
 //
 // MỌI HÀM Ở ĐÂY LÀ HÀM THUẦN, trừ stampNow() đọc đồng hồ máy.
@@ -32,9 +32,90 @@
  * Cố đoán ngày ISO từ chuỗi người dùng gõ.
  * KHÔNG BAO GIỜ ghi đè trường raw — chỉ trả về gợi ý.
  * Nhận được: "1948", "12/3/1948", "khoảng 1948", "tháng 3 năm 1948"
+ *
  * @returns {{iso: string|null, confident: boolean}}
+ *          `iso` là null khi không mò ra nổi một năm nào — và đó là chuyện
+ *          BÌNH THƯỜNG: "tháng chạp năm Bính Tý" là một câu trả lời đầy đủ của
+ *          gia phả, chỉ là máy không đọc được. Nơi gọi vẫn phải lưu `raw`.
+ *
+ *          `confident` false nghĩa là *đọc ra năm nhưng không dám chắc* —
+ *          người gõ đã tự nói là ước chừng ("khoảng 1890"), hoặc con số nằm lẫn
+ *          trong chữ mà ta chỉ nhặt ra được. Màn hình phải nói sự khác nhau ấy
+ *          cho người dùng thấy trước khi họ lưu.
+ *
+ * NGÀY VIỆT NAM ĐỌC THEO dd/mm/yyyy. "3/4/1948" là ngày 3 tháng 4, không phải
+ * mùng 4 tháng 3. Đọc nhầm chiều thì hai phần ba số ca vẫn ra ngày hợp lệ, nên
+ * sai kiểu này không bao giờ tự lộ ra.
  */
-export function parseLooseDate(text) { /* TODO — giai đoạn 2, cùng form nhập liệu */ }
+export function parseLooseDate(text) {
+  const chuoi = typeof text === 'string' ? text.trim() : '';
+  if (chuoi === '') return { iso: null, confident: false };
+
+  const uocChung = TU_UOC_CHUNG.test(chuoi);
+  const chac = (iso) => ({ iso, confident: !uocChung });
+  const doan = (iso) => ({ iso, confident: false });
+
+  // 1. Đã đúng dạng ISO sẵn — "1948-03-12", "1948-03", "1948"
+  let m = chuoi.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return hopLe(+m[1], +m[2], +m[3]) ? chac(ghepIso(+m[1], +m[2], +m[3])) : doan(m[1]);
+  m = chuoi.match(/^(\d{4})-(\d{1,2})$/);
+  if (m) return hopLe(+m[1], +m[2], 0) ? chac(ghepIso(+m[1], +m[2], 0)) : doan(m[1]);
+  if (/^\d{4}$/.test(chuoi)) return chac(chuoi);
+
+  // 2. Kiểu người Việt gõ nhanh — "12/3/1948", "12.3.1948", "12-3-1948"
+  m = chuoi.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  if (m) return hopLe(+m[3], +m[2], +m[1]) ? chac(ghepIso(+m[3], +m[2], +m[1])) : doan(m[3]);
+
+  // 3. Tháng và năm — "3/1948". Hai chữ số đầu KHÔNG thể là ngày ở đây vì
+  //    không có phần thứ ba, nên đọc là tháng.
+  m = chuoi.match(/^(\d{1,2})[/.-](\d{4})$/);
+  if (m) return hopLe(+m[2], +m[1], 0) ? chac(ghepIso(+m[2], +m[1], 0)) : doan(m[2]);
+
+  // 4. Viết bằng chữ — "ngày 12 tháng 3 năm 1948", "tháng 3 năm 1948",
+  //    "khoảng tháng 3/1948". Chỉ tin con số đứng ngay sau đúng từ của nó.
+  const nam   = chuoi.match(/n[ăa]m\s*(\d{4})/i);
+  const thang = chuoi.match(/th[áa]ng\s*(\d{1,2})/i);
+  const ngay  = chuoi.match(/ng[àa]y\s*(\d{1,2})/i);
+  const soNam = nam ? +nam[1] : (chuoi.match(/\d{4}/) ? +chuoi.match(/\d{4}/)[0] : 0);
+
+  if (soNam && thang) {
+    const t = +thang[1];
+    const d = ngay ? +ngay[1] : 0;
+    if (hopLe(soNam, t, d)) return chac(ghepIso(soNam, t, d));
+    return doan(String(soNam));
+  }
+
+  // 5. Cùng lắm: nhặt bốn chữ số đầu tiên gặp được. Đây là đường "đọc ra năm
+  //    nhưng không dám chắc" — chuỗi còn chứa những chữ ta không hiểu.
+  if (soNam) return doan(String(soNam));
+  return { iso: null, confident: false };
+}
+
+/**
+ * Những chữ người viết gia phả dùng khi chính họ cũng không chắc. Gặp một
+ * trong số này thì dù có đọc ra ngày tháng cũng KHÔNG được nhận là chắc chắn —
+ * "khoảng 1890" mà app tự tin ghi thành 1890 là app nói hộ người ta một điều
+ * họ không nói.
+ */
+const TU_UOC_CHUNG = /kho[ảa]ng|[ướuo]{1,3}c\s|ch[ừu]ng|đ[ộo]\s|tr[ưu][ớo]c|sau|đ[ầa]u|gi[ữu]a|cu[ốo]i|\?|~/i;
+
+/** Ngày tháng có tồn tại thật không. `ngay = 0` hoặc `thang = 0` nghĩa là KHÔNG BIẾT. */
+function hopLe(nam, thang, ngay) {
+  if (!nam || nam < 1 || nam > 3000) return false;
+  if (thang && (thang < 1 || thang > 12)) return false;
+  if (!ngay) return true;
+  if (!thang) return false;                       // biết ngày mà không biết tháng thì vô nghĩa
+  const soNgayCuaThang = new Date(nam, thang, 0).getDate();
+  return ngay >= 1 && ngay <= soNgayCuaThang;
+}
+
+function ghepIso(nam, thang, ngay) {
+  const hai = (n) => String(n).padStart(2, '0');
+  const n = String(nam).padStart(4, '0');
+  if (!thang) return n;
+  if (!ngay)  return n + '-' + hai(thang);
+  return n + '-' + hai(thang) + '-' + hai(ngay);
+}
 
 /**
  * Hiển thị ngày cho người đọc. Ưu tiên `raw` — đó là thứ người trong họ đã gõ,
