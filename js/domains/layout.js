@@ -704,7 +704,12 @@ function dungDiemTreo(ct) {
       const a = ct.nodeById.get(u.partners[0]);
       const b = ct.nodeById.get(u.partners[1]);
       x    = (a.x + b.x) / 2 + RONG / 2;
-      y    = (a.y + b.y) / 2 + CAO / 2;
+      // Hai người RỜI NHAU mà CÙNG HÀNG thì nét vợ chồng không đi tâm → tâm,
+      // nó VÕNG xuống dưới hai ô (xem themNetVoChong). Điểm treo chùm con phải
+      // nằm đúng trên cái võng ấy, chứ không phải ở tâm hàng: tại trung điểm
+      // giữa hai ô không có ô nào che, nên đoạn kẻ từ tâm hàng xuống sẽ thò
+      // hẳn ra ngoài và treo lơ lửng phía trên nét vợ chồng.
+      y    = a.y === b.y ? mucVong(a, b) : (a.y + b.y) / 2 + CAO / 2;
       busY = Math.max(a.y, b.y) + CAO + LAYOUT.vGap / 2;
       kieu = 'cheo';
       neoId = u.partners[0];
@@ -808,9 +813,23 @@ function themNetVoChong(ct, links, uid, aId, bId) {
     return;
   }
 
-  const vong = Math.max(a.y, b.y) + CAO + LAYOUT.vGap * 0.3;
+  const vong = mucVong(a, b);
   links.push({ kind: 'spouse', relation: null, unionId: uid, from: aId, to: bId,
                points: [[ax, ay], [ax, vong], [bx, vong], [bx, by]], netDai: true, cheo: false });
+}
+
+/**
+ * Mức nét vợ chồng VÕNG xuống, khi hai người cùng hàng mà đứng rời nhau.
+ *
+ * Một công thức, HAI nơi dùng: `themNetVoChong()` vẽ nét, `dungDiemTreo()` đặt
+ * điểm treo chùm con lên đúng nét đó. Tách ra làm hằng số dùng chung vì hai
+ * chỗ ấy lệch nhau đúng một lần là sinh ra đoạn kẻ treo lơ lửng giữa sơ đồ —
+ * lỗi thật của chat 1.7, chủ dự án nhìn ảnh mới thấy.
+ *
+ * Nằm TRÊN `busY` (= vGap/2) nên chùm con vẫn thả xuống được bình thường.
+ */
+function mucVong(a, b) {
+  return Math.max(a.y, b.y) + CAO + LAYOUT.vGap * 0.3;
 }
 
 // ============================================================
