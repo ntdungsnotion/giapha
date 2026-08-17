@@ -2,8 +2,8 @@
 // giapha · js/pages/settings.js
 // Vai trò  : Màn hình Cài đặt — người trung tâm mặc định, thông tin phiên
 // Lớp      : pages — được phép gọi mọi lớp dưới
-// Phụ thuộc: state, services/gas, utils/text
-// Phiên bản: 1.0.0 · Cập nhật: 17/08/2026 14:40
+// Phụ thuộc: state, services/gas, services/repo, utils/text, utils/date
+// Phiên bản: 1.1.0 · Cập nhật: 17/08/2026 19:10
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
@@ -30,7 +30,9 @@
 
 import { state, notify } from '../state.js';
 import { coMayChu, datNguoiTrungTamMacDinh, xoaNguoiTrungTamMacDinh } from '../services/gas.js';
+import { luuCay, suaDuoc } from '../services/repo.js';
 import { fullName, coGiaTri, doiSongNguoi } from '../utils/text.js';
+import { stampNow } from '../utils/date.js';
 
 let lopPhu = null;
 let xuLyNgoai = {};   // { onDoiMacDinh } — nơi gọi truyền vào
@@ -43,6 +45,7 @@ let xuLyNgoai = {};   // { onDoiMacDinh } — nơi gọi truyền vào
 // mà không có lỗi nào ném ra cả. Cùng một họ với lỗi của chat 1.5: hàm đúng,
 // gọi sai thời điểm.
 let khoiMacDinh = null;
+let khoiThuGhi  = null;
 
 /**
  * Mở màn hình Cài đặt.
@@ -75,6 +78,7 @@ export function openSettings(xuLy = {}) {
   hop.append(tieuDe);
 
   veKhoiMacDinh(hop);
+  veKhoiThuGhi(hop);
   veKhoiPhien(hop);
 
   const dong = document.createElement('button');
@@ -96,6 +100,7 @@ export function closeSettings() {
   if (lopPhu) lopPhu.remove();
   lopPhu = null;
   khoiMacDinh = null;
+  khoiThuGhi  = null;
 }
 
 // ============================================================
@@ -197,6 +202,133 @@ async function chay(lenh, giaTriMoi) {
     if (khoi) khoi.style.opacity = '1';
     veLaiKhoiMacDinh(e && e.message ? e.message : String(e));
   }
+}
+
+// ============================================================
+// Khối "Kiểm tra ghi dữ liệu" — chat 2.1
+// ============================================================
+//
+// Vì sao có khối này. `luuCay()` là nút cổ chai của cả giai đoạn 2: form nhập
+// liệu, thêm người, menu 7 mục, ảnh — tất cả đều chờ nó. Nhưng form nhập liệu
+// mãi chat 2.3 mới có, nên nếu không có chỗ nào bấm được thì đường ghi dữ liệu
+// nằm đó không ai kiểm được, và lỗi sẽ lộ ra muộn hơn nhiều.
+//
+// Đây cũng đúng nếp đã ghi trong tài liệu: *chỗ nào cần tự kiểm thì phải có
+// một cái nút ngay cạnh*, không bắt ai mở bảng điều khiển của trình duyệt gõ
+// lệnh.
+//
+// Nút này sửa ghi chú của người trung tâm ĐANG XEM — nó THAY dấu cũ chứ không
+// nối thêm, nên bấm bao nhiêu lần ghi chú cũng không phình ra.
+
+const DAU_THU = /\s*\[thử ghi lúc [^\]]*\]/g;
+
+function veKhoiThuGhi(vao) {
+  khoiThuGhi = document.createElement('div');
+  khoiThuGhi.style.cssText = 'margin-top:20px';
+  vao.append(khoiThuGhi);
+  veLaiKhoiThuGhi();
+  return khoiThuGhi;
+}
+
+/** @param {{chu:string, laLoi:boolean}} [ketQua] */
+function veLaiKhoiThuGhi(ketQua) {
+  const khoi = khoiThuGhi;
+  if (!khoi) return;
+  khoi.innerHTML = '';
+
+  khoi.append(veNhanKhoi('Kiểm tra ghi dữ liệu'));
+
+  const dangXem = state.index && state.focusPersonId
+    ? state.index.personById.get(state.focusPersonId) : null;
+  const coNoi   = coMayChu();
+  const ghiDuoc = coNoi && suaDuoc() && !!dangXem && !state.daLocNguoiConSong;
+
+  const giaiThich = document.createElement('div');
+  giaiThich.style.cssText = 'font-size:13px;line-height:1.55;color:#8a8078;margin-bottom:10px';
+  giaiThich.textContent = dangXem
+    ? 'Bấm nút dưới đây để thử ghi thật xuống Google Drive: app sẽ đánh một dấu ' +
+      'thời gian vào ghi chú của ' + fullName(dangXem) + '. Đóng app mở lại, ' +
+      'xem thẻ thông tin của người đó mà dấu vẫn còn thì đường lưu đã chạy đúng.'
+    : 'Chưa chọn được người trung tâm nào nên chưa thử ghi được.';
+  khoi.append(giaiThich);
+
+  khoi.append(nut('Thử ghi vào gia phả', false, ghiDuoc, () => thuGhi(dangXem)));
+
+  if (coNoi && !suaDuoc()) {
+    khoi.append(veLoiNhan(
+      'Bạn chỉ có quyền xem gia phả nên nút này không bấm được. ' +
+      'Quyền do danh sách chia sẻ trên Google Drive quyết định.', false));
+  }
+  if (state.daLocNguoiConSong) {
+    khoi.append(veLoiNhan(
+      'Bản gia phả trong máy đang bị ẩn bớt chi tiết người còn sống, ' +
+      'nên app không được phép lưu đè lên bản gốc.', false));
+  }
+  if (ketQua) khoi.append(veLoiNhan(ketQua.chu, ketQua.laLoi));
+}
+
+/**
+ * Chạy đúng một lần ghi thật.
+ *
+ * Hàm sửa chạy trên BẢN SAO của cây do `repo.luuCay()` dựng — nó không đụng
+ * vào `state.tree`. Máy chủ gật thì repo mới thay cây và gọi `notify()`.
+ */
+async function thuGhi(nguoi) {
+  const khoi = khoiThuGhi;
+  if (!nguoi) return;
+  if (khoi) khoi.style.opacity = '0.5';
+
+  const dau = '[thử ghi lúc ' + stampNow() + ']';
+
+  let kq;
+  try {
+    kq = await luuCay(
+      (cay) => {
+        const p = (cay.persons || []).find((x) => x && x.id === nguoi.id);
+        if (!p) return;
+        const cu = typeof p.note === 'string' ? p.note : '';
+        p.note = (cu.replace(DAU_THU, '').trim() + ' ' + dau).trim();
+      },
+      {
+        action: 'update',
+        target: nguoi.id,
+        note:   'Nút "Thử ghi vào gia phả" trong màn hình Cài đặt (chat 2.1).',
+        diff:   { 'note.dauThu': ['', dau] },
+      }
+    );
+  } catch (e) {
+    kq = { ok: false, loi: e && e.message ? e.message : String(e) };
+  }
+
+  if (khoi) khoi.style.opacity = '1';
+
+  if (kq && kq.ok) {
+    veLaiKhoiThuGhi({
+      laLoi: false,
+      chu: 'Đã ghi xong xuống Google Drive. Bản gia phả nay là phiên bản ' +
+           kq.revision + ', dấu vừa đánh là ' + dau + '. ' +
+           moTaSaoLuu(kq.saoLuu) +
+           ' Giờ đóng app mở lại, xem thẻ thông tin của ' + fullName(nguoi) +
+           ' — dấu này phải vẫn còn.',
+    });
+  } else {
+    veLaiKhoiThuGhi({
+      laLoi: true,
+      chu: (kq && kq.loi) || 'Chưa lưu được, mà máy chủ không nói rõ vì sao.',
+    });
+  }
+}
+
+/** Dịch mã trạng thái sao lưu của máy chủ ra câu người thường đọc được. */
+function moTaSaoLuu(ma) {
+  if (ma === 'da-luu')         return 'Đã cất thêm một bản phòng hờ vào thư mục Sao_luu.';
+  if (ma === 'chua-den-han')   return 'Chưa cất bản phòng hờ mới vì bản gần nhất còn chưa quá 24 giờ.';
+  if (ma === 'tat')            return 'Sao lưu tự động đang tắt trong Config.gs.';
+  if (ma === 'khong-cau-hinh') return 'Chưa điền THU_MUC_SAO_LUU_ID trong Config.gs nên chưa cất bản phòng hờ nào.';
+  // 'loi' — thường là do thư mục Sao_luu chỉ chia sẻ cho chủ dự án.
+  if (ma === 'loi')            return 'Ghi được gia phả, nhưng KHÔNG cất được bản phòng hờ ' +
+                                      '(thư mục Sao_luu chỉ chủ dự án mới ghi được).';
+  return '';
 }
 
 // ============================================================

@@ -3,18 +3,18 @@
 // Vai trò  : Nạp/lưu cây gia phả, dựng chỉ mục, giữ trạng thái phiên.
 // Lớp      : services — được gọi bởi: pages · gọi: services/gas, utils
 // Phụ thuộc: services/gas.js, utils/graph.js, state.js
-// Phiên bản: 0.4.0 · Cập nhật: 15/08/2026 20:22
+// Phiên bản: 0.5.0 · Cập nhật: 17/08/2026 19:10
 // ============================================================
 //
 // RANH GIỚI ĐỔI KHO LƯU TRỮ.
 // Đổi từ JSON-trên-Drive sang thứ khác thì chỉ file này và gas.js
 // phải viết lại. domains/ và pages/ không đổi một dòng.
 //
-// TRẠNG THÁI (15/08/2026, chat 1.1): layPhien · napCay · nangCapNeuCan
-// đã chạy thật. luuCay còn khung — làm ở giai đoạn 2.
+// TRẠNG THÁI (17/08/2026, chat 2.1): khoiTao · napCay · nangCapNeuCan · luuCay
+// đều đã chạy thật.
 
 import * as gas from './gas.js';
-import { state } from '../state.js';
+import { state, notify } from '../state.js';
 import { buildIndex } from '../utils/graph.js';
 import { DATA_VERSION } from '../config.js';
 
@@ -89,11 +89,86 @@ function chonNguoiTrungTam(phien) {
 
 /**
  * Lưu cây.
- * Máy chủ chịu trách nhiệm kiểm tra quyền sửa và xung đột phiên bản.
- * Trả về { ok:false, lyDo:'xungdot' } nếu người khác vừa sửa,
- * hoặc { ok:false, lyDo:'khongcoquyen' } nếu chỉ có quyền xem.
+ *
+ * ⚠ KHÔNG nhận sẵn một cây đã sửa, mà nhận HÀM SỬA. Lý do là luật đã chốt
+ * 17/08/2026: *giao diện chỉ đổi SAU khi máy chủ xác nhận*. Nếu nơi gọi sửa
+ * thẳng vào `state.tree` rồi mới gọi lưu, thì lúc máy chủ từ chối — hết quyền,
+ * xung đột, mất mạng — màn hình đã hiện một điều không đúng sự thật, và không
+ * còn bản gốc nào để lùi về.
+ *
+ * Cách làm ở đây: nhân đôi cây, cho `apDung` sửa trên BẢN SAO, gửi bản sao lên.
+ * Máy chủ gật thì bản sao mới trở thành `state.tree`. Máy chủ lắc thì
+ * `state.tree` chưa hề bị đụng vào.
+ *
+ * Xung đột thì CỐ Ý KHÔNG cập nhật `state.headRevisionId`. Nghe có vẻ tiện —
+ * "cập nhật rồi lưu lại là xong" — nhưng đó chính là ghi đè mất bản của người
+ * kia, tức là tự tay làm đúng cái việc mà cả cơ chế này sinh ra để chặn.
+ * Đường ra duy nhất là nạp lại cây.
+ *
+ * @param {function(object):void} apDung  sửa trên bản sao cây; không trả về gì
+ * @param {{action?:string, target?:string, note?:string, diff?:object}} [moTa]
+ *        ghi vào changeLog. `ts` và `by` do máy chủ điền, gửi lên cũng bỏ qua.
+ * @returns {Promise<{ok:boolean, lyDo:string|null, loi:string|null,
+ *                    revision?:number, saoLuu?:string}>}
  */
-export async function luuCay() { /* TODO — chat 1.1 */ }
+export async function luuCay(apDung, moTa) {
+  if (!state.tree) {
+    return tuChoi('chuanapcay', 'Chưa nạp được gia phả nên chưa lưu được gì.');
+  }
+  if (!suaDuoc()) {
+    return tuChoi('khongcoquyen',
+      'Bạn chỉ có quyền xem gia phả, không sửa được. ' +
+      'Cần sửa thì nhờ người quản lý đổi quyền trên Google Drive.');
+  }
+  // Bản đang giữ trong máy đã bị máy chủ cắt chi tiết người còn sống. Gửi
+  // ngược lên là xoá trắng dữ liệu thật của họ. Máy chủ cũng chặn lần nữa,
+  // nhưng chặn ngay ở đây thì không tốn một vòng mạng để nghe lời từ chối.
+  if (state.daLocNguoiConSong) {
+    return tuChoi('dulieubiloc',
+      'Bản gia phả trong máy đang bị ẩn bớt chi tiết người còn sống, ' +
+      'nên không được phép lưu đè lên bản gốc.');
+  }
+
+  // Nhân đôi bằng JSON: cây vốn là dữ liệu JSON thuần, không có hàm, không có
+  // Date, không có tham chiếu vòng — nên phép này an toàn và không cần
+  // structuredClone (Apps Script iframe cũ chưa chắc có).
+  const banNhap = JSON.parse(JSON.stringify(state.tree));
+  if (typeof apDung === 'function') apDung(banNhap);
+
+  let kq;
+  try {
+    kq = await gas.luuCay(banNhap, state.headRevisionId, moTa || null);
+  } catch (e) {
+    return tuChoi('khongnoiduoc',
+      'Không gọi được máy chủ nên chưa lưu được. ' +
+      (e && e.message ? e.message : String(e)));
+  }
+
+  if (!kq)    return tuChoi('khongtraloi', 'Máy chủ không trả về gì khi lưu.');
+  if (!kq.ok) return kq;   // máy chủ đã viết sẵn câu giải thích trong kq.loi
+
+  // Từ đây trở xuống mới được đụng vào state.
+  banNhap.tree = kq.tree || banNhap.tree;
+  if (kq.mucChangeLog) {
+    if (!Array.isArray(banNhap.changeLog)) banNhap.changeLog = [];
+    banNhap.changeLog.push(kq.mucChangeLog);
+  }
+
+  state.tree           = banNhap;
+  state.index          = buildIndex(banNhap);
+  state.headRevisionId = kq.headRevisionId || null;
+  state.dirty          = false;
+  notify();
+
+  console.log('[repo] đã lưu: revision ' + kq.revision +
+              ', sao lưu: ' + kq.saoLuu);
+  return kq;
+}
+
+/** Lời từ chối của chính trình duyệt, cùng khuôn với kết quả máy chủ trả về. */
+function tuChoi(lyDo, loi) {
+  return { ok: false, lyDo, loi, headRevisionId: null, revision: null };
+}
 
 /** Người đang dùng có sửa được không. Lấy từ phiên, KHÔNG tự suy từ email. */
 export function suaDuoc() {

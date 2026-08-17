@@ -4,7 +4,7 @@
 //            Bọc google.script.run thành hàm Promise dùng await được.
 // Lớp      : services — được gọi bởi: services/repo · gọi: (không)
 // Phụ thuộc: (không)
-// Phiên bản: 0.3.0 · Cập nhật: 15/08/2026 16:10
+// Phiên bản: 0.4.0 · Cập nhật: 17/08/2026 19:10
 // ============================================================
 //
 // ĐÂY LÀ RANH GIỚI GIỮA TRÌNH DUYỆT VÀ MÁY CHỦ.
@@ -56,9 +56,15 @@ export function layCay() {
   return goi('layCay');
 }
 
-/** Ghi cây. Máy chủ tự kiểm tra xung đột và quyền sửa. */
-export function luuCay(cay, revisionDaBiet) {
-  return goi('luuCay', cay, revisionDaBiet);
+/**
+ * Ghi cây. Máy chủ tự kiểm tra xung đột và quyền sửa.
+ *
+ * `moTa` = { action, target, note, diff } — máy chủ ghi thành một mục
+ * changeLog. Đừng gửi `ts` hay `by` trong đó: máy chủ tự điền hai trường ấy
+ * và bỏ qua thứ trình duyệt khai.
+ */
+export function luuCay(cay, revisionDaBiet, moTa) {
+  return goi('luuCay', cay, revisionDaBiet, moTa);
 }
 
 /** Ghi người trung tâm mặc định của riêng người đang đăng nhập. */
