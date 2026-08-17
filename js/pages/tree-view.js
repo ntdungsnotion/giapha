@@ -2,8 +2,9 @@
 // giapha · js/pages/tree-view.js
 // Vai trò  : MÀN HÌNH CHÍNH — sơ đồ cây, đổi người trung tâm
 // Lớp      : pages — được phép gọi mọi lớp dưới
-// Phụ thuộc: state, domains/{bloodline,layout,render}, utils/text
-// Phiên bản: 1.3.0 · Cập nhật: 17/08/2026 14:05
+// Phụ thuộc: state, domains/{bloodline,layout,render}, utils/text,
+//            pages/{person-detail,settings}
+// Phiên bản: 1.4.0 · Cập nhật: 17/08/2026 14:40
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -66,6 +67,7 @@ import { computeLayout } from '../domains/layout.js';
 import { renderTree } from '../domains/render.js';
 import { fullName, doiSongNguoi } from '../utils/text.js';
 import { openPersonDetail, closePersonDetail } from './person-detail.js';
+import { openSettings, closeSettings } from './settings.js';
 
 let khungCuon = null;   // div cuộn được, bọc quanh SVG
 let vungSoDo  = null;   // bọc khungCuon + ba cụm nút nổi; mốc neo của các nút
@@ -91,9 +93,10 @@ let padY = 0;
  */
 export function mountTreeView(containerEl) {
   if (!containerEl) return;
-  // Thẻ thông tin sống ở `document.body`, ngoài `containerEl` — dọn ruột
-  // container không đụng tới nó, nên phải đóng tay.
+  // Thẻ thông tin và màn hình Cài đặt sống ở `document.body`, ngoài
+  // `containerEl` — dọn ruột container không đụng tới chúng, nên phải đóng tay.
   closePersonDetail();
+  closeSettings();
   containerEl.innerHTML = '';
   containerEl.style.cssText =
     'position:absolute;inset:0;display:flex;flex-direction:column;' +
@@ -126,7 +129,7 @@ export function mountTreeView(containerEl) {
 
   // Nút nằm ngoài khungCuon: donKhung() dọn sạch ruột khung cuộn mỗi lần vẽ
   // lại, để nút bên trong đó là mỗi lần bấm nốt cụt lại mất hết nút.
-  vungSoDo.append(khungCuon, veCotToTien(), veCotHauDue(), veHopNut());
+  vungSoDo.append(khungCuon, veCotToTien(), veCotHauDue(), veHopNutTrenPhai(), veHopNut());
   containerEl.append(thanhTren, vungSoDo);
   ganCuChi();
   refresh();
@@ -634,6 +637,19 @@ function veHopNut() {
     nutTron('−', 'Thu nhỏ', () => datTyLe(tyLe / TY_LE_NAC)),
     nutTron('◎', 'Đưa người trung tâm về giữa', () => centerOnFocus()),
   );
+  return hop;
+}
+
+/**
+ * Cụm nút góc TRÊN PHẢI. Giai đoạn 1 mới có Cài đặt; Tìm kiếm và Chụp ảnh sơ
+ * đồ để giai đoạn sau — dựng chỗ trống sẵn còn hơn dời cả cụm nút về sau.
+ */
+function veHopNutTrenPhai() {
+  const hop = document.createElement('div');
+  hop.style.cssText =
+    'position:absolute;right:12px;top:12px;z-index:10;' +
+    'display:flex;flex-direction:column;align-items:stretch;gap:8px';
+  hop.append(nutTron('⚙', 'Cài đặt', () => openSettings()));
   return hop;
 }
 
