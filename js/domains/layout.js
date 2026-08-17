@@ -3,7 +3,7 @@
 // Vai trò  : Tính TOẠ ĐỘ các ô người, đường nối và nốt cụt. Không vẽ gì cả.
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: config (LAYOUT)
-// Phiên bản: 1.1.0 · Cập nhật: 17/08/2026 05:54
+// Phiên bản: 1.1.0 · Cập nhật: 17/08/2026 16:20
 // ============================================================
 //
 // Tách khỏi render.js có chủ ý: chỉnh giao diện (màu, phông, bo góc) không
@@ -17,10 +17,24 @@
 // BỐN RÀNG BUỘC ĐÃ BIẾT TRƯỚC KHI VIẾT — đừng "đơn giản hoá" mất cái nào
 // ============================================================
 //
-// 1. KHÔNG ĐƯỢC GIẢ ĐỊNH VỢ CHỒNG CÙNG MỘT HÀNG.
-//    U0023: ông "11" (P0044, đời 4) cưới bà "29" (P0053, đời 5). Ai viết
-//    `y(vợ) = y(chồng)` thì đến ca này sơ đồ gãy. Ở đây: hai người mỗi người
-//    đứng dưới cha mẹ mình, nét vợ chồng vẽ CHÉO tâm → tâm.
+// 1. KHÔNG ĐƯỢC GIẢ ĐỊNH VỢ CHỒNG CÙNG MỘT HÀNG — NHƯNG CŨNG KHÔNG ĐƯỢC ĐỂ
+//    HỌ LỆCH HÀNG BỪA. Đây là hai nửa của một luật, và chat 1.6 chỉ có nửa đầu.
+//
+//    Nét chéo CHỈ đúng khi hai người KẾT HÔN TRONG HỌ, tức có tổ tiên chung.
+//    U0023: ông "11" (P0044, đời 4) cưới bà "29" (P0053, đời 5), chung cụ
+//    P0034 — hai người mỗi người đứng dưới cha mẹ mình, nét vợ chồng vẽ CHÉO.
+//    Đó là sự thật về gia đình ấy, phải vẽ ra.
+//
+//    Hai người KHÁC dòng họ thì phải CÙNG HÀNG, dù mỗi người có bao nhiêu đời
+//    tổ tiên trong sơ đồ. Ca thật: ông Dũng (P0012) cưới bà Hương Lan (P0020),
+//    không một tổ tiên chung nào; nhánh ông có 3 đời, nhánh bà có 6, và trước
+//    chat 1.7 hai người bị vẽ lệch nhau ĐÚNG 3 hàng với một nét chéo cắt ngang
+//    cả sơ đồ. Xem canNhanh().
+//
+//    ⚠ Luật này đã nằm trong `KE-HOACH` từ 16/08 (mục "Bẫy khi đo lệch đời":
+//    *chỉ báo lệch đời khi hai người có tổ tiên chung*), nhưng chỉ được nghĩ
+//    cho phía RÀ SOÁT DỮ LIỆU, không ai cài cho phía VẼ HÌNH. Cùng một luật,
+//    hai phía.
 //
 // 2. ĐỜI = ĐƯỜNG ĐI DÀI NHẤT, không phải ngắn nhất. Xem ganMucDoi().
 //    Đây là lý do layout.js KHÔNG dùng lại bfsLevels() của chat 1.2 —
@@ -156,6 +170,7 @@ function dungNguCanh(index, visibleSet) {
     hapThuBoi:     new Map(),    // personId -> { unionId, neoId }
     dai:           new Map(),    // neoId -> mô tả dải (xem layDai)
     muc:           new Map(),
+    toTien:        new Map(),    // personId -> Set tổ tiên hiển thị (đệm, xem toTienDong)
     daDat:         new Set(),
   };
 
@@ -273,10 +288,16 @@ function soRank(u) {
  * buộc số 2 ở đầu file, và là lý do KHÔNG dùng `bfsLevels()`: nó cho đường
  * NGẮN nhất, và con của cặp kết hôn trong họ sẽ bị vẽ ngang hàng với mẹ nó.
  *
- * ⚠ Đây KHÔNG phải một phép duyệt đồ thị, nên không phá luật "chỉ
- * `utils/graph.js` được viết vòng lặp duyệt": nó chỉ nới đi nới lại trên các
- * danh sách đã dựng sẵn ở `dungNguCanh()`, không đi tìm đường, không cần tập
- * `visited`.
+ * ⚠ Riêng vòng NỚI DẦN không phải một phép duyệt đồ thị, nên không phá luật
+ * "chỉ `utils/graph.js` được viết vòng lặp duyệt": nó chỉ nới đi nới lại trên
+ * các danh sách đã dựng sẵn ở `dungNguCanh()`, không đi tìm đường, không cần
+ * tập `visited`.
+ *
+ * ⚠ NHƯNG `toTienDong()` thêm ở chat 1.7 thì CÓ đi tìm đường, và nó **bắt buộc
+ * có `visited`** — bản dữ liệu làm việc có sẵn hai vòng. Nó vẫn nằm ở đây chứ
+ * không chuyển sang `utils/graph.js` vì nó đi lên bằng `ct.unionSoHuu`, tức
+ * theo ĐÚNG BỘ CHA MẸ ĐÃ ĐẶT CHỖ cho từng người — một khái niệm chỉ có nghĩa
+ * bên trong phép bố trí này, không phải một phép duyệt gia phả dùng chung.
  *
  * ⚠ Đã thử khởi tạo bằng một hàm sắp thứ tự tô-pô trong `utils/graph.js` cho
  * hội tụ nhanh. Đo trên cây bịa tới 2046 người: kết quả **giống hệt** trên cả
@@ -289,10 +310,24 @@ function soRank(u) {
  * vì dữ liệu xấu.
  */
 function ganMucDoi(ct) {
-  const muc  = new Map();
+  const muc = new Map();
   for (const id of ct.dsNguoi) muc.set(id, 0);
 
+  ct.muc = canNhanh(ct, noiDan(ct, muc));
+}
+
+/**
+ * Vòng nới dần: đẩy mọi người xuống cho tới khi hết ràng buộc bị vi phạm.
+ *
+ * Hai ràng buộc, cả hai chỉ ĐẨY XUỐNG, không bao giờ kéo lên — nhờ vậy vòng
+ * lặp đơn điệu và chắc chắn dừng:
+ *   - con phải sâu hơn MỌI cha mẹ đúng một bậc trở lên (luật A)
+ *   - người bị hấp thụ đứng cùng hàng người neo (luật B)
+ */
+function noiDan(ct, mucVao) {
+  const muc  = new Map(mucVao);
   const tran = ct.dsNguoi.length + 2;
+
   for (let vong = 0; vong < tran; vong++) {
     let coDoi = false;
 
@@ -313,8 +348,107 @@ function ganMucDoi(ct) {
 
     if (!coDoi) break;
   }
+  return muc;
+}
 
-  ct.muc = muc;
+/**
+ * Tổ tiên hiển thị của một người, KỂ CẢ chính người đó.
+ *
+ * Đi lên bằng `unionSoHuu` — đúng một bộ cha mẹ mỗi người, chính bộ đã ĐẶT CHỖ
+ * cho họ ở luật A. Con nuôi còn cha mẹ đẻ thì đi theo bộ ĐẺ, khớp với chỗ họ
+ * thật sự đứng trên sơ đồ.
+ *
+ * ⚠ CÓ `visited` — gia phả là đồ thị, bản dữ liệu làm việc có sẵn hai vòng.
+ *
+ * Kết quả không phụ thuộc `muc`, nên nhớ đệm lại một lần cho cả lượt bố trí:
+ * `canNhanh()` gọi hàm này nhiều lần trên cùng một người.
+ */
+function toTienDong(ct, start) {
+  if (ct.toTien.has(start)) return ct.toTien.get(start);
+
+  const visited = new Set([start]);
+  const hangDoi = [start];
+  while (hangDoi.length) {
+    const id  = hangDoi.shift();
+    const uid = ct.unionSoHuu.get(id);
+    if (!uid) continue;
+    for (const p of ct.unionHT.get(uid).partners) {
+      if (visited.has(p)) continue;
+      visited.add(p);
+      hangDoi.push(p);
+    }
+  }
+
+  ct.toTien.set(start, visited);
+  return visited;
+}
+
+/** Hai người này có tổ tiên chung không — tức có phải KẾT HÔN TRONG HỌ không. */
+function chungDongHo(ct, a, b) {
+  const ttA = toTienDong(ct, a);
+  const ttB = toTienDong(ct, b);
+  // Duyệt tập NHỎ HƠN: một bên thường chỉ có vài người, bên kia có thể cả nhánh.
+  const [nho, lon] = ttA.size <= ttB.size ? [ttA, ttB] : [ttB, ttA];
+  for (const x of nho) if (lon.has(x)) return true;
+  return false;
+}
+
+/**
+ * Căn hai nhánh KHÁC dòng họ về cùng một hàng (chat 1.7).
+ *
+ * Cặp CÓ tổ tiên chung thì để yên — nét chéo của họ là sự thật, xem luật 1 ở
+ * đầu file. Cặp KHÔNG có tổ tiên chung mà đang lệch hàng thì dịch cả NHÁNH TỔ
+ * TIÊN của người nông hơn xuống cho bằng người kia.
+ *
+ * Dịch cả nhánh chứ không dịch mỗi một người: kéo riêng ông Dũng xuống 3 hàng
+ * thì mẹ ông vẫn đứng nguyên và nét dọc nối hai người dài suốt 4 đời. Cái phải
+ * dịch là cả nhánh ông ấy đi lên.
+ *
+ * Dịch xong CHẠY LẠI `noiDan()`: cha mẹ xuống thì con cháu phải theo kịp. Vòng
+ * nới dần chỉ đẩy xuống nên nó phục hồi được luật A mà không phá cái vừa căn —
+ * hai người vừa cho bằng nhau thì không ai bị đẩy riêng ra nữa.
+ *
+ * Lặp tới khi ổn định. Mỗi lần dịch đưa đúng một cặp về chênh lệch 0, và số
+ * cặp là hữu hạn, nên vòng lặp dừng; `tran` chỉ là lưới an toàn cho dữ liệu lạ.
+ */
+function canNhanh(ct, mucVao) {
+  let muc = mucVao;
+  const tran = ct.unionHT.size + 4;
+
+  for (let vong = 0; vong < tran; vong++) {
+    let coDoi = false;
+
+    for (const [, u] of ct.unionHT) {
+      if (u.partners.length < 2) continue;
+
+      for (let i = 0; i < u.partners.length; i++) {
+        for (let j = i + 1; j < u.partners.length; j++) {
+          const a = u.partners[i];
+          const b = u.partners[j];
+          if (muc.get(a) === muc.get(b)) continue;
+          if (chungDongHo(ct, a, b)) continue;
+
+          const nong = muc.get(a) < muc.get(b) ? a : b;
+          const buoc = Math.abs(muc.get(a) - muc.get(b));
+          for (const x of toTienDong(ct, nong)) muc.set(x, muc.get(x) + buoc);
+          coDoi = true;
+        }
+      }
+    }
+
+    if (!coDoi) break;
+    muc = noiDan(ct, muc);
+  }
+
+  // Kéo hàng trên cùng về 0. Đời là THỨ TỰ HÀNG, không phải con số tuyệt đối —
+  // và `tinhBounds()` ở cuối tính lề từ toạ độ thật, nên bỏ bước này thì cả sơ
+  // đồ trôi xuống đúng bằng số hàng vừa dịch.
+  let min = Infinity;
+  for (const v of muc.values()) if (v < min) min = v;
+  if (min !== 0 && Number.isFinite(min)) {
+    for (const id of ct.dsNguoi) muc.set(id, muc.get(id) - min);
+  }
+  return muc;
 }
 
 // ============================================================
@@ -532,8 +666,15 @@ function datMoiKhoi(ct) {
  * Ba kiểu điểm treo:
  *   'khe'  — cặp đứng kề nhau: tâm khe hở giữa hai ô
  *   'don'  — hôn nhân một người: tâm ô người duy nhất
- *   'cheo' — hai người đứng rời nhau (hai nhánh cưới nhau): TRUNG ĐIỂM nét
- *            chéo, và chùm con thả xuống từ hàng của người SÂU HƠN
+ *   'cheo' — hai người đứng RỜI NHAU: TRUNG ĐIỂM nét nối, và chùm con thả
+ *            xuống từ hàng của người SÂU HƠN
+ *
+ * ⚠ Tên `'cheo'` có từ chat 1.3, khi hai người đứng rời nhau thì bao giờ cũng
+ * lệch hàng nên nét nối bao giờ cũng chéo. Từ chat 1.7 KHÔNG còn đúng: hai
+ * nhánh khác dòng họ nay được căn về cùng hàng, nên nét nối của họ là nét
+ * NGANG dài đi vòng dưới hai ô, dù kiểu điểm treo vẫn mang tên `'cheo'`.
+ * Công thức không đổi (trung điểm vẫn là trung điểm, hàng sâu hơn vẫn là hàng
+ * sâu hơn — nay hai hàng bằng nhau), chỉ cái tên là hẹp hơn sự thật.
  */
 function dungDiemTreo(ct) {
   const neoTheoUnion = new Map();          // unionId -> neoId, dựng một lần
