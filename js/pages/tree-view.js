@@ -3,7 +3,7 @@
 // Vai trò  : MÀN HÌNH CHÍNH — sơ đồ cây, đổi người trung tâm
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render}, utils/text
-// Phiên bản: 1.2.0 · Cập nhật: 17/08/2026 11:40
+// Phiên bản: 1.3.0 · Cập nhật: 17/08/2026 14:05
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -24,7 +24,7 @@
 //   Trên trái  — cột 4 nút chọn số đời TỔ TIÊN
 //   Dưới trái  — cột 4 nút chọn phạm vi HẬU DUỆ + công tắc dâu/rể
 //   Trên phải  — Cài đặt · Tìm kiếm · Chụp ảnh sơ đồ
-//   Dưới phải  — Phóng to · Thu nhỏ · Đưa người trung tâm về giữa
+//   Dưới phải  — Thông tin · Phóng to · Thu nhỏ · Đưa người trung tâm về giữa
 //
 // Cả ba cụm nút neo vào `vungSoDo`, KHÔNG vào `khungCuon`: `donKhung()` dọn
 // sạch ruột khung cuộn mỗi lần vẽ lại, và mọi thứ trong đó còn trôi theo khi
@@ -65,6 +65,7 @@ import { computeVisibleSet, findStubPoints } from '../domains/bloodline.js';
 import { computeLayout } from '../domains/layout.js';
 import { renderTree } from '../domains/render.js';
 import { fullName, doiSongNguoi } from '../utils/text.js';
+import { openPersonDetail, closePersonDetail } from './person-detail.js';
 
 let khungCuon = null;   // div cuộn được, bọc quanh SVG
 let vungSoDo  = null;   // bọc khungCuon + ba cụm nút nổi; mốc neo của các nút
@@ -90,6 +91,9 @@ let padY = 0;
  */
 export function mountTreeView(containerEl) {
   if (!containerEl) return;
+  // Thẻ thông tin sống ở `document.body`, ngoài `containerEl` — dọn ruột
+  // container không đụng tới nó, nên phải đóng tay.
+  closePersonDetail();
   containerEl.innerHTML = '';
   containerEl.style.cssText =
     'position:absolute;inset:0;display:flex;flex-direction:column;' +
@@ -367,6 +371,22 @@ let daGanToanCuc = false;
 
 const NGUONG_KEO = 8;   // px — dưới mức này vẫn tính là một cú chạm, không phải kéo
 
+// --- Chạm giữ để mở thẻ thông tin (chat 1.6) -----------------------------
+//
+// Chạm NGẮN vào một ô vẫn đổi người trung tâm — đó là tính năng cốt lõi, chốt
+// từ chat 1.4, không đụng vào. Chạm GIỮ mở thẻ thông tin.
+//
+// 500ms: dưới 400ms thì một cú chạm hơi chậm của người lớn tuổi đã bị hiểu
+// nhầm thành chạm giữ; trên 600ms thì người dùng tưởng máy không nhận.
+//
+// Chạm giữ xong phải đặt `daKeo = true`. Nghe vô lý vì tay không hề di chuyển,
+// nhưng `daKeo` là cờ "nuốt cú click sắp bắn ra" — không đặt thì nhấc tay lên
+// là sơ đồ vừa mở thẻ vừa đổi người trung tâm.
+const CHO_CHAM_GIU = 500;
+
+let hendChamGiu = 0;   // id của setTimeout đang chờ
+
+
 function ganCuChi() {
   if (!khungCuon || khungCuon.dataset.daGanCuChi === '1') return;
   khungCuon.dataset.daGanCuChi = '1';
@@ -408,6 +428,7 @@ function ganCuChi() {
 
 function chamXuong(e) {
   dungChayDa();
+  huyChamGiu();
   dangCham.set(e.pointerId, { x: e.clientX, y: e.clientY });
   daKeo = false;
 
@@ -415,10 +436,36 @@ function chamXuong(e) {
     keo = motCuKeo(e.clientX, e.clientY);
     vanToc = { x: 0, y: 0 };
     bam = null;
+    henChamGiu(e);
   } else if (dangCham.size === 2) {
     keo = null;            // hai ngón thì thôi kéo, chuyển sang pinch
     bam = batDauPinch();
   }
+}
+
+/**
+ * Hẹn mở thẻ thông tin nếu ngón tay còn nằm yên trên một ô người sau 500ms.
+ *
+ * Ô người là `<g data-id="P0001">` do `render.js` sinh. Nốt cụt mang
+ * `data-not-cut` và nằm ở nhóm khác, nên chạm giữ vào nốt cụt không mở thẻ —
+ * đúng ý, sau nốt cụt có thể là nhiều người chứ không phải một.
+ */
+function henChamGiu(e) {
+  const o = e.target && e.target.closest ? e.target.closest('[data-id]') : null;
+  const personId = o && o.getAttribute('data-id');
+  if (!personId) return;
+
+  hendChamGiu = setTimeout(() => {
+    hendChamGiu = 0;
+    if (daKeo || dangCham.size !== 1) return;   // đã kéo, hoặc đã thêm ngón thứ hai
+    daKeo = true;                               // nuốt cú click sắp bắn ra
+    keo = null;
+    openPersonDetail(personId, { onChonNguoi: (id) => setFocusPerson(id) });
+  }, CHO_CHAM_GIU);
+}
+
+function huyChamGiu() {
+  if (hendChamGiu) { clearTimeout(hendChamGiu); hendChamGiu = 0; }
 }
 
 function chamDi(e) {
@@ -432,6 +479,7 @@ function chamDi(e) {
   const dy = e.clientY - keo.y;
   if (!daKeo && Math.hypot(dx, dy) < NGUONG_KEO) return;
   daKeo = true;
+  huyChamGiu();   // đã thành cú kéo thì không còn là chạm giữ nữa
 
   // Vận tốc đo trên ĐOẠN VỪA ĐI, không đo trên cả cú kéo: quệt tay đi một
   // vòng rồi dừng hẳn mới thả thì sơ đồ phải đứng yên, không được vọt tiếp.
@@ -449,6 +497,7 @@ function chamDi(e) {
 }
 
 function chamLen(e) {
+  huyChamGiu();
   dangCham.delete(e.pointerId);
 
   if (dangCham.size < 2) bam = null;
@@ -575,13 +624,22 @@ function veHopNut() {
     'border:1px solid #e6e0d8;border-radius:8px;padding:3px 0;' +
     'font-family:system-ui,sans-serif;user-select:none';
 
+  // Nút ⓘ là đường vào THỨ HAI của thẻ thông tin. Đường thứ nhất là chạm giữ
+  // vào một ô, mà chạm giữ thì không tự lộ ra — người chưa được chỉ sẽ không
+  // bao giờ tìm thấy. Một cử chỉ ẩn phải luôn có một cái nút đi kèm.
   hop.append(
+    nutTron('ⓘ', 'Thông tin người trung tâm', () => moTheNguoiTrungTam()),
     nutTron('+', 'Phóng to', () => datTyLe(tyLe * TY_LE_NAC)),
     nhanTyLe,
     nutTron('−', 'Thu nhỏ', () => datTyLe(tyLe / TY_LE_NAC)),
     nutTron('◎', 'Đưa người trung tâm về giữa', () => centerOnFocus()),
   );
   return hop;
+}
+
+function moTheNguoiTrungTam() {
+  if (!state.focusPersonId) return;
+  openPersonDetail(state.focusPersonId, { onChonNguoi: (id) => setFocusPerson(id) });
 }
 
 function nutTron(chu, nhan, chay) {
