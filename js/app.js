@@ -3,7 +3,7 @@
 // Vai trò  : Điểm khởi động phía trình duyệt.
 // Lớp      : pages
 // Phụ thuộc: pages/khoi-dong
-// Phiên bản: 0.3.0 · Cập nhật: 15/08/2026 12:16
+// Phiên bản: 0.3.1 · Cập nhật: 17/08/2026 08:58
 // ============================================================
 
 import { mountKhoiDong } from './pages/khoi-dong.js';
@@ -13,7 +13,7 @@ import { mountKhoiDong } from './pages/khoi-dong.js';
  *   1. Mở màn hình chờ
  *   2. repo.khoiTao() — lấy danh tính, quyền, và cây
  *   3. Không có quyền -> màn hình giải thích, dừng
- *   4. Có quyền -> mở tree-view (chat 1.4; hiện tạm bảng kết nối)
+ *   4. Có quyền -> mở tree-view
  */
 async function main() {
   const el = document.getElementById('app');

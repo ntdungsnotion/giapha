@@ -3,7 +3,7 @@
 // Vai trò  : MÀN HÌNH CHÍNH — sơ đồ cây, đổi người trung tâm
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render}, utils/text
-// Phiên bản: 1.0.0 · Cập nhật: 16/08/2026 23:45
+// Phiên bản: 1.1.0 · Cập nhật: 17/08/2026 08:58
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -25,6 +25,34 @@
 //   Dưới trái  — cột 4 nút chọn phạm vi HẬU DUỆ
 //   Trên phải  — Cài đặt · Tìm kiếm · Chụp ảnh sơ đồ
 //   Dưới phải  — Phóng to · Thu nhỏ · Đưa người trung tâm về giữa
+//
+// ============================================================
+// ZOOM VÀ KÉO (chat 1.5) — LUẬT QUAN TRỌNG NHẤT CỦA FILE NÀY
+// ============================================================
+//
+// TOẠ ĐỘ SƠ ĐỒ KHÔNG BAO GIỜ ĐỔI. `layout.js` sinh pixel một lần, `viewBox`
+// của SVG giữ nguyên bằng `bounds` — zoom chỉ đổi HAI THUỘC TÍNH `width` và
+// `height` của thẻ <svg>, tức đổi cỡ hiển thị chứ không đổi nội dung.
+//
+// Vì sao làm vậy chứ không đụng `layout.js`: mọi bất biến của chat 1.3 và 1.4
+// (không chồng ô, nốt cụt không đè lên ô, đời = độ sâu lớn nhất) được kiểm
+// trên toạ độ do `layout.js` sinh. Đổi toạ độ để zoom là phải chạy lại toàn
+// bộ số đó. Đổi cỡ hiển thị thì không bất biến nào đụng tới.
+//
+// KÉO thì dùng lại chính thanh cuộn của `khungCuon` — `scrollLeft`,
+// `scrollTop`. Không dựng hệ toạ độ riêng, nên chuột, bàn phím, thanh cuộn và
+// ngón tay đều đi qua cùng một đường.
+//
+// Ba hệ quả phải nhớ:
+//
+//   1. `touch-action: none` là BẮT BUỘC. Không có nó thì trình duyệt nuốt mất
+//      cử chỉ pinch (nó phóng to cả trang, không phóng sơ đồ). Cái giá: cuộn
+//      quán tính của hệ điều hành mất, nên ta tự làm lấy — xem `chayDa()`.
+//   2. Kéo xong KHÔNG được để `click` bắn ra, nếu không mỗi lần kéo là một
+//      lần đổi người trung tâm ngoài ý muốn. Xem `daKeo`.
+//   3. Sơ đồ nhỏ hơn khung thì phải căn giữa bằng `padding` của khung cuộn,
+//      KHÔNG bằng flexbox: phần tử flex căn giữa mà tràn khung thì phần thò
+//      ra bên trái không cuộn tới được — lỗi kinh điển, đã tránh có chủ ý.
 
 import { state, notify } from '../state.js';
 import { computeVisibleSet, findStubPoints } from '../domains/bloodline.js';
@@ -35,7 +63,19 @@ import { fullName, doiSongNguoi } from '../utils/text.js';
 let khungCuon = null;   // div cuộn được, bọc quanh SVG
 let svgEl     = null;
 let thanhTren = null;
+let nhanTyLe  = null;   // ô chữ "100%" cạnh hai nút phóng to / thu nhỏ
 let layoutHT  = null;   // kết quả computeLayout gần nhất, để centerOnFocus dùng
+
+// --- Trạng thái zoom ------------------------------------------------------
+// tyLe GIỮ NGUYÊN khi đổi người trung tâm: người dùng thu nhỏ để nhìn toàn
+// cảnh rồi bấm một nốt cụt, mà sơ đồ nhảy về 100% thì mất chỗ đang xem.
+const TY_LE_MIN = 0.25;
+const TY_LE_MAX = 3;
+const TY_LE_NAC = 1.25;   // mỗi lần bấm nút phóng to / thu nhỏ
+
+let tyLe = 1;
+let padX = 0;   // lề căn giữa khi sơ đồ hẹp hơn khung
+let padY = 0;
 
 /**
  * Dựng màn hình sơ đồ vào `containerEl` rồi vẽ lần đầu.
@@ -54,14 +94,23 @@ export function mountTreeView(containerEl) {
     'background:#fffdf9;font-size:14px;line-height:1.4';
 
   khungCuon = document.createElement('div');
+  // box-sizing: border-box — `padding` căn giữa được đặt lại mỗi lần zoom, mà
+  // với content-box thì padding cộng thêm vào bề rộng và làm khung tràn ra
+  // khỏi màn hình.
+  // touch-action: none — xem khối ZOOM VÀ KÉO ở đầu file.
   khungCuon.style.cssText =
-    'flex:1 1 auto;overflow:auto;-webkit-overflow-scrolling:touch;padding:0';
+    'flex:1 1 auto;overflow:auto;-webkit-overflow-scrolling:touch;padding:0;' +
+    'box-sizing:border-box;touch-action:none;overscroll-behavior:contain;' +
+    'user-select:none;-webkit-user-select:none';
 
   svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svgEl.style.cssText = 'display:block';
   khungCuon.append(svgEl);
 
-  containerEl.append(thanhTren, khungCuon);
+  // Nút nằm ngoài khungCuon: donKhung() dọn sạch ruột khung cuộn mỗi lần vẽ
+  // lại, để nút bên trong đó là mỗi lần bấm nốt cụt lại mất hết nút.
+  containerEl.append(thanhTren, khungCuon, veHopNut());
+  ganCuChi();
   refresh();
 }
 
@@ -112,7 +161,16 @@ export function refresh() {
     onChonNotCut: (stub) => moNotCut(stub, visible),
   });
 
+  // BA VIỆC NÀY PHẢI ĐÚNG THỨ TỰ NÀY, đã sai một lần ở chat 1.5:
+  //
+  //   1. veThanhTren  — thanh trên cao bao nhiêu thì khung cuộn thấp bấy
+  //      nhiêu. Vẽ nó SAU khi đo khung thì mọi con số đo được đều lệch đúng
+  //      bằng chiều cao thanh, và người trung tâm rơi lệch xuống dưới.
+  //   2. apDungTyLe   — renderTree() vừa đặt lại width/height của <svg> về cỡ
+  //      thật 100%, phải áp lại tỷ lệ đang dùng và tính lại lề căn giữa.
+  //   3. centerOnFocus — tính theo `tyLe` và `padX/padY` mà bước 2 vừa sinh.
   veThanhTren(index, focus, visible, layout);
+  apDungTyLe();
   centerOnFocus();
 }
 
@@ -183,20 +241,345 @@ function nguoiSauNotCut(index, visible, stub) {
   return ra;
 }
 
-/** Đưa người trung tâm về giữa khung nhìn. */
+// ============================================================
+// ZOOM VÀ KÉO
+// ============================================================
+
+/**
+ * Áp tỷ lệ đang dùng lên thẻ <svg>, rồi tính lại lề căn giữa.
+ *
+ * `viewBox` KHÔNG đụng tới — nó vẫn là `bounds` do layout.js sinh. Chỉ hai
+ * thuộc tính width/height đổi, nên nội dung phóng to đều, mọi nét mọi chữ
+ * giữ đúng tỷ lệ với nhau.
+ *
+ * Lề `padX`/`padY` chỉ khác 0 khi sơ đồ HẸP HƠN khung: lúc đó đẩy nó vào
+ * giữa cho đỡ lệch. Sơ đồ rộng hơn khung thì lề bằng 0 và khung cuộn bình
+ * thường.
+ */
+function apDungTyLe() {
+  if (!svgEl || !khungCuon || !layoutHT || !layoutHT.bounds) return;
+  const b    = layoutHT.bounds;
+  const rong = Math.max(1, b.maxX - b.minX) * tyLe;
+  const cao  = Math.max(1, b.maxY - b.minY) * tyLe;
+
+  svgEl.setAttribute('width',  String(Math.round(rong)));
+  svgEl.setAttribute('height', String(Math.round(cao)));
+
+  padX = Math.max(0, (khungCuon.clientWidth  - rong) / 2);
+  padY = Math.max(0, (khungCuon.clientHeight - cao)  / 2);
+  khungCuon.style.padding = padY + 'px ' + padX + 'px';
+
+  if (nhanTyLe) nhanTyLe.textContent = Math.round(tyLe * 100) + '%';
+}
+
+/**
+ * Đổi tỷ lệ, giữ NGUYÊN chỗ đang xem.
+ *
+ * `noiDungX/Y` là một điểm trong hệ toạ độ sơ đồ (cùng hệ với `bounds`), và
+ * `cx/cy` là chỗ trên màn hình mà điểm đó phải nằm sau khi đổi tỷ lệ. Nhờ
+ * tách hai thứ này mà cùng một hàm phục vụ được cả ba đường vào:
+ *
+ *   - bấm nút phóng to  → neo TÂM KHUNG NHÌN, người dùng không mất chỗ
+ *   - pinch hai ngón    → neo ĐIỂM GIỮA HAI NGÓN, ảnh bám theo tay
+ *   - lăn chuột + Ctrl  → neo ĐẦU CON TRỎ
+ *
+ * Không có phần neo này thì mỗi lần phóng to là sơ đồ nhảy về góc trên trái.
+ */
+function datTyLeNeo(tyLeMoi, noiDungX, noiDungY, cx, cy) {
+  if (!khungCuon || !layoutHT) return;
+  const moi = Math.min(TY_LE_MAX, Math.max(TY_LE_MIN, tyLeMoi));
+  if (Math.abs(moi - tyLe) < 0.0005) return;
+
+  tyLe = moi;
+  apDungTyLe();
+  khungCuon.scrollLeft = noiDungX * tyLe + padX - cx;
+  khungCuon.scrollTop  = noiDungY * tyLe + padY - cy;
+}
+
+/** Đổi tỷ lệ, neo vào một điểm trên màn hình. `cx/cy` bỏ trống = tâm khung. */
+function datTyLe(tyLeMoi, cx, cy) {
+  if (!khungCuon) return;
+  if (cx === undefined) { cx = khungCuon.clientWidth / 2; cy = khungCuon.clientHeight / 2; }
+  const diem = noiDungTaiDiem(cx, cy);
+  datTyLeNeo(tyLeMoi, diem.x, diem.y, cx, cy);
+}
+
+/** Điểm trong hệ toạ độ sơ đồ đang nằm dưới điểm `(cx, cy)` của khung nhìn. */
+function noiDungTaiDiem(cx, cy) {
+  return {
+    x: (khungCuon.scrollLeft + cx - padX) / tyLe,
+    y: (khungCuon.scrollTop  + cy - padY) / tyLe,
+  };
+}
+
+/**
+ * Đưa người trung tâm về giữa khung nhìn.
+ *
+ * Toạ độ trong `layoutHT` là toạ độ SƠ ĐỒ, phải nhân `tyLe` mới ra pixel trên
+ * màn hình, rồi cộng `padX/padY` vì khung cuộn có lề căn giữa.
+ */
 function centerOnFocus() {
   if (!khungCuon || !layoutHT || !Array.isArray(layoutHT.nodes)) return;
   const nut = layoutHT.nodes.find((n) => n.laTrungTam);
   if (!nut) return;
 
   const b = layoutHT.bounds;
-  khungCuon.scrollLeft = (nut.x - b.minX) + nut.w / 2 - khungCuon.clientWidth / 2;
-  khungCuon.scrollTop  = (nut.y - b.minY) + nut.h / 2 - khungCuon.clientHeight / 2;
+  khungCuon.scrollLeft =
+    ((nut.x - b.minX) + nut.w / 2) * tyLe + padX - khungCuon.clientWidth / 2;
+  khungCuon.scrollTop =
+    ((nut.y - b.minY) + nut.h / 2) * tyLe + padY - khungCuon.clientHeight / 2;
+}
+
+// ============================================================
+// Cử chỉ ngón tay
+// ============================================================
+//
+// Dùng Pointer Events, không dùng Touch Events: một bộ mã chạy cho cả ngón
+// tay, chuột và bút, nên không có đường nào chỉ được thử trên máy tính rồi
+// hỏng trên điện thoại.
+
+const dangCham = new Map();   // pointerId -> {x, y} theo toạ độ màn hình
+
+let keo    = null;   // {x, y, scrollLeft, scrollTop} — đang kéo bằng MỘT ngón
+let bam    = null;   // {kc, tyLe, x, y} — đang pinch bằng HAI ngón
+let daKeo  = false;  // đã kéo quá ngưỡng → nuốt cú `click` sắp bắn ra
+let vanToc = { x: 0, y: 0 };
+let daRAF  = 0;
+let daGanToanCuc = false;
+
+const NGUONG_KEO = 8;   // px — dưới mức này vẫn tính là một cú chạm, không phải kéo
+
+function ganCuChi() {
+  if (!khungCuon || khungCuon.dataset.daGanCuChi === '1') return;
+  khungCuon.dataset.daGanCuChi = '1';
+
+  khungCuon.addEventListener('pointerdown', chamXuong);
+  khungCuon.addEventListener('wheel', lanChuot, { passive: false });
+
+  // Bắt ở pha BẮT (capture) để chặn được trước khi sự kiện tới ô người —
+  // kéo sơ đồ mà lại đổi người trung tâm là lỗi khó chịu nhất của kiểu
+  // giao diện này.
+  khungCuon.addEventListener('click', (e) => {
+    if (!daKeo) return;
+    daKeo = false;
+    e.stopPropagation();
+    e.preventDefault();
+  }, true);
+
+  // Ba sự kiện này gắn lên `window`, KHÔNG lên khung cuộn.
+  //
+  //   - `pointermove`/`pointerup`: kéo mà tay hoặc chuột đi ra ngoài khung thì
+  //     khung không nhận được sự kiện nữa, và cú kéo kẹt lại vĩnh viễn — sơ đồ
+  //     dính theo con trỏ dù đã thả tay. Đã cố ý KHÔNG dùng
+  //     `setPointerCapture()`: nó cũng chữa được lỗi này, nhưng lái luôn cả cú
+  //     `click` về khung cuộn, và thế là bấm vào một ô không đổi được người
+  //     trung tâm nữa.
+  //   - `resize`: xoay ngang điện thoại thì khung đổi cỡ, lề căn giữa phải
+  //     tính lại.
+  //
+  // Gắn MỘT LẦN cho cả vòng đời trang: mountTreeView() chạy lại được (nút
+  // "Thử lại" ở màn hình lỗi), mà `window` thì không bị dựng lại theo.
+  if (!daGanToanCuc) {
+    daGanToanCuc = true;
+    window.addEventListener('pointermove',   chamDi);
+    window.addEventListener('pointerup',     chamLen);
+    window.addEventListener('pointercancel', chamLen);
+    window.addEventListener('resize', () => apDungTyLe());
+  }
+}
+
+function chamXuong(e) {
+  dungChayDa();
+  dangCham.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  daKeo = false;
+
+  if (dangCham.size === 1) {
+    keo = motCuKeo(e.clientX, e.clientY);
+    vanToc = { x: 0, y: 0 };
+    bam = null;
+  } else if (dangCham.size === 2) {
+    keo = null;            // hai ngón thì thôi kéo, chuyển sang pinch
+    bam = batDauPinch();
+  }
+}
+
+function chamDi(e) {
+  if (!dangCham.has(e.pointerId)) return;
+  dangCham.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (dangCham.size >= 2) { pinch(); return; }
+  if (!keo) return;
+
+  const dx = e.clientX - keo.x;
+  const dy = e.clientY - keo.y;
+  if (!daKeo && Math.hypot(dx, dy) < NGUONG_KEO) return;
+  daKeo = true;
+
+  // Vận tốc đo trên ĐOẠN VỪA ĐI, không đo trên cả cú kéo: quệt tay đi một
+  // vòng rồi dừng hẳn mới thả thì sơ đồ phải đứng yên, không được vọt tiếp.
+  const gio = Date.now();
+  const dt  = gio - keo.t;
+  if (dt > 0) {
+    vanToc = { x: (e.clientX - keo.xTruoc) / dt, y: (e.clientY - keo.yTruoc) / dt };
+  }
+  keo.xTruoc = e.clientX;
+  keo.yTruoc = e.clientY;
+  keo.t      = gio;
+
+  khungCuon.scrollLeft = keo.scrollLeft - dx;
+  khungCuon.scrollTop  = keo.scrollTop  - dy;
+}
+
+function chamLen(e) {
+  dangCham.delete(e.pointerId);
+
+  if (dangCham.size < 2) bam = null;
+  if (dangCham.size === 0) {
+    if (keo && daKeo) chayDa();
+    keo = null;
+  } else if (dangCham.size === 1) {
+    // Nhấc một ngón khi đang pinch: ngón còn lại tiếp tục kéo, nhưng phải
+    // lấy mốc mới, nếu không sơ đồ giật một cái.
+    const con = [...dangCham.values()][0];
+    keo = motCuKeo(con.x, con.y);
+    vanToc = { x: 0, y: 0 };
+  }
+}
+
+/** Mốc của một cú kéo: chỗ bắt đầu, chỗ vừa đi qua, và vị trí cuộn lúc đó. */
+function motCuKeo(x, y) {
+  return {
+    x, y, xTruoc: x, yTruoc: y, t: Date.now(),
+    scrollLeft: khungCuon.scrollLeft, scrollTop: khungCuon.scrollTop,
+  };
+}
+
+/** Ghi lại khoảng cách và điểm neo lúc hai ngón vừa chạm xuống. */
+function batDauPinch() {
+  const [a, b] = [...dangCham.values()];
+  const r  = khungCuon.getBoundingClientRect();
+  const cx = (a.x + b.x) / 2 - r.left;
+  const cy = (a.y + b.y) / 2 - r.top;
+  const diem = noiDungTaiDiem(cx, cy);
+  return { kc: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), tyLe, x: diem.x, y: diem.y };
+}
+
+/**
+ * Pinch: vừa phóng vừa di trong cùng một cử chỉ.
+ *
+ * Điểm sơ đồ nằm dưới điểm giữa hai ngón lúc BẮT ĐẦU được giữ dính dưới điểm
+ * giữa hai ngón HIỆN TẠI. Nhờ vậy hai ngón trượt đi thì sơ đồ đi theo, đúng
+ * cảm giác quen thuộc của bản đồ.
+ */
+function pinch() {
+  if (!bam) { bam = batDauPinch(); return; }
+  const [a, b] = [...dangCham.values()];
+  const r  = khungCuon.getBoundingClientRect();
+  const cx = (a.x + b.x) / 2 - r.left;
+  const cy = (a.y + b.y) / 2 - r.top;
+  const kc = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+
+  daKeo = true;   // pinch cũng là kéo: đừng để click bắn ra sau đó
+  datTyLeNeo(bam.tyLe * (kc / bam.kc), bam.x, bam.y, cx, cy);
+}
+
+/**
+ * Lăn chuột. Chỉ nhận khi giữ Ctrl (hoặc cử chỉ chụm trên bàn di của máy tính
+ * xách tay, trình duyệt gửi đúng `ctrlKey`). Lăn không giữ Ctrl vẫn là cuộn
+ * bình thường — đừng cướp thao tác quen tay của người dùng máy tính.
+ */
+function lanChuot(e) {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  const r = khungCuon.getBoundingClientRect();
+  datTyLe(tyLe * Math.pow(0.995, e.deltaY), e.clientX - r.left, e.clientY - r.top);
+}
+
+/**
+ * Chạy đà sau khi thả tay.
+ *
+ * `touch-action: none` lấy mất cuộn quán tính của hệ điều hành, mà không có
+ * quán tính thì sơ đồ rộng hai nghìn pixel phải quệt tay năm sáu lần. Đây là
+ * phần bù, cố ý làm đơn giản: giảm tốc đều, không nảy ở mép.
+ */
+function chayDa() {
+  const GIAM = 0.94;
+  // Kẹp vận tốc: một cú quệt rất nhanh, hoặc một phép đo lỗi vì hai sự kiện
+  // rơi vào cùng một mili-giây, có thể sinh con số lớn vô lý. Với 3 px/ms và
+  // hệ số giảm 0,94 thì quãng chạy thêm tối đa còn khoảng 800px — đủ để một
+  // cú quệt băng qua sơ đồ, không đủ để sơ đồ biến mất khỏi màn hình.
+  const TOI_DA = 3;
+  let vx = Math.max(-TOI_DA, Math.min(TOI_DA, vanToc.x));
+  let vy = Math.max(-TOI_DA, Math.min(TOI_DA, vanToc.y));
+  if (Math.hypot(vx, vy) < 0.05) return;
+
+  const buoc = () => {
+    vx *= GIAM;
+    vy *= GIAM;
+    if (Math.hypot(vx, vy) < 0.02) { daRAF = 0; return; }
+    khungCuon.scrollLeft -= vx * 16;
+    khungCuon.scrollTop  -= vy * 16;
+    daRAF = requestAnimationFrame(buoc);
+  };
+  daRAF = requestAnimationFrame(buoc);
+}
+
+function dungChayDa() {
+  if (daRAF) { cancelAnimationFrame(daRAF); daRAF = 0; }
 }
 
 // ============================================================
 // Vài mẩu giao diện. Không thư viện, không bước build.
 // ============================================================
+
+/**
+ * Cụm nút góc DƯỚI PHẢI: phóng to · thu nhỏ · đưa người trung tâm về giữa.
+ *
+ * Đúng bố cục đã đối chiếu Quick Family Tree (xem ghi chú đầu file). Ba nút
+ * này là đường dự phòng cho cử chỉ ngón tay, không phải thứ thay thế: máy
+ * tính để bàn không pinch được, và người lớn tuổi thường tìm nút trước.
+ *
+ * Ô "100%" giữa hai nút phóng/thu là chỗ TỰ KIỂM — bấm phóng to mà con số
+ * không nhúc nhích thì biết ngay hỏng ở đâu, không phải đoán.
+ *
+ * Cỡ nút 44px là mức nhỏ nhất còn bấm trúng bằng đầu ngón tay.
+ */
+function veHopNut() {
+  const hop = document.createElement('div');
+  hop.style.cssText =
+    'position:absolute;right:12px;bottom:12px;z-index:10;' +
+    'display:flex;flex-direction:column;align-items:stretch;gap:8px';
+
+  nhanTyLe = document.createElement('div');
+  nhanTyLe.textContent = Math.round(tyLe * 100) + '%';
+  nhanTyLe.style.cssText =
+    'text-align:center;font-size:12px;color:#8a8078;background:#fffdf9;' +
+    'border:1px solid #e6e0d8;border-radius:8px;padding:3px 0;' +
+    'font-family:system-ui,sans-serif;user-select:none';
+
+  hop.append(
+    nutTron('+', 'Phóng to', () => datTyLe(tyLe * TY_LE_NAC)),
+    nhanTyLe,
+    nutTron('−', 'Thu nhỏ', () => datTyLe(tyLe / TY_LE_NAC)),
+    nutTron('◎', 'Đưa người trung tâm về giữa', () => centerOnFocus()),
+  );
+  return hop;
+}
+
+function nutTron(chu, nhan, chay) {
+  const nut = document.createElement('button');
+  nut.type = 'button';
+  nut.textContent = chu;
+  nut.title = nhan;
+  nut.setAttribute('aria-label', nhan);
+  nut.style.cssText =
+    'width:44px;height:44px;font-size:20px;line-height:1;' +
+    'font-family:system-ui,sans-serif;color:#2a2622;' +
+    'border:1px solid #e6e0d8;border-radius:22px;background:#fffdf9;' +
+    'box-shadow:0 1px 4px rgba(42,38,34,.12);cursor:pointer;touch-action:manipulation';
+  nut.addEventListener('click', chay);
+  return nut;
+}
 
 /**
  * Thanh trên: người trung tâm là ai, sơ đồ đang có bao nhiêu ô.
@@ -227,7 +610,8 @@ function veThanhTren(index, focus, visible, layout) {
 
   const nhac = document.createElement('div');
   nhac.textContent = 'Bấm vào một ô để đưa người đó ra giữa. ' +
-                     'Bấm nốt tròn màu cam để mở nhánh đang bị cắt.';
+                     'Bấm nốt tròn màu cam để mở nhánh đang bị cắt. ' +
+                     'Kéo để di, chụm hai ngón để phóng to thu nhỏ.';
   nhac.style.cssText = 'font-size:12px;color:#8a8078;margin-top:2px';
 
   thanhTren.append(ten, so, nhac);
@@ -250,6 +634,11 @@ function donKhung() {
 function hienLoiNhan(tieuDe, giaiThich) {
   layoutHT = null;
   donKhung();
+  // Trả lề căn giữa của lần vẽ trước về 0: không có bước này thì lời nhắn bị
+  // đẩy lệch hẳn xuống dưới bằng đúng nửa chiều cao sơ đồ cũ.
+  padX = 0;
+  padY = 0;
+  if (khungCuon) khungCuon.style.padding = '0';
   if (thanhTren) thanhTren.innerHTML = '';
 
   const hop = document.createElement('div');
@@ -320,11 +709,8 @@ function hienDanhSachChon(danhSachId) {
 }
 
 // ============================================================
-// Còn khung — chat 1.5 và 1.6
+// Còn khung — chat 1.6
 // ============================================================
-
-/** Zoom và kéo. Phải chạy được bằng ngón tay: pinch để zoom, kéo để di. */
-function setupPanZoom(svgEl) { /* TODO — chat 1.5 */ }   // eslint-disable-line no-unused-vars
 
 /** Nút lọc phạm vi tổ tiên (góc trên trái) và hậu duệ (góc dưới trái). */
 function setupScopeControls() { /* TODO — chat 1.6 */ }  // eslint-disable-line no-unused-vars
