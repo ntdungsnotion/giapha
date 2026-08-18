@@ -3,7 +3,7 @@
 // Vai trò  : Tính TOẠ ĐỘ các ô người, đường nối và nốt cụt. Không vẽ gì cả.
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: config (LAYOUT)
-// Phiên bản: 1.4.0 · Cập nhật: 18/08/2026 11:55
+// Phiên bản: 1.5.0 · Cập nhật: 18/08/2026 16:10
 // ============================================================
 //
 // Tách khỏi render.js có chủ ý: chỉnh giao diện (màu, phông, bo góc) không
@@ -123,6 +123,7 @@ export function computeLayout(index, focusPersonId, visibleSet, scope, stubPoint
 
   ganMucDoi(ct);
   const viTriX = datMoiKhoi(ct);
+  keoKhoiVeGanBanDoi(ct, viTriX);
   canChumConVaoGiua(ct, viTriX);
   keoKhoiPhuVeGanCon(ct, viTriX);
 
@@ -777,6 +778,89 @@ function canChumConVaoGiua(ct, viTriX) {
 
     const cum = new Set(ids);
     if (deLenNhau(ct, viTriX, cum, d)) continue;
+    for (const id of ids) viTriX.set(id, viTriX.get(id) + d);
+  }
+}
+
+/**
+ * Kéo KHỐI của một người về SÁT BẠN ĐỜI đứng ở khối khác (bước 21).
+ *
+ * --- Ca đã sinh ra luật này ----------------------------------------------
+ *
+ * Ông Dũng (P0012) cưới bà Hương Lan (P0020), hai người khác dòng họ hoàn
+ * toàn. Nhánh bà có 6 đời tổ tiên trong sơ đồ, nhánh ông chỉ có 3 — nên hai
+ * nhánh là HAI KHỐI GỐC riêng, và `datMoiKhoi()` xếp chúng nối đuôi nhau
+ * theo BAO HÌNH CHỮ NHẬT (quyết định 13). Bao hình của khối bên bà trải hết
+ * bề ngang sơ đồ, nên hai vợ chồng bị vẽ cách nhau 652px với một nét vợ chồng
+ * chạy ngang gần cả màn hình, trong khi các hàng ở giữa còn trống thênh thang.
+ *
+ * Rút bớt số đời tổ tiên hiển thị KHÔNG chữa được: bố trí có tính lại thật,
+ * nhưng nguyên nhân vẫn nguyên — hai khối vẫn xếp nối đuôi theo bao hình.
+ *
+ * Luật: **hai người là vợ chồng mà đứng ở hai khối khác nhau thì khối bên này
+ * phải chạy về sát người bên kia**, chứ không đứng chờ ở cuối hàng.
+ *
+ * Bốn điều đã cân nhắc:
+ *
+ * 1. **Đo theo NGƯỜI, không theo mép khối.** Đây là chỗ khác hẳn
+ *    `keoKhoiPhuVeGanCon()`: khối phụ ở đó chỉ có hai ông bà nuôi nên mép khối
+ *    cũng chính là họ. Khối bên ông Dũng có cả chùm con cháu thò xuống dưới,
+ *    lấy mép khối mà đo thì chạy được 104px rồi dừng, hai vợ chồng vẫn xa.
+ * 2. **Khối NHỎ chạy tới khối LỚN**, y như bước 20 — bằng nhau thì khối có
+ *    neoId lớn hơn chạy, để đúng một bên nhúc nhích.
+ * 3. **Trượt tới đâu đè ô thì dừng ở đó** — dùng lại `dichToiDa()`. Chỗ trống
+ *    hết thì khối đứng nguyên; sơ đồ xấu vẫn hơn sơ đồ chồng ô.
+ * 4. **Chạy TRƯỚC `canChumConVaoGiua()`.** Chùm con nằm trong khối nên nó dịch
+ *    theo cả khối; căn giữa trước rồi mới dịch thì công căn giữa mất trắng.
+ */
+function keoKhoiVeGanBanDoi(ct, viTriX) {
+  if (ct.thanhVienKhoi.size < 2) return;
+
+  const khoiCua = new Map();
+  for (const [neo, ids] of ct.thanhVienKhoi) for (const id of ids) khoiCua.set(id, neo);
+
+  for (const neo of [...ct.thanhVienKhoi.keys()].sort()) {
+    const ids = ct.thanhVienKhoi.get(neo);
+    const cum = new Set(ids);
+
+    // Bạn đời gần nhất đang đứng ở một khối khác.
+    let dMuon = null;
+    for (const id of ids) {
+      const x = viTriX.get(id);
+      if (x === undefined) continue;
+
+      for (const uid of ct.unionLamVo.get(id) || []) {
+        const u = ct.unionHT.get(uid);
+        if (!u) continue;
+        for (const bd of u.partners) {
+          if (bd === id || cum.has(bd)) continue;
+          const khoiBd = khoiCua.get(bd);
+          if (!khoiBd || khoiBd === neo) continue;
+
+          // Điều 2: chỉ khối nhỏ chạy tới khối lớn; hoà thì neoId lớn hơn chạy.
+          const soBd = (ct.thanhVienKhoi.get(khoiBd) || []).length;
+          if (soBd < ids.length) continue;
+          if (soBd === ids.length && neo < khoiBd) continue;
+
+          const xb = viTriX.get(bd);
+          if (xb === undefined) continue;
+
+          // Điều 1: đo theo NGƯỜI. Bên nào đang đứng thì giữ nguyên bên ấy —
+          // nhảy qua bên kia là nét vợ chồng đổi hướng, người xem tưởng sơ đồ
+          // vừa nhảy chỗ.
+          const d = x < xb
+            ? (xb - RONG - LAYOUT.hGap) - x
+            : (xb + RONG + LAYOUT.hGap) - x;
+          if (dMuon === null || Math.abs(d) < Math.abs(dMuon)) dMuon = d;
+        }
+      }
+    }
+    if (dMuon === null || Math.abs(dMuon) < 1) continue;
+
+    const gioiHan = dichToiDa(ct, viTriX, cum, dMuon < 0);
+    const d = dMuon < 0 ? Math.max(dMuon, gioiHan) : Math.min(dMuon, gioiHan);
+    if (!Number.isFinite(d) || Math.abs(d) < 1) continue;
+
     for (const id of ids) viTriX.set(id, viTriX.get(id) + d);
   }
 }
