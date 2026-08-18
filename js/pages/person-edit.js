@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate}, services/repo,
 //            utils/{graph,text,date}
-// Phiên bản: 1.1.0 · Cập nhật: 18/08/2026 08:53
+// Phiên bản: 1.2.0 · Cập nhật: 18/08/2026 10:05
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -64,10 +64,18 @@
 //    lời nhắc của RIÊNG nó khi người dùng bấm thêm mà chưa gõ một chữ tên nào.
 //    Lời ấy KHÔNG phải phép rà thứ mười: chín luật sống ở `domains/validate.js`
 //    và chỉ ở đó. Đây là lời của màn hình, và nó nói rõ mình là ai.
+//
+// 7. THỨ TỰ ANH CHỊ EM CÓ BA LỰA CHỌN, KHÔNG PHẢI HAI. Người con vừa thêm mà
+//    lớn tuổi hơn một anh chị em đang đứng trước thì app hỏi: vẫn thêm · thêm
+//    và sắp xếp lại theo tuổi · huỷ bỏ. Không chặn, vì thứ tự anh em không phải
+//    lúc nào cũng theo tuổi (con vợ cả chép trước con vợ thứ là lệ có thật);
+//    cũng không tự sắp, vì tự sắp là lặng lẽ đổi một thứ người ta đã chép tay.
+//    Phép sắp lại chạy TRƯỚC phép rà — luật 1 đòi thứ được rà đúng là thứ được ghi.
 
 import { state } from '../state.js';
 import { updatePerson, createPerson } from '../domains/person.js';
-import { createUnion, addChild } from '../domains/union.js';
+import { createUnion, addChild, reorderChildren,
+         thuTuConTheoTuoi } from '../domains/union.js';
 import { validateAll } from '../domains/validate.js';
 import { luuCay, suaDuoc } from '../services/repo.js';
 import { buildIndex } from '../utils/graph.js';
@@ -83,13 +91,21 @@ let dangLuu    = false;
 let daXemCanhBao = false;   // đã hiện cảnh báo và người dùng vẫn muốn lưu
 let cheDo      = 'sua';  // 'sua' | 'themCon'
 let noiVao     = null;   // chế độ themCon: { unionId } hoặc { chaMeId }
+let daXemThuTu = false;  // đã trả lời câu hỏi thứ tự anh chị em
+let sapXepLai  = false;  // câu trả lời ấy có phải "sắp xếp lại theo tuổi" không
 
-/** Bản ghi rỗng để form thêm người có cái mà vẽ ra các ô trống. */
+/**
+ * Bản ghi rỗng để form thêm người có cái mà vẽ ra các ô trống.
+ *
+ * `living: true` — chủ dự án chốt 18/08/2026 sau lần thử đầu. Người được thêm
+ * bằng tay gần như luôn là người đang sống: người đã khuất thì đã có sẵn trong
+ * gia phả từ đợt nhập liệu hàng loạt. Ô này vẫn bỏ dấu được bằng một cú chạm.
+ */
 const NGUOI_TRONG = {
   names: [], sex: 'U',
   birth: { iso: null, raw: '', place: '' },
   death: { iso: null, raw: '', place: '' },
-  burialPlace: '', living: false, note: '',
+  burialPlace: '', living: true, note: '',
 };
 
 const GIOI = [
@@ -189,6 +205,8 @@ export function closePersonForm() {
   daXemCanhBao = false;
   cheDo        = 'sua';
   noiVao       = null;
+  daXemThuTu   = false;
+  sapXepLai    = false;
 }
 
 /**
@@ -272,10 +290,15 @@ function veCacO(nguoi) {
   ra.push(veNhan('Tên'));
   const hangTen = document.createElement('div');
   hangTen.style.cssText = 'display:flex;gap:6px';
+  // Chữ mờ là TÊN CỦA Ô, không phải một cái tên ví dụ. Bản đầu gợi ý "Nguyễn ·
+  // Trọng · Dũng" — tên một người có thật trong họ — và chủ dự án nêu ngay sau
+  // lần thử đầu: chữ mờ ở ba ô liền nhau ghép lại thành một cái tên trọn vẹn
+  // thì người dùng đọc ra "app đang mặc định là người này", chứ không đọc ra
+  // "đây là ví dụ". Ô ngày thì khác — ở đó chữ mờ dạy CÁCH GÕ, nên giữ nguyên.
   hangTen.append(
-    oChu('surname', 'Họ',  ten.surname, 'Nguyễn', 1),
-    oChu('middle',  'Đệm', ten.middle,  'Trọng',  1),
-    oChu('given',   'Tên', ten.given,   'Dũng',   1.2),
+    oChu('surname', 'Họ',  ten.surname, 'Họ',  1),
+    oChu('middle',  'Đệm', ten.middle,  'Đệm', 1),
+    oChu('given',   'Tên', ten.given,   'Tên', 1.2),
   );
   ra.push(hangTen);
 
@@ -626,6 +649,21 @@ async function handleAddChild() {
     return;
   }
 
+  // Thứ tự anh chị em: tính TRƯỚC phép rà, và nếu người dùng đã chọn "sắp xếp
+  // lại" thì áp dụng ngay tại đây — luật 1 đòi thứ được rà phải đúng là thứ
+  // được ghi, nên không được sắp xếp sau khi rà xong.
+  const thuTu = thuTuConTheoTuoi(dung.tree, dung.union.id);
+  const lechThuTu = !!(thuTu && !thuTu.hopLe && thuTu.daDoi.indexOf(dung.person.id) >= 0);
+
+  if (lechThuTu && sapXepLai) {
+    const kqSap = reorderChildren(dung.tree, dung.union.id, thuTu.thuTuMoi);
+    if (kqSap) {
+      dung.tree  = kqSap.tree;
+      dung.union = kqSap.union;
+      Object.assign(dung.diff, kqSap.diff);
+    }
+  }
+
   // Luật 2 vẫn nguyên giá trị: rà trên CÂY MỚI với chỉ mục MỚI. Ở đây nó còn
   // bắt buộc hơn lúc sửa — người con này chưa hề tồn tại trong `state.index`,
   // nên rà bằng chỉ mục cũ thì mọi phép soi quan hệ đều không thấy gì.
@@ -648,6 +686,13 @@ async function handleAddChild() {
     nutLuu.textContent = 'Vẫn thêm';
     hienNhan('Có chỗ đáng xem lại. Gia phả cũ có những chuyện thật mà nghe như ' +
              'lỗi, nên app không chặn — bấm "Vẫn thêm" nếu bạn biết là đúng:', false, canhBao);
+    return;
+  }
+
+  // Câu hỏi thứ tự anh chị em: BA lựa chọn, không phải hai — nên nó có khối
+  // riêng chứ không đi chung đường "Vẫn thêm" ở trên.
+  if (lechThuTu && !daXemThuTu) {
+    hoiThuTuAnhEm(thuTu, dung);
     return;
   }
 
@@ -790,6 +835,84 @@ function gopRaSoat(a, b) {
     ra.counts[khoa] = (a.counts[khoa] || 0) + (b.counts[khoa] || 0);
   }
   return ra;
+}
+
+/**
+ * Câu hỏi thứ tự anh chị em — BA lựa chọn.
+ *
+ * Hiện ra khi người con vừa thêm **lớn tuổi hơn** một anh chị em đang đứng
+ * trước mình. Không chặn: thứ tự anh em trong gia phả không phải lúc nào cũng
+ * theo tuổi (con vợ cả chép trước con vợ thứ là lệ có thật), nên app hỏi chứ
+ * không tự quyết.
+ *
+ * Nút thứ hai sắp lại **cả union**, không chỉ chỗ người mới — sắp nửa vời thì
+ * lần sau lại phải hỏi tiếp. Người con **không đọc được năm sinh thì không bị
+ * dịch chỗ**, xem ghi chú của `thuTuConTheoTuoi`.
+ */
+function hoiThuTuAnhEm(thuTu, dung) {
+  const ten = (id) => tenTrongCay(dung.tree, id);
+  const nam = (id) => (thuTu.nam.has(id) ? thuTu.nam.get(id) : null);
+  const ke  = (ds) => ds.map((id) => ten(id) + (nam(id) ? ' (' + nam(id) + ')' : ''))
+                        .join('  ·  ');
+
+  const moiId  = dung.person.id;
+  const namMoi = nam(moiId);
+  const dungTruoc = thuTu.thuTuHienTai
+    .slice(0, thuTu.thuTuHienTai.indexOf(moiId))
+    .filter((id) => nam(id) !== null && namMoi !== null && nam(id) > namMoi);
+
+  const cau = ten(moiId) + (namMoi ? ' sinh năm ' + namMoi : '') +
+              ', lớn tuổi hơn ' +
+              (dungTruoc.length === 1 ? ten(dungTruoc[0]) : dungTruoc.length + ' người') +
+              ' đang đứng trước trong hàng anh chị em. Bạn muốn làm gì?';
+
+  hienNhan(cau, false, [
+    'Thứ tự hiện nay: ' + ke(thuTu.thuTuHienTai),
+    'Nếu sắp lại theo tuổi: ' + ke(thuTu.thuTuMoi),
+  ]);
+
+  const hang = document.createElement('div');
+  hang.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:10px';
+
+  hang.append(
+    nutChon('Vẫn thêm, giữ nguyên thứ tự', true, () => {
+      daXemThuTu = true; sapXepLai = false; handleAddChild();
+    }),
+    nutChon('Thêm và sắp xếp lại theo tuổi', false, () => {
+      daXemThuTu = true; sapXepLai = true; handleAddChild();
+    }),
+    nutChon('Huỷ bỏ — quay lại sửa', false, () => {
+      // KHÔNG đóng form: người ta vừa gõ xong cả bản ghi, và nhiều khả năng chỉ
+      // muốn sửa lại một con số năm sinh. Đóng form ở đây là lấy mất công của họ.
+      daXemThuTu   = false;
+      sapXepLai    = false;
+      daXemCanhBao = false;
+      nutLuu.textContent = 'Thêm người con';
+      hienNhan('Chưa thêm gì cả. Sửa lại rồi bấm "Thêm người con".', false);
+    }),
+  );
+  khoiKetQua.append(hang);
+}
+
+/** Một nút trong khối kết quả. `chinh` = nút được khuyên dùng. */
+function nutChon(chu, chinh, chay) {
+  const nut = document.createElement('button');
+  nut.type = 'button';
+  nut.textContent = chu;
+  nut.style.cssText = KIEU_NUT_CHAN + 'width:100%;text-align:center;' +
+    (chinh
+      ? 'background:#2a2622;color:#fffdf9;border:1px solid #2a2622;font-weight:600'
+      : 'background:#faf8f5;color:#2a2622;border:1px solid #e6e0d8');
+  nut.addEventListener('click', chay);
+  return nut;
+}
+
+/** Tên một người đọc từ CÂY ĐANG DỰNG — người vừa thêm chưa có trong `index`. */
+function tenTrongCay(cay, personId) {
+  const p = (cay && Array.isArray(cay.persons))
+    ? cay.persons.find((x) => x && x.id === personId) : null;
+  const ten = p ? fullName(p) : '';
+  return coGiaTri(ten) ? ten : personId;
 }
 
 /**

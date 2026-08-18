@@ -3,7 +3,7 @@
 // Vai trò  : Nghiệp vụ hồ sơ cá nhân — tạo, sửa, đọc thông tin một người
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: utils/text.js, utils/date.js, utils/id.js
-// Phiên bản: 1.1.0 · Cập nhật: 18/08/2026 08:53
+// Phiên bản: 1.2.0 · Cập nhật: 18/08/2026 10:05
 // ============================================================
 import { fullName, coGiaTri } from '../utils/text.js';
 import { parseLooseDate } from '../utils/date.js';
@@ -46,10 +46,12 @@ export function createPerson(tree, data, ghiNhan) {
     birth: { iso: null, raw: '', place: '' },
     death: { iso: null, raw: '', place: '' },
     burialPlace: '',
-    // Mặc định KHÔNG khai là còn sống. Người trong gia phả phần lớn đã mất, và
-    // đánh dấu nhầm một người đã khuất là còn sống thì `checkLifespan` tính
-    // tuổi đến hôm nay — sai một cách thất lễ.
-    living:      false,
+    // Mặc định CÒN SỐNG — chủ dự án chốt 18/08/2026 sau lần thử đầu trên app
+    // thật. Người thêm bằng tay gần như luôn là người đang sống; người đã khuất
+    // thì đã nằm sẵn trong gia phả từ đợt nhập liệu hàng loạt. Bản nháp đầu để
+    // `false` với lý lẽ "đa số người trong gia phả đã mất" — đúng về CẢ CUỐN
+    // gia phả, sai về những bản ghi đi qua cái form này.
+    living:      true,
     photoFileId: '',
     note:        '',
     deleted:     false,

@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render}, utils/text,
 //            pages/{person-detail,person-edit,settings}
-// Phiên bản: 1.6.0 · Cập nhật: 18/08/2026 08:53
+// Phiên bản: 1.7.0 · Cập nhật: 18/08/2026 10:05
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -391,6 +391,20 @@ const CHO_CHAM_GIU = 500;
 
 let hendChamGiu = 0;   // id của setTimeout đang chờ
 
+// --- Bấm chuột PHẢI cũng mở thẻ thông tin (chat 2.4, 18/08/2026) ---------
+//
+// Chạm giữ là cử chỉ của ngón tay. Trên máy tính, "giữ chuột trái nửa giây"
+// KHÔNG phải thói quen của ai cả — chủ dự án nêu ra sau lần thử thật. Chuột
+// phải thì ngược lại: ai cũng biết nó mở ra thêm lựa chọn.
+//
+// **Bổ sung, không thay thế.** Giữ chuột trái vẫn chạy y như cũ, vì trên điện
+// thoại nó là đường duy nhất.
+//
+// Trên điện thoại, chạm giữ có thể làm trình duyệt tự bắn thêm `contextmenu`.
+// Lúc ấy thẻ đã mở rồi, nên `daMoTheLanNay` chặn không cho mở lại — mở lại là
+// dựng lại cả thẻ, người dùng thấy một cái nháy vô cớ.
+let daMoTheLanNay = false;
+
 
 function ganCuChi() {
   if (!khungCuon || khungCuon.dataset.daGanCuChi === '1') return;
@@ -398,6 +412,7 @@ function ganCuChi() {
 
   khungCuon.addEventListener('pointerdown', chamXuong);
   khungCuon.addEventListener('wheel', lanChuot, { passive: false });
+  khungCuon.addEventListener('contextmenu', chuotPhai);
 
   // Bắt ở pha BẮT (capture) để chặn được trước khi sự kiện tới ô người —
   // kéo sơ đồ mà lại đổi người trung tâm là lỗi khó chịu nhất của kiểu
@@ -431,11 +446,33 @@ function ganCuChi() {
   }
 }
 
+/**
+ * Chuột phải trên một ô người → mở thẻ thông tin, giống hệt chạm giữ.
+ *
+ * Chặn menu của trình duyệt **chỉ khi** bấm trúng một ô người. Bấm chuột phải
+ * vào chỗ trống của sơ đồ thì menu trình duyệt vẫn hiện ra bình thường — người
+ * dùng còn cần nó để lưu ảnh, xem mã nguồn, dịch trang.
+ */
+function chuotPhai(e) {
+  const o = e.target && e.target.closest ? e.target.closest('[data-id]') : null;
+  const personId = o && o.getAttribute('data-id');
+  if (!personId) return;
+
+  e.preventDefault();
+  huyChamGiu();
+  if (daMoTheLanNay) return;   // chạm giữ vừa mở rồi, đừng dựng lại thẻ
+
+  daKeo = true;                // nuốt cú click sắp bắn ra, như chạm giữ
+  keo = null;
+  openPersonDetail(personId, xuLyThe());
+}
+
 function chamXuong(e) {
   dungChayDa();
   huyChamGiu();
   dangCham.set(e.pointerId, { x: e.clientX, y: e.clientY });
   daKeo = false;
+  daMoTheLanNay = false;
 
   if (dangCham.size === 1) {
     keo = motCuKeo(e.clientX, e.clientY);
@@ -465,6 +502,7 @@ function henChamGiu(e) {
     if (daKeo || dangCham.size !== 1) return;   // đã kéo, hoặc đã thêm ngón thứ hai
     daKeo = true;                               // nuốt cú click sắp bắn ra
     keo = null;
+    daMoTheLanNay = true;                       // để `contextmenu` khỏi mở lại
     openPersonDetail(personId, xuLyThe());
   }, CHO_CHAM_GIU);
 }

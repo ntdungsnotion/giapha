@@ -2,8 +2,8 @@
 // giapha · js/domains/union.js
 // Vai trò  : Nghiệp vụ hôn nhân và quan hệ cha mẹ – con
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
-// Phụ thuộc: utils/id.js
-// Phiên bản: 1.0.0 · Cập nhật: 18/08/2026 08:53
+// Phụ thuộc: utils/id.js, utils/date.js
+// Phiên bản: 1.1.0 · Cập nhật: 18/08/2026 10:05
 // ============================================================
 //
 // NHẮC LẠI HAI ĐIỀU HAY BỊ LẪN:
@@ -31,6 +31,7 @@
 // trên cùng một cây cũ sẽ ra hai bản ghi TRÙNG MÃ.
 
 import { nextId } from '../utils/id.js';
+import { mocNgay } from '../utils/date.js';
 
 /** Những quan hệ cha mẹ – con mà dữ liệu chấp nhận. */
 export const QUAN_HE_CON = ['birth', 'adopted', 'step', 'foster', 'thua_tu'];
@@ -156,8 +157,112 @@ export function removeChild(tree, unionId, personId) { /* TODO — chat 2.5 */ }
 /** Đổi vị trí trái/phải của hai vợ chồng trên sơ đồ. */
 export function swapPartnerOrder(tree, unionId) { /* TODO — chat 2.5 */ }
 
-/** Đổi thứ tự anh chị em (kéo thả). */
-export function reorderChildren(tree, unionId, orderedPersonIds) { /* TODO — chat 2.5 */ }
+/**
+ * Đặt lại thứ tự anh chị em.
+ *
+ * @param {string[]} orderedPersonIds  danh sách ĐẦY ĐỦ, đúng thứ tự mong muốn
+ * @returns {{tree:object, union:object, diff:object}|null}
+ *
+ * ⚠ Từ chối thẳng nếu danh sách không phải một **hoán vị** của đúng những người
+ * con đang có: thiếu một mã thì người con ấy biến mất khỏi union, thừa một mã
+ * thì một người bị gán làm con của cặp không phải cha mẹ họ. Cả hai đều là mất
+ * dữ liệu, và cả hai đều không ném lỗi ở đâu — đúng loại hỏng phải chặn ngay
+ * tại cửa.
+ */
+export function reorderChildren(tree, unionId, orderedPersonIds) {
+  if (!tree || !Array.isArray(tree.unions) || !unionId) return null;
+
+  const cu = tree.unions.find((u) => u && u.id === unionId && !u.deleted);
+  if (!cu) return null;
+
+  const cacCon = (Array.isArray(cu.children) ? cu.children : []).filter((c) => c && c.personId);
+  const moiDs  = Array.isArray(orderedPersonIds) ? orderedPersonIds.filter(Boolean) : [];
+
+  if (moiDs.length !== cacCon.length) return null;
+  if (new Set(moiDs).size !== moiDs.length) return null;
+  const dangCo = new Set(cacCon.map((c) => c.personId));
+  if (!moiDs.every((id) => dangCo.has(id))) return null;
+
+  const moi = JSON.parse(JSON.stringify(cu));
+  moi.children = moiDs.map((id, i) => {
+    const c = cacCon.find((x) => x.personId === id);
+    return { personId: id, relation: c.relation || 'birth', order: i + 1 };
+  });
+
+  const cayMoi = Object.assign({}, tree, {
+    unions: tree.unions.map((u) => (u && u.id === unionId ? moi : u)),
+  });
+
+  const diff = {};
+  diff[unionId + '.thuTuCon'] = [
+    cacCon.map((c) => c.personId).join(' + '),
+    moiDs.join(' + '),
+  ];
+
+  return { tree: cayMoi, union: moi, diff };
+}
+
+/**
+ * Thứ tự anh chị em hiện nay có nghịch với năm sinh không.
+ *
+ * @returns {{hopLe:boolean, thuTuHienTai:string[], thuTuMoi:string[],
+ *            daDoi:string[], nam:Map<string,number>}|null}
+ *          null khi union không có, hoặc khi **chưa đủ hai người con đọc được
+ *          năm sinh** — lúc ấy không có gì để so, và im lặng mới đúng.
+ *
+ * --- Hai điều làm hàm này khác một phép sắp xếp thường ---------------------
+ *
+ * 1. **Người con KHÔNG đọc được năm sinh thì KHÔNG BAO GIỜ bị dịch chỗ.** Họ
+ *    giữ nguyên vị trí đang đứng, và những người có năm sinh được xếp vào đúng
+ *    những chỗ còn lại. Đây là luật ba kết quả của bộ rà soát, nhìn từ phía thứ
+ *    tự: thiếu năm sinh là chuyện BÌNH THƯỜNG của gia phả, không phải dữ liệu
+ *    lỗi — mà đoán chỗ cho người thiếu năm sinh thì chính là bịa ra một thứ bậc
+ *    anh em không ai nói.
+ * 2. **Chỉ so NĂM.** Hai anh em cùng năm thì giữ nguyên thứ tự đang có, không
+ *    đảo. Cùng năm là chuyện thật (sinh đôi, hoặc đầu năm và cuối năm), và thứ
+ *    tự đang có thường là thứ tự người trong họ đã chép.
+ */
+export function thuTuConTheoTuoi(tree, unionId) {
+  if (!tree || !Array.isArray(tree.unions) || !Array.isArray(tree.persons)) return null;
+
+  const union = tree.unions.find((u) => u && u.id === unionId && !u.deleted);
+  if (!union) return null;
+
+  const thuTuHienTai = (Array.isArray(union.children) ? union.children : [])
+    .filter((c) => c && c.personId)
+    .slice()
+    .sort((a, b) => (soOrder(a) - soOrder(b)) || (a.personId < b.personId ? -1 : 1))
+    .map((c) => c.personId);
+  if (thuTuHienTai.length < 2) return null;
+
+  const nam = new Map();
+  for (const id of thuTuHienTai) {
+    const p = tree.persons.find((x) => x && x.id === id);
+    const moc = p ? mocNgay(p.birth) : null;
+    if (moc && Number.isFinite(Number(moc.nam))) nam.set(id, Number(moc.nam));
+  }
+  if (nam.size < 2) return null;
+
+  // Chỗ nào đang là người CÓ năm sinh thì chỗ ấy được xếp lại; chỗ của người
+  // thiếu năm sinh giữ nguyên.
+  const cho    = [];
+  const coNam  = [];
+  thuTuHienTai.forEach((id, i) => {
+    if (nam.has(id)) { cho.push(i); coNam.push(id); }
+  });
+
+  const daSap = coNam.slice().sort((a, b) => {
+    const d = nam.get(a) - nam.get(b);
+    return d !== 0 ? d : (coNam.indexOf(a) - coNam.indexOf(b));   // cùng năm: giữ nguyên
+  });
+
+  const thuTuMoi = thuTuHienTai.slice();
+  cho.forEach((viTri, k) => { thuTuMoi[viTri] = daSap[k]; });
+
+  const daDoi = thuTuHienTai.filter((id) => thuTuHienTai.indexOf(id) !== thuTuMoi.indexOf(id));
+
+  return { hopLe: daDoi.length === 0, thuTuHienTai, thuTuMoi, daDoi, nam };
+}
 
 // ============================================================
 // Truy vấn quan hệ
@@ -289,4 +394,10 @@ function quanHeCua(union, personId) {
 
 function chuoi(v) {
   return (v === undefined || v === null) ? '' : String(v).trim();
+}
+
+/** `order` của một người con; thiếu thì đẩy xuống cuối, không đẩy lên đầu. */
+function soOrder(con) {
+  const n = Number(con && con.order);
+  return Number.isFinite(n) ? n : 9999;
 }
