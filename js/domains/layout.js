@@ -3,7 +3,7 @@
 // Vai trò  : Tính TOẠ ĐỘ các ô người, đường nối và nốt cụt. Không vẽ gì cả.
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: config (LAYOUT)
-// Phiên bản: 1.2.0 · Cập nhật: 17/08/2026 17:05
+// Phiên bản: 1.3.0 · Cập nhật: 18/08/2026 11:05
 // ============================================================
 //
 // Tách khỏi render.js có chủ ý: chỉnh giao diện (màu, phông, bo góc) không
@@ -315,7 +315,68 @@ function ganMucDoi(ct) {
   const muc = new Map();
   for (const id of ct.dsNguoi) muc.set(id, 0);
 
-  ct.muc = canNhanh(ct, noiDan(ct, muc));
+  let m = canNhanh(ct, noiDan(ct, muc));
+
+  // Kéo các GỐC TRÔI xuống sát ngay trên con của họ, rồi nới lại. Mỗi lượt chỉ
+  // ĐẨY XUỐNG nên vòng này đơn điệu và chắc chắn dừng; `tran` là dây bảo hiểm.
+  const tran = ct.dsNguoi.length + 2;
+  for (let vong = 0; vong < tran; vong++) {
+    const mKeo = keoGocTroiXuong(ct, m);
+    if (!mKeo) break;
+    m = canNhanh(ct, noiDan(ct, mKeo));
+  }
+
+  ct.muc = m;
+}
+
+/**
+ * GỐC TRÔI: người không có cha mẹ hiển thị, không bị hấp thụ vào dải ai, mà
+ * con của họ lại nằm sâu tít dưới. Kéo họ xuống đúng một hàng trên người con
+ * NÔNG NHẤT của mình.
+ *
+ * --- Ca đã sinh ra luật này (18/08/2026, chủ dự án nhìn ảnh) --------------
+ *
+ * Bà Hương Lan (`P0020`) có hai bộ cha mẹ: bộ ĐẺ `U0013` và bộ NUÔI `U0025`
+ * (ông Vượng, bà Loan). Luật A cho bà đứng dưới bộ ĐẺ, ở đời 6. Ông Vượng và bà
+ * Loan thì **không có một tổ tiên nào trong sơ đồ**, nên vòng nới dần — vốn chỉ
+ * biết ĐẨY XUỐNG — để nguyên hai người ở đời 0, ngang hàng cụ tổ sinh năm 1850.
+ * Ràng buộc *"con phải sâu hơn cha mẹ"* vẫn thoả (6 > 0), nên **không bất biến
+ * nào kêu**: sơ đồ đúng, chỉ là xấu và nói sai về gia đình ấy — nét đứt chạy
+ * suốt sáu đời khiến người xem tưởng hai người là tổ tiên xa của cả họ.
+ *
+ * Luật: **đời của một người không có tổ tiên hiển thị thì do CON họ quyết
+ * định, không phải do đỉnh sơ đồ.** Cùng tinh thần với luật B (người không có
+ * cha mẹ hiển thị được hấp thụ vào dải bạn đời) — chỉ khác là ở đây không có
+ * bạn đời nào để bám, nên bám vào con.
+ *
+ * Lấy người con NÔNG NHẤT (`min`), không phải sâu nhất: có nhiều con thì phải
+ * đứng trên **tất cả**, và `min - 1` là hàng thấp nhất còn thoả điều đó.
+ *
+ * @returns {Map|null} bản đồ mức mới, hoặc null khi không ai phải dịch.
+ */
+function keoGocTroiXuong(ct, mucVao) {
+  const muc = new Map(mucVao);
+  let coDoi = false;
+
+  for (const id of ct.dsNguoi) {
+    if (ct.unionSoHuu.has(id)) continue;   // có cha mẹ hiển thị → đã có chỗ neo thật
+    if (ct.hapThuBoi.has(id))  continue;   // đã bám vào dải bạn đời → luật B lo
+
+    let nongNhat = Infinity;
+    for (const uid of ct.unionLamVo.get(id) || []) {
+      const u = ct.unionHT.get(uid);
+      if (!u) continue;
+      for (const c of u.children) {
+        const mc = muc.get(c.personId);
+        if (mc !== undefined && mc < nongNhat) nongNhat = mc;
+      }
+    }
+    if (!Number.isFinite(nongNhat)) continue;   // chưa có người con nào hiển thị
+
+    if (nongNhat - 1 > (muc.get(id) || 0)) { muc.set(id, nongNhat - 1); coDoi = true; }
+  }
+
+  return coDoi ? muc : null;
 }
 
 /**
@@ -819,8 +880,22 @@ function dungDuongNoi(ct, unions) {
     for (const c of u.children) {
       const con = ct.nodeById.get(c.personId);
       if (!con) continue;
-      const cx  = con.x + RONG / 2;
-      const busY = Math.min(treo.busY, con.y - 1);
+
+      // Bộ cha mẹ THỨ HAI (con nuôi còn cha mẹ đẻ) phải né đường của bộ đặt
+      // chỗ, nếu không hai nét chồng khít lên nhau ở đoạn cuối và người xem chỉ
+      // thấy MỘT đường. Né hai chiều, đúng như chủ dự án chỉ ra khi xem ảnh:
+      //   - đoạn DỌC lệch sang bên, về phía bộ cha mẹ ấy đang đứng;
+      //   - đoạn NGANG chạy cao hơn, ở một phần tư khe thay vì giữa khe.
+      // Vào ô ở 1/4 hay 3/4 bề ngang chứ không vào chính giữa: chỗ ấy vẫn nằm
+      // trên nóc ô nên nét không hụt ra ngoài, mà mắt nhìn ra ngay là hai
+      // đường khác nhau.
+      const netDai = ct.unionSoHuu.get(c.personId) !== uid;
+      const cxGiua = con.x + RONG / 2;
+      const cx   = netDai ? (treo.x > cxGiua ? con.x + RONG * 0.75 : con.x + RONG * 0.25)
+                          : cxGiua;
+      const busY = netDai
+        ? Math.min(treo.busY - LAYOUT.vGap / 4, con.y - 1)
+        : Math.min(treo.busY, con.y - 1);
 
       const points = [[treo.x, treo.y]];
       if (Math.abs(treo.x - cx) > 0.5) { points.push([treo.x, busY]); points.push([cx, busY]); }
@@ -833,7 +908,7 @@ function dungDuongNoi(ct, unions) {
         from: uid,
         to: c.personId,
         points,
-        netDai: ct.unionSoHuu.get(c.personId) !== uid,   // bộ cha mẹ thứ hai
+        netDai,                                          // bộ cha mẹ thứ hai
         cheo: false,
       });
     }
