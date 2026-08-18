@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render}, utils/text,
 //            pages/{person-detail,person-edit,settings}
-// Phiên bản: 1.5.0 · Cập nhật: 17/08/2026 23:10
+// Phiên bản: 1.6.0 · Cập nhật: 18/08/2026 08:53
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -67,7 +67,7 @@ import { computeLayout } from '../domains/layout.js';
 import { renderTree } from '../domains/render.js';
 import { fullName, doiSongNguoi } from '../utils/text.js';
 import { openPersonDetail, closePersonDetail } from './person-detail.js';
-import { openPersonForm, closePersonForm } from './person-edit.js';
+import { openPersonForm, closePersonForm, quickAddChild } from './person-edit.js';
 import { openSettings, closeSettings } from './settings.js';
 
 let khungCuon = null;   // div cuộn được, bọc quanh SVG
@@ -465,7 +465,7 @@ function henChamGiu(e) {
     if (daKeo || dangCham.size !== 1) return;   // đã kéo, hoặc đã thêm ngón thứ hai
     daKeo = true;                               // nuốt cú click sắp bắn ra
     keo = null;
-    openPersonDetail(personId, { onChonNguoi: (id) => setFocusPerson(id), onSuaNguoi: moFormSua });
+    openPersonDetail(personId, xuLyThe());
   }, CHO_CHAM_GIU);
 }
 
@@ -657,8 +657,19 @@ function veHopNutTrenPhai() {
 
 function moTheNguoiTrungTam() {
   if (!state.focusPersonId) return;
-  openPersonDetail(state.focusPersonId,
-                   { onChonNguoi: (id) => setFocusPerson(id), onSuaNguoi: moFormSua });
+  openPersonDetail(state.focusPersonId, xuLyThe());
+}
+
+/**
+ * Ba việc thẻ thông tin báo ngược ra ngoài. Gom một chỗ để hai nơi mở thẻ —
+ * chạm giữ và nút ⓘ — không bao giờ mọc ra hai bộ nút khác nhau.
+ */
+function xuLyThe() {
+  return {
+    onChonNguoi: (id) => setFocusPerson(id),
+    onSuaNguoi:  moFormSua,
+    onThemCon:   moFormThemCon,
+  };
 }
 
 /**
@@ -670,6 +681,18 @@ function moTheNguoiTrungTam() {
  */
 function moFormSua(personId) {
   openPersonForm(personId, { onDaLuu: () => refresh() });
+}
+
+/**
+ * Mở form thêm người con, rồi vẽ lại sơ đồ.
+ *
+ * `refresh()` chứ không `setFocusPerson(idNguoiMoi)`: người con vừa thêm nằm
+ * ngay dưới cha mẹ nó, tức đã có mặt trong sơ đồ đang xem. Kéo cả sơ đồ sang
+ * người mới là làm mất chỗ người dùng đang đứng, ngay lúc họ muốn nhìn xem con
+ * mình vừa hiện ra đúng chỗ chưa.
+ */
+function moFormThemCon(noiVao) {
+  quickAddChild(noiVao, { onDaLuu: () => refresh() });
 }
 
 function nutTron(chu, nhan, chay) {

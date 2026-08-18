@@ -2,8 +2,8 @@
 // giapha · js/pages/person-detail.js
 // Vai trò  : Thẻ thông tin hiện ra khi chạm giữ vào một người
 // Lớp      : pages — được phép gọi mọi lớp dưới
-// Phụ thuộc: state, domains/person, services/repo, utils/{text,date}
-// Phiên bản: 1.1.0 · Cập nhật: 17/08/2026 23:10
+// Phụ thuộc: state, domains/{person,union}, services/repo, utils/{text,date}
+// Phiên bản: 1.2.0 · Cập nhật: 18/08/2026 08:53
 // ============================================================
 //
 // Trường trống thì ẨN CẢ HÀNG: không nhãn, không giá trị, không "Không rõ".
@@ -31,6 +31,7 @@
 import { state } from '../state.js';
 import { suaDuoc } from '../services/repo.js';
 import { getAlternateNames } from '../domains/person.js';
+import { getPartnerUnions } from '../domains/union.js';
 import { fullName, coGiaTri, doiSongNguoi } from '../utils/text.js';
 import { formatDate, calcAge } from '../utils/date.js';
 
@@ -42,10 +43,12 @@ const GIOI = { M: 'Nam', F: 'Nữ' };   // 'U' cố ý KHÔNG có mặt — xem 
  * Mở thẻ thông tin của một người.
  *
  * @param {string} personId
- * @param {{onChonNguoi?:function(string), onSuaNguoi?:function(string)}} [xuLy]
+ * @param {{onChonNguoi?:function(string), onSuaNguoi?:function(string),
+ *          onThemCon?:function({unionId?:string, chaMeId?:string})}} [xuLy]
  *        `onChonNguoi` chạy khi người dùng bấm một người trong phần quan hệ,
  *        hoặc bấm nút "Đưa ra giữa sơ đồ". Thẻ tự đóng trước khi gọi.
  *        `onSuaNguoi` chạy khi bấm "Sửa hồ sơ"; không truyền thì nút không mọc.
+ *        `onThemCon` chạy khi bấm "Thêm con", kèm CHỖ NỐI đã chọn xong.
  */
 export function openPersonDetail(personId, xuLy = {}) {
   closePersonDetail();
@@ -348,22 +351,36 @@ function veNhom(tieuDe, danhSach, xuLy) {
 }
 
 function veChanThe(p, xuLy) {
+  const boc = document.createElement('div');
+
+  // Chỗ để hiện danh sách "thêm con vào cặp nào" khi người này có nhiều cặp.
+  const khoiChon = document.createElement('div');
+
   const chan = document.createElement('div');
   chan.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:18px';
 
-  // Nút Sửa chỉ mọc ra khi nơi gọi có chỗ nhận. Thẻ này không tự mở form được:
-  // `person-edit.js` cũng thuộc lớp `pages`, mà hai file `pages` không import
-  // lẫn nhau (chốt 17/08/2026, chat 1.6).
+  // Hai nút sửa dữ liệu chỉ mọc ra khi nơi gọi có chỗ nhận. Thẻ này không tự mở
+  // form được: `person-edit.js` cũng thuộc lớp `pages`, mà hai file `pages`
+  // không import lẫn nhau (chốt 17/08/2026, chat 1.6).
+  const coQuyen = suaDuoc();
+  const rong = xuLy.onSuaNguoi && xuLy.onThemCon ? '1 1 45%' : '1 1 100%';
+
   if (xuLy.onSuaNguoi) {
-    const coQuyen = suaDuoc();
     const sua = nutChan(
       coQuyen ? 'Sửa hồ sơ' : 'Sửa hồ sơ — bạn chỉ có quyền xem',
       false,
       () => { closePersonDetail(); xuLy.onSuaNguoi(p.id); },
       !coQuyen
     );
-    sua.style.flex = '1 1 100%';
+    sua.style.flex = rong;
     chan.append(sua);
+  }
+
+  if (xuLy.onThemCon) {
+    const them = nutChan('Thêm con', false,
+                         () => moChonCap(p, xuLy, khoiChon), !coQuyen);
+    them.style.flex = rong;
+    chan.append(them);
   }
 
   const giua = nutChan('Đưa ra giữa sơ đồ', true, () => {
@@ -373,7 +390,78 @@ function veChanThe(p, xuLy) {
   const dong = nutChan('Đóng', false, () => closePersonDetail());
 
   chan.append(giua, dong);
-  return chan;
+  boc.append(khoiChon, chan);
+  return boc;
+}
+
+/**
+ * Chọn xem người con mới thuộc về cặp nào, rồi giao lại cho nơi gọi.
+ *
+ * Ba đường, và đường thứ ba là lý do phải có hàm này:
+ *   - chưa có cặp nào  → nối vào chính người này; form sẽ tạo một cặp một người
+ *     trong cùng lần lưu. Gia phả cũ đầy những bà mẹ không còn ai nhớ tên chồng,
+ *     nên đây KHÔNG phải ca hiếm;
+ *   - đúng một cặp     → đi thẳng, không hỏi;
+ *   - từ hai cặp trở lên → PHẢI hỏi. Đoán hộ ở đây là nối người con vào nhầm
+ *     đời vợ, và cái sai ấy nằm im trong dữ liệu cho tới lúc có người xem sơ đồ
+ *     quanh đúng người ấy. `U0004`/`U0005` — hai đời vợ ông Cương — là ca thật
+ *     đang có sẵn trong dữ liệu làm việc.
+ */
+function moChonCap(p, xuLy, khoiChon) {
+  const cacCap = getPartnerUnions(state.index, p.id);
+
+  if (cacCap.length === 0) {
+    closePersonDetail();
+    xuLy.onThemCon({ chaMeId: p.id });
+    return;
+  }
+  if (cacCap.length === 1) {
+    closePersonDetail();
+    xuLy.onThemCon({ unionId: cacCap[0].id });
+    return;
+  }
+
+  khoiChon.innerHTML = '';
+
+  const nhan = document.createElement('div');
+  nhan.textContent = 'Thêm con vào cặp nào?';
+  nhan.style.cssText =
+    'margin-top:16px;margin-bottom:6px;font-size:12px;font-weight:600;' +
+    'letter-spacing:.04em;color:#8a8078';
+  khoiChon.append(nhan);
+
+  for (const u of cacCap) {
+    const banDoi = (Array.isArray(u.partners) ? u.partners : [])
+      .filter((id) => id !== p.id && state.index.personById.has(id))
+      .map((id) => fullName(state.index.personById.get(id)));
+
+    const nut = document.createElement('button');
+    nut.type = 'button';
+    nut.style.cssText =
+      'display:block;width:100%;text-align:left;margin-top:6px;padding:9px 11px;' +
+      'font-family:inherit;font-size:14px;color:#2a2622;border:1px solid #e6e0d8;' +
+      'border-radius:8px;background:#fff;cursor:pointer;touch-action:manipulation';
+
+    const dong1 = document.createElement('div');
+    dong1.textContent = banDoi.length > 0
+      ? 'Với ' + banDoi.join(' và ')
+      : 'Một mình ' + fullName(p) + ' (cặp chưa có bạn đời)';
+
+    const dong2 = document.createElement('div');
+    const soCon = (Array.isArray(u.children) ? u.children : []).length;
+    dong2.textContent = [ghiChuHonNhan(u), soCon > 0 ? soCon + ' con' : 'chưa có con', u.id]
+      .filter(coGiaTri).join('  ·  ');
+    dong2.style.cssText = 'font-size:12px;color:#8a8078;margin-top:2px';
+
+    nut.append(dong1, dong2);
+    nut.addEventListener('click', () => {
+      closePersonDetail();
+      xuLy.onThemCon({ unionId: u.id });
+    });
+    khoiChon.append(nut);
+  }
+
+  khoiChon.scrollIntoView({ block: 'nearest' });
 }
 
 function nutChan(chu, chinh, chay, tat) {

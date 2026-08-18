@@ -2,14 +2,66 @@
 // giapha · js/domains/person.js
 // Vai trò  : Nghiệp vụ hồ sơ cá nhân — tạo, sửa, đọc thông tin một người
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
-// Phụ thuộc: utils/text.js, utils/date.js
-// Phiên bản: 1.0.0 · Cập nhật: 17/08/2026 23:10
+// Phụ thuộc: utils/text.js, utils/date.js, utils/id.js
+// Phiên bản: 1.1.0 · Cập nhật: 18/08/2026 08:53
 // ============================================================
 import { fullName, coGiaTri } from '../utils/text.js';
 import { parseLooseDate } from '../utils/date.js';
+import { nextId } from '../utils/id.js';
 
-/** Tạo bản ghi người mới với đầy đủ trường mặc định. */
-export function createPerson(tree, data) { /* TODO — chat 2.4, cùng lúc với thêm quan hệ */ }
+/**
+ * Tạo bản ghi người mới với đầy đủ trường mặc định.
+ *
+ * @param {object} tree
+ * @param {object} [data]  cùng khuôn `changes` của `updatePerson`
+ * @param {{boi?:string, luc?:string}} [ghiNhan]
+ * @returns {{tree:object, person:object, diff:object}|null}
+ *
+ * --- Vì sao hàm này ĐI QUA `updatePerson` --------------------------------
+ *
+ * Nó dựng một bản ghi TRỐNG đủ trường, chèn vào cây, rồi để `updatePerson()`
+ * điền. Viết riêng một đường điền thứ hai thì có hai chỗ chuẩn hoá dữ liệu: một
+ * chỗ cắt khoảng trắng và đọc `iso` từ `raw`, một chỗ không — mà hai đường ấy
+ * chỉ lệch nhau đúng vào ngày ai đó sửa một bên. Cùng lý lẽ với luật 1 của form
+ * (*thứ được rà phải đúng là thứ được ghi*), lùi thêm một bậc.
+ *
+ * `diff` trả ra vì thế kể đúng những ô người dùng đã điền, mỗi ô một dòng
+ * `['', giá trị mới]`. Không điền gì thì `diff` rỗng — và bản ghi vẫn được tạo:
+ * một người chỉ được nhớ là *"con thứ ba của cụ Bá"* là bản ghi hợp lệ.
+ *
+ * ⚠ Trả về CÂY MỚI đã có người ấy. Thêm tiếp bản ghi thứ hai thì phải nối đuôi
+ * từ cây này, vì `nextId()` đọc cây — xem ghi chú đầu `utils/id.js`.
+ */
+export function createPerson(tree, data, ghiNhan) {
+  if (!tree || !Array.isArray(tree.persons)) return null;
+
+  const ma  = nextId('P', tree);
+  const luc = (ghiNhan && coGiaTri(ghiNhan.luc)) ? String(ghiNhan.luc) : '';
+  const boi = (ghiNhan && coGiaTri(ghiNhan.boi)) ? String(ghiNhan.boi) : '';
+
+  const tron = {
+    id:    ma,
+    names: [],
+    sex:   'U',
+    birth: { iso: null, raw: '', place: '' },
+    death: { iso: null, raw: '', place: '' },
+    burialPlace: '',
+    // Mặc định KHÔNG khai là còn sống. Người trong gia phả phần lớn đã mất, và
+    // đánh dấu nhầm một người đã khuất là còn sống thì `checkLifespan` tính
+    // tuổi đến hôm nay — sai một cách thất lễ.
+    living:      false,
+    photoFileId: '',
+    note:        '',
+    deleted:     false,
+    meta:        { createdAt: luc, updatedAt: luc, updatedBy: boi },
+  };
+
+  const cayTron = Object.assign({}, tree, { persons: tree.persons.concat([tron]) });
+  const kq = updatePerson(cayTron, ma, data || {}, ghiNhan);
+  if (!kq) return null;
+
+  return { tree: kq.tree, person: kq.person, diff: kq.diff };
+}
 
 /**
  * Sửa hồ sơ một người. Trả về CÂY MỚI, không đụng một chữ vào cây cũ.

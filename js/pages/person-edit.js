@@ -2,9 +2,9 @@
 // giapha · js/pages/person-edit.js
 // Vai trò  : Form thêm/sửa người, và các thao tác thêm quan hệ
 // Lớp      : pages — được phép gọi mọi lớp dưới
-// Phụ thuộc: state, domains/{person,validate}, services/repo,
+// Phụ thuộc: state, domains/{person,union,validate}, services/repo,
 //            utils/{graph,text,date}
-// Phiên bản: 1.0.0 · Cập nhật: 17/08/2026 23:10
+// Phiên bản: 1.1.0 · Cập nhật: 18/08/2026 08:53
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -44,9 +44,30 @@
 // và rà ở máy chủ cũng KHÔNG bịt được — đường đó không đi qua `luuCay()`.
 // Ngưỡng mở lại chuyện này: khi có người ngoài nhóm nhỏ hiện nay được cấp
 // quyền sửa.
+//
+// --- THÊM NGƯỜI: ba điều của chat 2.4 (18/08/2026) ----------------------
+//
+// 4. MỘT LẦN LƯU, KHÔNG PHẢI HAI. Thêm một người con là ba việc — tạo bản ghi
+//    người, (đôi khi) tạo một union, nối con vào union — và cả ba đi trong ĐÚNG
+//    MỘT lần `luuCay()`. Lưu ba lần thì mỗi lần là một cơ hội để lần sau hỏng:
+//    lưu được người rồi mất mạng là gia phả có một người lơ lửng không nối với
+//    ai, mà app CHƯA có đường xoá (`softDeletePerson` vẫn là khung).
+//
+// 5. RÀ CẢ HAI CÂU HỎI. `validateAll(…, 'person')` hỏi *"bản ghi này có ổn
+//    không"*; `validateAll(…, 'child')` hỏi *"mối nối này có ổn không"*. Trên
+//    cây mới thì hai nhánh chồng lấn nhau gần hết, nhưng gọi cả hai là cách duy
+//    nhất không phải NGẦM tin rằng nhánh này đã bao hết nhánh kia — và nhánh
+//    `'child'` viết từ bước 17 đến đây mới chạy lần đầu trong app thật. Lời
+//    trùng nhau bị gộp lại trước khi hiện (`gopRaSoat`).
+//
+// 6. CHƯA CÓ ĐƯỜNG XOÁ, NÊN THÊM NHẦM LÀ VẾT VĨNH VIỄN. Vì thế form tự thêm một
+//    lời nhắc của RIÊNG nó khi người dùng bấm thêm mà chưa gõ một chữ tên nào.
+//    Lời ấy KHÔNG phải phép rà thứ mười: chín luật sống ở `domains/validate.js`
+//    và chỉ ở đó. Đây là lời của màn hình, và nó nói rõ mình là ai.
 
 import { state } from '../state.js';
-import { updatePerson } from '../domains/person.js';
+import { updatePerson, createPerson } from '../domains/person.js';
+import { createUnion, addChild } from '../domains/union.js';
 import { validateAll } from '../domains/validate.js';
 import { luuCay, suaDuoc } from '../services/repo.js';
 import { buildIndex } from '../utils/graph.js';
@@ -60,6 +81,16 @@ let nutLuu     = null;
 let xuLyNgoai  = {};
 let dangLuu    = false;
 let daXemCanhBao = false;   // đã hiện cảnh báo và người dùng vẫn muốn lưu
+let cheDo      = 'sua';  // 'sua' | 'themCon'
+let noiVao     = null;   // chế độ themCon: { unionId } hoặc { chaMeId }
+
+/** Bản ghi rỗng để form thêm người có cái mà vẽ ra các ô trống. */
+const NGUOI_TRONG = {
+  names: [], sex: 'U',
+  birth: { iso: null, raw: '', place: '' },
+  death: { iso: null, raw: '', place: '' },
+  burialPlace: '', living: false, note: '',
+};
 
 const GIOI = [
   { ma: 'M', chu: 'Nam' },
@@ -68,25 +99,55 @@ const GIOI = [
 ];
 
 /**
- * Mở form sửa hồ sơ một người.
+ * Mở form sửa hồ sơ một người. Thêm người mới đi bằng `quickAddChild()`.
  *
- * @param {string|null} personId  null = thêm mới (chat 2.4, chưa làm)
+ * @param {string} personId
  * @param {{onDaLuu?:function(string)}} [xuLy]
  *        `onDaLuu` chạy sau khi máy chủ đã ghi xong, để nơi gọi vẽ lại sơ đồ.
  *        Dùng callback thay vì `import` ngược `tree-view.js` — hai file cùng
  *        lớp `pages`, import vòng tròn thì một trong hai thấy hàm của file kia
  *        là `undefined` tuỳ thứ tự nạp, và lỗi ấy chỉ hiện trên GitHub Pages.
  */
-export function openPersonForm(personId /* null = thêm mới */, xuLy = {}) {
+export function openPersonForm(personId, xuLy = {}) {
+  const nguoi = personId && state.index && state.index.personById.get(personId);
+  if (!nguoi) return;
+  moForm('sua', nguoi, null, xuLy);
+}
+
+/**
+ * Mở form THÊM MỘT NGƯỜI CON.
+ *
+ * @param {string|{unionId?:string, chaMeId?:string}} vao
+ *        mã union để nối con vào; hoặc `{ chaMeId }` khi người ấy chưa có cặp
+ *        nào — lúc đó form tạo luôn một union MỘT NGƯỜI trong cùng lần lưu.
+ * @param {{onDaLuu?:function(string)}} [xuLy]
+ *
+ * Nhận cả chuỗi lẫn object: bản khung 15/08 ghi `quickAddChild(unionId)`, và
+ * đường ấy vẫn chạy. Chỉ thêm dạng object cho ca người chưa có vợ/chồng — ca
+ * rất thường gặp trong gia phả cũ, nơi rất nhiều bà mẹ không còn ai nhớ tên.
+ */
+export function quickAddChild(vao, xuLy = {}) {
+  const nv = chuanNoiVao(vao);
+  if (!nv) return;
+  moForm('themCon', NGUOI_TRONG, nv, xuLy);
+}
+
+/** Đọc và kiểm chỗ nối. Trả null nếu chỗ ấy không có thật trong chỉ mục. */
+function chuanNoiVao(vao) {
+  const index = state.index;
+  if (!index) return null;
+
+  const v = (typeof vao === 'string') ? { unionId: vao } : (vao || {});
+  if (v.unionId && index.unionById.has(v.unionId)) return { unionId: v.unionId };
+  if (v.chaMeId && index.personById.has(v.chaMeId)) return { chaMeId: v.chaMeId };
+  return null;
+}
+
+function moForm(che, nguoi, chonNoi, xuLy) {
   closePersonForm();
   xuLyNgoai = xuLy || {};
-
-  if (!personId) {
-    console.warn('[person-edit] thêm người mới là việc của chat 2.4');
-    return;
-  }
-  const nguoi = state.index && state.index.personById.get(personId);
-  if (!nguoi) return;
+  cheDo     = che;
+  noiVao    = chonNoi;
 
   lopPhu = document.createElement('div');
   lopPhu.style.cssText =
@@ -126,6 +187,8 @@ export function closePersonForm() {
   nutLuu       = null;
   dangLuu      = false;
   daXemCanhBao = false;
+  cheDo        = 'sua';
+  noiVao       = null;
 }
 
 /**
@@ -154,22 +217,57 @@ function canTroLuu() {
 
 function veDauForm(nguoi) {
   const dau = document.createElement('div');
+  const them = cheDo === 'themCon';
 
   const tieuDe = document.createElement('div');
-  tieuDe.textContent = 'Sửa hồ sơ';
+  tieuDe.textContent = them ? 'Thêm người con' : 'Sửa hồ sơ';
   tieuDe.style.cssText = 'font-size:19px;font-weight:600';
 
   const ten = document.createElement('div');
-  ten.textContent = fullName(nguoi) + '  ·  ' + nguoi.id;
-  ten.style.cssText = 'font-size:12px;color:#b3aaa0;margin-top:3px;letter-spacing:.03em';
+  ten.textContent = them ? moTaChoNoi() : (fullName(nguoi) + '  ·  ' + nguoi.id);
+  ten.style.cssText = 'font-size:12px;color:#b3aaa0;margin-top:3px;letter-spacing:.03em;line-height:1.45';
 
   dau.append(tieuDe, ten);
   return dau;
 }
 
+/**
+ * Câu nói rõ người con này sẽ được nối vào đâu.
+ *
+ * Phải nói ra, vì đây là thứ duy nhất người dùng kiểm được trước khi bấm: mã
+ * union không hiện ở đâu khác trên màn hình, và nối nhầm cặp thì cái sai nằm im
+ * trong dữ liệu cho tới lần ai đó xem sơ đồ quanh đúng người ấy.
+ */
+function moTaChoNoi() {
+  const index = state.index;
+  if (!noiVao || !index) return '';
+
+  if (noiVao.chaMeId) {
+    return 'Con của ' + tenNguoi(noiVao.chaMeId) +
+           ' — người này chưa có vợ/chồng nào trong gia phả, nên app sẽ tạo ' +
+           'thêm một cặp mới cho riêng họ.';
+  }
+
+  const u = index.unionById.get(noiVao.unionId);
+  const ten = (Array.isArray(u && u.partners) ? u.partners : [])
+    .map(tenNguoi).join('  và  ');
+  return 'Con của ' + ten + '  ·  ' + noiVao.unionId;
+}
+
+function tenNguoi(personId) {
+  const p = state.index && state.index.personById.get(personId);
+  const ten = p ? fullName(p) : '';
+  return coGiaTri(ten) ? ten : '(chưa có tên)';
+}
+
 function veCacO(nguoi) {
   const ra = [];
   const ten = mucTenChinh(nguoi);
+
+  if (cheDo === 'themCon') {
+    ra.push(veNhan('Quan hệ với cặp này'));
+    ra.push(veConNuoi());
+  }
 
   ra.push(veNhan('Tên'));
   const hangTen = document.createElement('div');
@@ -351,6 +449,34 @@ function veConSong(dangSong) {
   return nhan;
 }
 
+/**
+ * Công tắc con nuôi. Chỉ có ở chế độ thêm con.
+ *
+ * Không phải chuyện hình thức: `validate.js` bỏ qua MỌI phép rà tuổi sinh học
+ * khi thấy đúng chữ `'adopted'` (cha mẹ nuôi trẻ hơn con nuôi là hợp lệ). Đánh
+ * dấu sai ở đây là tắt mất bốn phép rà, hoặc bật nhầm bốn phép rà lên một quan
+ * hệ không mang ràng buộc nào.
+ */
+function veConNuoi() {
+  const nhan = document.createElement('label');
+  nhan.style.cssText =
+    'display:flex;align-items:center;gap:9px;margin-top:6px;padding:9px 11px;' +
+    'border:1px solid #e6e0d8;border-radius:9px;background:#faf8f5;' +
+    'font-size:14px;cursor:pointer;touch-action:manipulation';
+
+  const hop = document.createElement('input');
+  hop.type = 'checkbox';
+  hop.checked = false;
+  hop.style.cssText = 'width:18px;height:18px;accent-color:#2a2622';
+  o.conNuoi = hop;
+
+  const chu = document.createElement('span');
+  chu.textContent = 'Là con nuôi (không phải con đẻ)';
+
+  nhan.append(hop, chu);
+  return nhan;
+}
+
 function veChan(nguoi, luuDuoc) {
   const chan = document.createElement('div');
   chan.style.cssText =
@@ -359,13 +485,17 @@ function veChan(nguoi, luuDuoc) {
 
   nutLuu = document.createElement('button');
   nutLuu.type = 'button';
-  nutLuu.textContent = 'Lưu';
+  nutLuu.textContent = cheDo === 'themCon' ? 'Thêm người con' : 'Lưu';
   nutLuu.disabled = !luuDuoc;
   nutLuu.style.cssText = KIEU_NUT_CHAN + 'flex:1 1 auto;' +
     (luuDuoc
       ? 'background:#2a2622;color:#fffdf9;border:1px solid #2a2622;font-weight:600'
       : 'background:#2a2622;color:#fffdf9;border:1px solid #2a2622;opacity:.45;cursor:not-allowed');
-  if (luuDuoc) nutLuu.addEventListener('click', () => { handleSave(nguoi); });
+  if (luuDuoc) {
+    nutLuu.addEventListener('click', () => {
+      if (cheDo === 'themCon') handleAddChild(); else handleSave(nguoi);
+    });
+  }
 
   const huy = document.createElement('button');
   huy.type = 'button';
@@ -477,6 +607,209 @@ async function handleSave(nguoi) {
 }
 
 /**
+ * Thêm một người con. Trình tự giống `handleSave`, khác ba chỗ:
+ *   - dựng cây mới bằng BA hàm domains nối đuôi nhau (`dungCayThemCon`);
+ *   - rà bằng CẢ HAI nhánh `'person'` và `'child'` — luật 5 ở đầu file;
+ *   - gửi lên MỘT lần lưu duy nhất, mang cả người lẫn union — luật 4.
+ */
+async function handleAddChild() {
+  if (dangLuu) return;
+
+  const luc    = stampNow();
+  const boi    = (state.phien && state.phien.email) || '';
+  const quanHe = (o.conNuoi && o.conNuoi.checked) ? 'adopted' : 'birth';
+
+  const dung = dungCayThemCon(state.tree, gomThayDoi(), quanHe, { boi, luc });
+  if (!dung) {
+    hienNhan('Không nối được người con vào chỗ này. Có thể gia phả vừa thay đổi ' +
+             'trong lúc form đang mở. Tải lại trang rồi thử lại.', true);
+    return;
+  }
+
+  // Luật 2 vẫn nguyên giá trị: rà trên CÂY MỚI với chỉ mục MỚI. Ở đây nó còn
+  // bắt buộc hơn lúc sửa — người con này chưa hề tồn tại trong `state.index`,
+  // nên rà bằng chỉ mục cũ thì mọi phép soi quan hệ đều không thấy gì.
+  const indexMoi = buildIndex(dung.tree);
+  const raSoat = gopRaSoat(
+    validateAll(dung.tree, indexMoi, 'person', { personId: dung.person.id }),
+    validateAll(dung.tree, indexMoi, 'child',
+                { childId: dung.person.id, unionId: dung.union.id })
+  );
+
+  if (!raSoat.canSave) {
+    hienNhan('Chưa thêm được — có chỗ không thể đúng được:', true,
+             raSoat.errors.map((m) => m.message));
+    return;
+  }
+
+  const canhBao = loiNhacCuaForm().concat(raSoat.warnings.map((m) => m.message));
+  if (canhBao.length > 0 && !daXemCanhBao) {
+    daXemCanhBao = true;
+    nutLuu.textContent = 'Vẫn thêm';
+    hienNhan('Có chỗ đáng xem lại. Gia phả cũ có những chuyện thật mà nghe như ' +
+             'lỗi, nên app không chặn — bấm "Vẫn thêm" nếu bạn biết là đúng:', false, canhBao);
+    return;
+  }
+
+  dangLuu = true;
+  nutLuu.disabled = true;
+  nutLuu.style.opacity = '.45';
+  hienNhan('Đang lưu…', false);
+
+  const nguoiMoi = dung.person;
+  const unionMoi = dung.union;
+  const tenMoi   = coGiaTri(fullName(nguoiMoi)) ? fullName(nguoiMoi) : nguoiMoi.id;
+
+  let ketQua;
+  try {
+    ketQua = await luuCay(
+      (cay) => {
+        if (!Array.isArray(cay.persons)) cay.persons = [];
+        if (!Array.isArray(cay.unions))  cay.unions  = [];
+
+        // Chốt chặn cuối: mã người mới được sinh từ cây lúc mở form, còn hàm này
+        // chạy trên bản sao của cây LÚC LƯU. Hai cây ấy lệch nhau thì thà hỏng
+        // lần lưu còn hơn ghi hai người trùng mã — `buildIndex()` ném lỗi khi
+        // gặp mã trùng, và lúc đó app không mở lại được nữa.
+        if (cay.persons.some((p) => p && p.id === nguoiMoi.id)) {
+          throw new Error('Mã ' + nguoiMoi.id + ' vừa được dùng cho một người khác. ' +
+                          'Tải lại trang rồi thêm lại.');
+        }
+        cay.persons.push(JSON.parse(JSON.stringify(nguoiMoi)));
+
+        const i = cay.unions.findIndex((u) => u && u.id === unionMoi.id);
+        if (i >= 0) cay.unions[i] = JSON.parse(JSON.stringify(unionMoi));
+        else        cay.unions.push(JSON.parse(JSON.stringify(unionMoi)));
+      },
+      {
+        action: 'create',
+        target: nguoiMoi.id,
+        note:   'Thêm ' + (quanHe === 'adopted' ? 'con nuôi ' : 'người con ') + tenMoi +
+                ' vào ' + unionMoi.id +
+                (dung.laUnionMoi ? ' (cặp mới, tạo cùng lúc)' : '') + ' bằng form nhập liệu.',
+        diff:   dung.diff,
+      }
+    );
+  } catch (e) {
+    ketQua = { ok: false, loi: e && e.message ? e.message : String(e) };
+  }
+
+  dangLuu = false;
+  if (!lopPhu) return;   // người dùng đã đóng form trong lúc chờ máy chủ
+
+  if (ketQua && ketQua.ok) {
+    closePersonForm();
+    if (xuLyNgoai.onDaLuu) xuLyNgoai.onDaLuu(nguoiMoi.id);
+    return;
+  }
+
+  nutLuu.disabled = false;
+  nutLuu.style.opacity = '1';
+
+  if (ketQua && ketQua.lyDo === 'xungdot') {
+    hienNhan('Người khác vừa sửa gia phả trong lúc bạn đang gõ, nên app KHÔNG ' +
+             'ghi đè lên bản của họ. Người con này CHƯA được thêm. Chép lại ' +
+             'phần vừa gõ ra chỗ khác, tải lại trang, rồi thêm lại.', true);
+    return;
+  }
+  hienNhan((ketQua && ketQua.loi) || 'Chưa thêm được, mà máy chủ không nói rõ vì sao.', true);
+}
+
+/**
+ * Dựng cây mới mang đủ ba thay đổi, bằng ba hàm thuần nối đuôi nhau.
+ *
+ * ⚠ THỨ TỰ LÀ BẮT BUỘC và không hoán được: `nextId()` đọc cây, nên mỗi hàm phải
+ * nhận CÂY TRẢ VỀ của hàm trước. Chạy cả ba trên cùng một cây cũ thì `addChild`
+ * không tìm thấy union vừa tạo.
+ *
+ * @returns {{tree:object, person:object, union:object,
+ *            laUnionMoi:boolean, diff:object}|null}
+ */
+function dungCayThemCon(cay, thayDoi, quanHe, ghiNhan) {
+  if (!cay || !noiVao) return null;
+
+  let tree = cay;
+  let unionId = noiVao.unionId || '';
+  const diff = {};
+
+  if (!unionId) {
+    const kqU = createUnion(tree, [noiVao.chaMeId], {});
+    if (!kqU) return null;
+    tree = kqU.tree;
+    unionId = kqU.union.id;
+    Object.assign(diff, kqU.diff);
+  }
+
+  const kqP = createPerson(tree, thayDoi, ghiNhan);
+  if (!kqP) return null;
+  tree = kqP.tree;
+  Object.assign(diff, kqP.diff);
+
+  const kqC = addChild(tree, unionId, kqP.person.id, quanHe);
+  if (!kqC) return null;
+  tree = kqC.tree;
+  Object.assign(diff, kqC.diff);
+
+  return {
+    tree,
+    person:     kqP.person,
+    union:      kqC.union,
+    laUnionMoi: !noiVao.unionId,
+    diff,
+  };
+}
+
+/**
+ * Gộp kết quả của hai lượt rà thành một.
+ *
+ * Hai nhánh `'person'` và `'child'` chồng lấn nhau, nên cùng một lỗi hiện ra
+ * hai lần nếu không gộp — mà một danh sách kể hai lần cùng một chuyện thì người
+ * đọc tưởng gia phả có hai chỗ hỏng.
+ *
+ * ⚠ `counts` ở đây là TỔNG của hai lượt, tức có đếm trùng. Nó dùng để gỡ lỗi,
+ * KHÔNG dùng làm con số của bản báo cáo rà soát — bản báo cáo chạy nhánh
+ * `'tree'` một lượt duy nhất và mới là chỗ con số có nghĩa.
+ */
+function gopRaSoat(a, b) {
+  const ra = {
+    canSave: a.canSave && b.canSave,
+    errors: [], warnings: [], skipped: [],
+    counts: { total: 0, ok: 0, error: 0, warning: 0, skip: 0 },
+  };
+
+  for (const ten of ['errors', 'warnings', 'skipped']) {
+    const daThay = new Set();
+    for (const muc of a[ten].concat(b[ten])) {
+      const khoa = muc.check + '|' + muc.message;
+      if (daThay.has(khoa)) continue;
+      daThay.add(khoa);
+      ra[ten].push(muc);
+    }
+  }
+  for (const khoa of Object.keys(ra.counts)) {
+    ra.counts[khoa] = (a.counts[khoa] || 0) + (b.counts[khoa] || 0);
+  }
+  return ra;
+}
+
+/**
+ * Lời nhắc của RIÊNG màn hình này — không phải phép rà thứ mười.
+ *
+ * Chín luật sống ở `domains/validate.js` và chỉ ở đó. Cái này thuộc về form vì
+ * nó nói về một chuyện chỉ form biết: người dùng vừa bấm thêm mà chưa gõ chữ
+ * nào. Bản ghi không tên là HỢP LỆ trong gia phả — *"con thứ ba của cụ Bá"* là
+ * bản ghi thật — nên không được chặn. Nhưng app chưa có đường xoá người, nên
+ * một cú chạm nhầm để lại một cái ô trống vĩnh viễn giữa sơ đồ.
+ */
+function loiNhacCuaForm() {
+  const coTen = ['surname', 'middle', 'given'].some((k) => coGiaTri(docO(k)));
+  if (coTen) return [];
+  return ['Bạn chưa gõ tên nào cả. Người không tên vẫn ghi được — gia phả cũ ' +
+          'có thật những người chỉ còn nhớ là "con thứ ba của cụ" — nhưng app ' +
+          'chưa có cách xoá người đã thêm, nên xin xem lại một lần nữa.'];
+}
+
+/**
  * Gom những gì người dùng vừa gõ thành khối `changes` của `updatePerson`.
  *
  * Gửi CẢ những ô không đổi — `updatePerson` tự so với bản cũ và chỉ ghi vào
@@ -560,18 +893,23 @@ const KIEU_NUT_CHAN =
   'border-radius:9px;cursor:pointer;touch-action:manipulation;';
 
 // ============================================================
-// CHƯA LÀM — chat 2.4
+// CHƯA LÀM — chat 2.5 trở đi
 // ============================================================
 //
-// Bốn hàm dưới đây đều THÊM bản ghi, và thêm bản ghi thì phải sinh mã mới
-// (`utils/id.js`, cũng còn là khung) rồi nối vào `unions`. Đó là một việc trọn
-// vẹn của chat 2.4, không phải phần đuôi của chat 2.3.
+// `quickAddChild` đã chạy thật (bước 19). Ba hàm còn lại đi cùng MENU VÒNG TRÒN
+// của thẻ thông tin, nên để cùng chat 2.5 — dựng nút bây giờ thì có nút mà
+// không có chỗ bấm.
+//
+// Chúng dùng lại đúng bộ đồ nghề đã có: `createPerson` + `createUnion` +
+// `addChild` nối đuôi nhau trên cây, một lần `luuCay()` duy nhất. Riêng
+// `unlink` còn cần `removeChild`/`softDeleteUnion` — vẫn là khung — và cần trả
+// lời một câu chưa ai trả lời: gỡ người con cuối cùng ra khỏi một union một
+// người thì union ấy còn lý do tồn tại không.
 
 /** Thêm nhanh bằng vài cú chạm — giống Quick Family Tree. */
-export function quickAddParent(childId, sex)   { /* TODO — chat 2.4 */ }
-export function quickAddSpouse(personId)       { /* TODO — chat 2.4 */ }
-export function quickAddChild(unionId)         { /* TODO — chat 2.4 */ }
+export function quickAddParent(childId, sex)   { /* TODO — chat 2.5 */ }
+export function quickAddSpouse(personId)       { /* TODO — chat 2.5 */ }
 
 /** Nối / gỡ nối với người đã có sẵn trong cây. */
-export function linkExisting(personId, targetId, relationType) { /* TODO — chat 2.4 */ }
-export function unlink(personId, targetId, relationType)       { /* TODO — chat 2.4 */ }
+export function linkExisting(personId, targetId, relationType) { /* TODO — chat 2.5 */ }
+export function unlink(personId, targetId, relationType)       { /* TODO — chat 2.5 */ }
