@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate}, services/repo,
 //            utils/{graph,text,date}
-// Phiên bản: 1.3.1 · Cập nhật: 18/08/2026 16:25
+// Phiên bản: 1.4.0 · Cập nhật: 18/08/2026 17:05
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -1040,7 +1040,10 @@ const KIEU_NUT_CHAN =
  *
  * @param {string} personId
  * @param {{onDaXoa?:function(string), onDaHoanTac?:function(string),
- *          nguoiThayThe?:string}} [xuLy]
+ *          onDaDoi?:function(string), nguoiThayThe?:string}} [xuLy]
+ *        `onDaDoi` chạy khi bản ghi ĐỔI mà người ấy VẪN CÒN trong cây (lối
+ *        "giữ lại làm mắt xích"). Tách khỏi `onDaXoa` vì nơi gọi chỉ được dời
+ *        người trung tâm đi khi người ấy thật sự biến mất.
  *        `onDaXoa` chạy NGAY sau khi máy chủ ghi xong, trong lúc hộp vẫn còn mở
  *        — để sơ đồ phía sau vẽ lại và người dùng thấy tận mắt điều vừa xảy ra
  *        trước khi quyết định có hoàn tác hay không.
@@ -1105,6 +1108,14 @@ export function xoaNguoi(personId, xuLy = {}) {
 
     nutLuu = nutChanXoa('Xoá người này', true, () => chayXoa(personId));
     chan.append(nutLuu);
+
+    // Lối thoát thứ ba, chỉ mọc ra khi có người THẬT SỰ mất đường về. Không có
+    // ai bị cắt đứt thì đừng bày thêm nút — mỗi nút thừa là một lần người dùng
+    // phải đọc và loại trừ.
+    if (xoaHT.thanhLe.length > 0) {
+      chan.append(nutChanXoa('Giữ lại làm mắt xích không tên', false,
+                             () => chayGiuMatXich(personId)));
+    }
   }
   chan.append(nutChanXoa('Không xoá', false, () => closePersonForm()));
 
@@ -1204,6 +1215,16 @@ function cauKeHauQua(personId) {
               'nối lại. Cân nhắc nối họ vào chỗ khác trước, rồi hãy xoá.');
   }
 
+  if (xoaHT.thanhLe.length > 0) {
+    dong.push('CÓ LỐI KHÁC: nút "Giữ lại làm mắt xích không tên" xoá sạch tên, ' +
+              'ngày và ghi chú của người này, nhưng GIỮ bản ghi cùng mọi mối nối. ' +
+              'Sơ đồ còn lại một ô trống mang mã ' + personId + ', và ' +
+              xoaHT.thanhLe.map(tenNguoi).join(' · ') + ' vẫn về được với ông bà. ' +
+              'Dùng khi bạn tin là CÓ một người ở chỗ này, chỉ chưa biết là ai. ' +
+              '(Giới tính và tình trạng còn sống giữ nguyên — đó là thuộc tính, ' +
+              'không phải danh tính, và giới tính quyết định chỗ đứng trái/phải.)');
+  }
+
   for (const m of xoaHT.mocCoi) {
     const conKhac = m.cacCon.filter((id) => !daKe.has(id));
     if (conKhac.length === 0) continue;
@@ -1270,6 +1291,140 @@ async function chayXoa(personId) {
     nutChon('Hoàn tác — đưa ' + ten + ' trở lại', true, () => chayHoanTac(personId)),
     nutChon('Xong', false, () => closePersonForm()),
   );
+  khoiKetQua.append(hang);
+}
+
+/**
+ * Lối thoát thứ ba: KHÔNG xoá người, mà xoá sạch danh tính của họ.
+ *
+ * Bản ghi ở lại, mọi mối nối ở lại, nên người con không mất đường về ông bà —
+ * huyết thống vẫn là huyết thống dù ta quên mất tên người ở giữa. Trên sơ đồ
+ * còn một ô mang mã người (`render.js` lấy mã làm nhãn khi không có tên).
+ *
+ * --- Vì sao là bản ghi THẬT chứ không phải một nét vẽ ẩn hình -------------
+ *
+ * Cám dỗ là để `layout.js` tự nối thẳng cháu lên ông bà rồi vẽ một nốt mờ ở
+ * giữa. Bốn chỗ hỏng:
+ *
+ * 1. Nét ấy KHÔNG có trong dữ liệu, nên xuất GEDCOM ra là mất sạch — người
+ *    nhận file thấy đứa cháu mồ côi y như cũ. Một `INDI` với `NAME` rỗng thì
+ *    ghi được và đọc lại được. (Con trỏ `@VOID@` của GEDCOM không thay được:
+ *    nó chỉ giữ chỗ trong danh sách con của MỘT gia đình, không mang nổi mối
+ *    nối xuống gia đình của đứa cháu.)
+ * 2. Nốt mờ không bấm được, nên ngày có người nhớ ra tên cụ ấy thì không có
+ *    chỗ nào để điền vào.
+ * 3. `layout.js` phải học một loại nút thứ ba. Năm lần liên tiếp lỗi bố cục
+ *    chỉ lộ ra khi nhìn hình — đừng thêm khái niệm vào file đó nếu tránh được.
+ * 4. Và quan trọng nhất: nét tự suy là app KHẲNG ĐỊNH một điều không ai nhập.
+ *    Bản ghi trống nói đúng thứ ta biết: *có một người ở đây, chưa rõ là ai.*
+ *
+ * ⚠ Giữ mắt xích cũng là một LỜI KHẲNG ĐỊNH: rằng cha/mẹ của đứa cháu đúng là
+ * con của cặp ông bà ấy. Sai chỗ đó thì cái sai nằm im trong dữ liệu. Chỉ dùng
+ * khi tin chắc quan hệ, chỉ không chắc con người.
+ */
+async function chayGiuMatXich(personId) {
+  if (dangLuu) return;
+
+  const cu = state.index && state.index.personById.get(personId);
+  if (!cu) {
+    hienNhan('Không tìm thấy bản ghi này nữa. Tải lại trang rồi thử lại.', true);
+    return;
+  }
+  // Chép nguyên bản CŨ để hoàn tác trả lại đúng từng ô, không phải dựng lại từ
+  // `diff` — dựng lại thì mỗi trường thêm vào sau này là một trường bị quên.
+  const banCu = JSON.parse(JSON.stringify(cu));
+
+  const luc = stampNow();
+  const boi = (state.phien && state.phien.email) || '';
+
+  // `sex` và `living` KHÔNG nằm trong danh sách: chúng là thuộc tính, không phải
+  // danh tính — và `sex` còn quyết định chỗ đứng trái/phải trên sơ đồ.
+  const kq = updatePerson(state.tree, personId, {
+    name:        { surname: '', middle: '', given: '' },
+    burialPlace: '',
+    note:        '',
+    birth:       { raw: '', place: '' },
+    death:       { raw: '', place: '' },
+  }, { boi, luc });
+
+  if (!kq) {
+    hienNhan('Không sửa được bản ghi này. Tải lại trang rồi thử lại.', true);
+    return;
+  }
+  if (!kq.thayDoi) {
+    hienNhan('Hồ sơ này vốn đã trống sẵn — nó đang là một mắt xích không tên rồi.', false);
+    return;
+  }
+
+  dangLuu = true;
+  nutLuu.disabled = true;
+  nutLuu.style.opacity = '.45';
+  hienNhan('Đang xoá thông tin…', false);
+
+  const tenCu = tenNguoi(personId);
+  const ketQua = await ghiMotNguoi(kq.person, {
+    action: 'update',
+    target: personId,
+    note:   'Xoá danh tính của ' + tenCu + ', giữ lại làm mắt xích không tên.',
+    diff:   kq.diff,
+  });
+
+  dangLuu = false;
+  if (!lopPhu) return;
+
+  if (!(ketQua && ketQua.ok)) {
+    nutLuu.disabled = false;
+    nutLuu.style.opacity = '1';
+    hienLoiGhi(ketQua, 'Hồ sơ này CHƯA bị đụng tới.');
+    return;
+  }
+
+  // `onDaDoi`, KHÔNG phải `onDaXoa`: người này vẫn còn trong cây, nên nơi gọi
+  // tuyệt đối không được dời người trung tâm đi chỗ khác.
+  if (xuLyNgoai.onDaDoi) xuLyNgoai.onDaDoi(personId);
+
+  nutLuu = null;
+  hienNhan('Đã xoá thông tin của ' + tenCu + '. Ô ' + personId +
+           ' nay là một mắt xích không tên.', false,
+           ['Con cháu phía dưới vẫn nối được lên ông bà qua ô này.',
+            'Mai kia nhớ ra tên thì mở thẻ thông tin của ô ấy, bấm "Sửa hồ sơ".']);
+
+  const hang = document.createElement('div');
+  hang.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:10px';
+  hang.append(
+    nutChon('Hoàn tác — trả lại hồ sơ cũ', true, () => chayTraLaiHoSo(personId, banCu, tenCu)),
+    nutChon('Xong', false, () => closePersonForm()),
+  );
+  khoiKetQua.append(hang);
+}
+
+/** Hoàn tác của `chayGiuMatXich`: đặt nguyên bản ghi cũ trở lại. */
+async function chayTraLaiHoSo(personId, banCu, tenCu) {
+  if (dangLuu) return;
+  dangLuu = true;
+  hienNhan('Đang trả lại hồ sơ cũ…', false);
+
+  const ketQua = await ghiMotNguoi(banCu, {
+    action: 'restore',
+    target: personId,
+    note:   'Hoàn tác: trả lại hồ sơ của ' + tenCu + '.',
+    diff:   {},
+  });
+
+  dangLuu = false;
+  if (!lopPhu) return;
+
+  if (!(ketQua && ketQua.ok)) {
+    hienLoiGhi(ketQua, 'Hồ sơ VẪN đang trống.');
+    return;
+  }
+
+  if (xuLyNgoai.onDaDoi) xuLyNgoai.onDaDoi(personId);
+
+  hienNhan('Đã trả lại hồ sơ của ' + tenCu + '.', false);
+  const hang = document.createElement('div');
+  hang.style.cssText = 'margin-top:10px';
+  hang.append(nutChon('Đóng', true, () => closePersonForm()));
   khoiKetQua.append(hang);
 }
 

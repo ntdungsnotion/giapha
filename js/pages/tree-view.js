@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render,union}, utils/text,
 //            pages/{person-detail,person-edit,settings}
-// Phiên bản: 1.8.0 · Cập nhật: 18/08/2026 15:40
+// Phiên bản: 1.9.0 · Cập nhật: 18/08/2026 17:05
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -763,6 +763,10 @@ function moHopXoa(personId) {
       }
       refresh();
     },
+    // Lối "giữ lại làm mắt xích": người ấy VẪN còn trong cây, chỉ trống hồ sơ.
+    // Chỉ vẽ lại, tuyệt đối không dời người trung tâm — dời đi là tự dưng nhảy
+    // sang người khác trong khi người dùng đang đứng đúng chỗ họ muốn xem.
+    onDaDoi: () => refresh(),
   });
 }
 
