@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render,union}, utils/text,
 //            pages/{person-detail,person-edit,settings}
-// Phiên bản: 1.9.0 · Cập nhật: 18/08/2026 17:05
+// Phiên bản: 1.10.0 · Cập nhật: 18/08/2026 17:35
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -22,8 +22,8 @@
 // Công tắc bật/tắt nằm cuối cột nút dưới trái (chat 1.6).
 //
 // Bố cục nút, đối chiếu Quick Family Tree (chat 1.5 và 1.6):
-//   Trên trái  — cột 4 nút chọn số đời TỔ TIÊN
-//   Dưới trái  — cột 4 nút chọn phạm vi HẬU DUỆ + công tắc dâu/rể
+//   Trên trái  — cột 4 nút chọn số đời TỔ TIÊN + ô nhập tay số đời
+//   Dưới trái  — cột 4 nút chọn phạm vi HẬU DUỆ + ô nhập tay + công tắc dâu/rể
 //   Trên phải  — Cài đặt · Tìm kiếm · Chụp ảnh sơ đồ
 //   Dưới phải  — Thông tin · Phóng to · Thu nhỏ · Đưa người trung tâm về giữa
 //
@@ -984,9 +984,15 @@ const NAC_HAU_DUE = [
 // chạm vào mới xổ đủ bốn nấc, chọn xong tự thu lại. Nút tóm tắt nói luôn nấc
 // hiện tại nên không giấu thông tin — thứ mất đi chỉ là ba nút chưa cần tới.
 
+// Trần của ô nhập tay. 30 đời là hơn bảy trăm năm — quá xa mọi gia phả có
+// thật, nhưng vẫn là số hữu hạn, nên gõ thừa một phím không treo trình duyệt.
+const TOI_DA_DOI = 30;
+
 let nutToTien = [];
 let nutHauDue = [];
 let nutDauRe  = null;
+let oNhapToTien = null;
+let oNhapHauDue = null;
 
 let thanToTien = null, tomTatToTien = null, xoToTien = false;
 let thanHauDue = null, tomTatHauDue = null, xoHauDue = false;
@@ -1000,6 +1006,11 @@ function veCotToTien() {
     thanToTien.append(nut);
     return nut;
   });
+  const nhapTren = veHangNhapTay(
+    'Nhập số đời tổ tiên cần vẽ rồi bấm Vẽ. 0 = không giới hạn.',
+    datPhamViToTienSo);
+  oNhapToTien = nhapTren.o;
+  thanToTien.append(nhapTren.nhan, nhapTren.hang);
   tomTatToTien = nutTomTat(() => datXo('tren', !xoToTien));
   // Nút tóm tắt ở TRÊN, bốn nấc xổ xuống dưới — cột này neo mép trên.
   hop.append(tomTatToTien, thanToTien);
@@ -1015,6 +1026,12 @@ function veCotHauDue() {
     thanHauDue.append(nut);
     return nut;
   });
+  const nhapDuoi = veHangNhapTay(
+    'Nhập số đời hậu duệ cần vẽ rồi bấm Vẽ. 0 = không giới hạn.',
+    datPhamViHauDueSo);
+  oNhapHauDue = nhapDuoi.o;
+  thanHauDue.append(nhapDuoi.nhan, nhapDuoi.hang);
+
   nutDauRe = nutChu('Dâu/rể', '', () => datDauRe(state.showInLaws === false));
   thanHauDue.append(nutDauRe);
   tomTatHauDue = nutTomTat(() => datXo('duoi', !xoHauDue));
@@ -1052,6 +1069,36 @@ function datPhamViHauDue(nac) {
       sc.spouseOfDescendants === nac.spouseOfDescendants) { capNhatNutPhamVi(); return; }
   sc.descendants         = nac.descendants;
   sc.spouseOfDescendants = nac.spouseOfDescendants;
+  notify();
+  refresh();
+}
+
+/**
+ * Áp dụng số đời TỔ TIÊN gõ tay. Đi cùng một đường với `datPhamViToTien()`
+ * chứ không mở lối riêng: cùng thu cột lại, cùng bỏ qua khi số không đổi,
+ * cùng gọi `notify()` rồi `refresh()`.
+ */
+function datPhamViToTienSo(soDoi) {
+  datXo('tren', false);
+  if ((state.scope.ancestors || 0) === soDoi) { capNhatNutPhamVi(); return; }
+  state.scope.ancestors = soDoi;
+  notify();
+  refresh();
+}
+
+/**
+ * Áp dụng số đời HẬU DUỆ gõ tay.
+ *
+ * KHÔNG đụng `spouseOfDescendants`. Người dùng gõ số ĐỜI thì chỉ số đời được
+ * đổi — chuyện vẽ hay không vẽ vợ/chồng của con đã có nấc "Con" / "Con và
+ * Vợ/Chồng" và công tắc "Dâu/rể" lo. Đổi lén thêm một thứ nữa là hứa một đằng
+ * làm một nẻo.
+ */
+function datPhamViHauDueSo(soDoi) {
+  const sc = state.scope;
+  datXo('duoi', false);
+  if ((sc.descendants || 0) === soDoi) { capNhatNutPhamVi(); return; }
+  sc.descendants = soDoi;
   notify();
   refresh();
 }
@@ -1100,6 +1147,15 @@ function capNhatNutPhamVi() {
 
   // Nút tóm tắt phải nói được nấc đang chọn, nếu không thì thu gọn xong là
   // người dùng mất hẳn thông tin đó — cả cụm nút chỉ còn là hai mũi tên câm.
+  // Ô nhập luôn nói đúng số đang vẽ — TRỪ khi người dùng đang gõ dở trong nó.
+  // Ghi đè giữa lúc gõ là ký tự vừa bấm biến mất ngay dưới ngón tay.
+  if (oNhapToTien && document.activeElement !== oNhapToTien) {
+    oNhapToTien.value = String(sc.ancestors || 0);
+  }
+  if (oNhapHauDue && document.activeElement !== oNhapHauDue) {
+    oNhapHauDue.value = String(sc.descendants || 0);
+  }
+
   const nacTren = NAC_TO_TIEN.find((n) => n.ancestors === (sc.ancestors || 0));
   const nacDuoi = NAC_HAU_DUE.find((n) => n.descendants === (sc.descendants || 0) &&
                     n.spouseOfDescendants === (sc.spouseOfDescendants !== false));
@@ -1108,8 +1164,12 @@ function capNhatNutPhamVi() {
     tomTatToTien.title = 'Đời trên — bấm để đổi';
   }
   if (tomTatHauDue) {
-    tomTatHauDue.textContent = '▼ ' + (nacDuoi ? nacDuoi.nhan : 'Tuỳ chọn riêng') +
-                               (hienDauRe ? '' : ' · ẩn dâu/rể');
+    // Gõ tay một số không trùng nấc nào thì nói thẳng số ấy ra. Bản trước ghi
+    // "Tuỳ chọn riêng" — đúng nhưng vô dụng: thu cột lại là mất hẳn con số.
+    const chuDuoi = nacDuoi
+      ? nacDuoi.nhan
+      : ((sc.descendants || 0) === 0 ? 'Không giới hạn' : sc.descendants + ' đời dưới');
+    tomTatHauDue.textContent = '▼ ' + chuDuoi + (hienDauRe ? '' : ' · ẩn dâu/rể');
     tomTatHauDue.title = 'Đời dưới — bấm để đổi';
   }
 }
@@ -1183,6 +1243,81 @@ function nutChu(chu, nhan, chay) {
   datVeChon(nut, false);
   nut.addEventListener('click', chay);
   return nut;
+}
+
+/**
+ * Hàng "hoặc nhập số đời" ở cuối mỗi cột — bước 23.
+ *
+ * Bốn nấc sẵn có phủ hết những ca hay dùng, nhưng chỉ có 2·3·4 đời trên và
+ * 1·2 đời dưới. Muốn xem đúng 6 đời tổ tiên thì trước bước này chỉ còn cách
+ * chọn "Không giới hạn" rồi tự đếm bằng mắt.
+ *
+ * Ba điều đã cân nhắc:
+ *
+ * 1. **Phải có nút "Vẽ", không vẽ lại theo từng phím gõ.** Gõ "12" đi qua số
+ *    "1" — vẽ ngay thì sơ đồ nháy một lần thừa, mà trên bản 1200 người mỗi
+ *    lần vẽ tốn gần 100ms.
+ * 2. **Phím Enter làm y như bấm "Vẽ"**, cho người quen dùng bàn phím.
+ * 3. **Số vượt trần bị kéo về trần ngay trong ô**, không im lặng bỏ qua: ô
+ *    nhập phải luôn hiện đúng con số sắp được dùng.
+ *
+ * @param {string} nhan   chữ hiện khi rê chuột, nói rõ ý nghĩa số 0
+ * @param {function(number)} apDung   gọi với số đời đã hợp lệ
+ * @returns {{nhan:HTMLElement, hang:HTMLElement, o:HTMLInputElement}}
+ */
+function veHangNhapTay(nhan, apDung) {
+  const ghi = document.createElement('div');
+  ghi.textContent = 'Hoặc nhập số đời';
+  ghi.title = nhan;
+  ghi.style.cssText =
+    'font-size:11px;color:#8a8078;text-align:center;user-select:none;margin-top:2px';
+
+  const hang = document.createElement('div');
+  hang.style.cssText = 'display:flex;align-items:center;gap:6px;width:132px';
+
+  const o = document.createElement('input');
+  o.type      = 'number';
+  o.min       = '0';
+  o.max       = String(TOI_DA_DOI);
+  o.step      = '1';
+  o.inputMode = 'numeric';
+  o.title     = nhan;
+  o.style.cssText =
+    'width:64px;height:36px;box-sizing:border-box;padding:0 6px;' +
+    'font-size:12.5px;line-height:1;font-family:system-ui,sans-serif;text-align:center;' +
+    'border:1px solid #e6e0d8;border-radius:8px;background:#fffdf9;color:#2a2622';
+
+  const nut = nutChu('Vẽ', nhan, () => {
+    const soDoi = docSoDoi(o);
+    if (soDoi === null) { o.focus(); o.select(); return; }
+    apDung(soDoi);
+  });
+  nut.style.width = '62px';
+
+  // Enter = bấm "Vẽ". Dùng `keydown` chứ không `keypress`: keypress đã lỗi
+  // thời, và bàn phím ảo trên Android không phải lúc nào cũng bắn nó.
+  o.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    nut.click();
+  });
+
+  hang.append(o, nut);
+  return { nhan: ghi, hang, o };
+}
+
+/**
+ * Đọc ô nhập, kéo về khoảng dùng được. Trả `null` khi ô trống hoặc không ra
+ * số — lúc đó nơi gọi chỉ việc trỏ con nháy lại vào ô, không vẽ gì cả.
+ */
+function docSoDoi(o) {
+  if (String(o.value).trim() === '') return null;
+  const n = Math.round(Number(o.value));
+  if (!Number.isFinite(n)) return null;
+  if (n < 0)          { o.value = '0';                return 0; }
+  if (n > TOI_DA_DOI) { o.value = String(TOI_DA_DOI); return TOI_DA_DOI; }
+  o.value = String(n);
+  return n;
 }
 
 /** Nút đang chọn: đảo màu. Tương phản mạnh để đọc được cả trên ảnh chụp. */
