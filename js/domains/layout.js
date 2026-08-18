@@ -3,7 +3,7 @@
 // Vai trò  : Tính TOẠ ĐỘ các ô người, đường nối và nốt cụt. Không vẽ gì cả.
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: config (LAYOUT)
-// Phiên bản: 1.3.0 · Cập nhật: 18/08/2026 11:05
+// Phiên bản: 1.4.0 · Cập nhật: 18/08/2026 11:55
 // ============================================================
 //
 // Tách khỏi render.js có chủ ý: chỉnh giao diện (màu, phông, bo góc) không
@@ -124,6 +124,7 @@ export function computeLayout(index, focusPersonId, visibleSet, scope, stubPoint
   ganMucDoi(ct);
   const viTriX = datMoiKhoi(ct);
   canChumConVaoGiua(ct, viTriX);
+  keoKhoiPhuVeGanCon(ct, viTriX);
 
   const nodes = [];
   const nodeById = new Map();
@@ -173,6 +174,7 @@ function dungNguCanh(index, visibleSet) {
     muc:           new Map(),
     toTien:        new Map(),    // personId -> Set tổ tiên hiển thị (đệm, xem toTienDong)
     cumCon:        new Map(),    // unionId -> [personId] cả cụm con cháu đặt dưới union đó
+    thanhVienKhoi: new Map(),    // neoId của khối gốc -> [personId] mọi người trong khối
     daDat:         new Set(),
   };
 
@@ -710,6 +712,9 @@ function datMoiKhoi(ct) {
     const k = datCum(ct, id);
     if (!k) return;
     for (const it of k.items) viTri.set(it.id, it.x + x);
+    // Nhớ ai thuộc khối nào: `keoKhoiPhuVeGanCon()` cần dịch cả khối một lượt,
+    // và cần biết khối nào to hơn khối nào.
+    ct.thanhVienKhoi.set(id, k.items.map((it) => it.id));
     x += k.w + LAYOUT.blockGap;
   };
 
@@ -777,6 +782,120 @@ function canChumConVaoGiua(ct, viTriX) {
 }
 
 /** Dịch cụm đi `d` thì có ô nào của cụm đè lên ô ngoài cụm không (cùng hàng)? */
+/**
+ * Kéo KHỐI PHỤ về sát người con của nó (bước 20, vòng thứ hai).
+ *
+ * --- Ca đã sinh ra luật này ----------------------------------------------
+ *
+ * Vẫn bộ cha mẹ NUÔI của bà Hương Lan. Vòng trước đã đưa hai người xuống đúng
+ * hàng cha mẹ đẻ, nhưng họ vẫn bị vẽ **tít sang phải, sau toàn bộ sơ đồ**, với
+ * một nét đứt chạy ngang cả màn hình.
+ *
+ * Lý do: hai người ấy không có tổ tiên hiển thị nên họ là một **khối gốc riêng**,
+ * và `datMoiKhoi()` xếp các khối gốc **nối đuôi nhau từ trái sang phải** theo
+ * bao hình chữ nhật (quyết định 13). Bao hình chữ nhật của khối chính trải hết
+ * bề ngang sơ đồ, nên khối phụ bị đẩy ra sau tất cả — kể cả khi hàng của nó
+ * còn trống thênh thang.
+ *
+ * Luật: **khối chỉ nối với phần còn lại bằng nét cha mẹ thứ hai thì phải chạy
+ * đến sát người con của nó**, chứ không đứng chờ ở cuối hàng.
+ *
+ * Ba điều đã cân nhắc:
+ *
+ * 1. **Khối NHỎ chạy tới khối LỚN, không bao giờ ngược lại.** Nếu không thì một
+ *    họ ba trăm người sẽ bị kéo đi vì một cặp cha mẹ nuôi hai người.
+ * 2. **Trượt tới đâu đè ô thì dừng ở đó**, không đè lên ai bao giờ — dùng lại
+ *    đúng phép đo của `canChumConVaoGiua()`. Chỗ trống hết thì khối đứng nguyên,
+ *    và sơ đồ xấu vẫn hơn sơ đồ chồng ô.
+ * 3. **Chạy SAU `canChumConVaoGiua()`**, để khối chính đã yên chỗ rồi khối phụ
+ *    mới len vào phần trống còn lại.
+ */
+function keoKhoiPhuVeGanCon(ct, viTriX) {
+  if (ct.thanhVienKhoi.size < 2) return;
+
+  const khoiCua = new Map();
+  for (const [neo, ids] of ct.thanhVienKhoi) for (const id of ids) khoiCua.set(id, neo);
+
+  for (const neo of [...ct.thanhVienKhoi.keys()].sort()) {
+    const ids = ct.thanhVienKhoi.get(neo);
+    const cum = new Set(ids);
+
+    // Người con gần nhất mà khối này nối tới bằng nét cha mẹ thứ hai.
+    let dMuon = null;
+    for (const id of ids) {
+      for (const uid of ct.unionLamVo.get(id) || []) {
+        const u = ct.unionHT.get(uid);
+        if (!u) continue;
+        for (const c of u.children) {
+          if (cum.has(c.personId)) continue;
+          const khoiCon = khoiCua.get(c.personId);
+          if (!khoiCon || khoiCon === neo) continue;
+          // Điều 1: chỉ khối nhỏ chạy tới khối lớn.
+          if ((ct.thanhVienKhoi.get(khoiCon) || []).length <= ids.length) continue;
+
+          const d = dichVeGan(viTriX, cum, viTriX.get(c.personId));
+          if (d !== null && (dMuon === null || Math.abs(d) < Math.abs(dMuon))) dMuon = d;
+        }
+      }
+    }
+    if (dMuon === null || Math.abs(dMuon) < 1) continue;
+
+    const gioiHan = dichToiDa(ct, viTriX, cum, dMuon < 0);
+    const d = dMuon < 0 ? Math.max(dMuon, gioiHan) : Math.min(dMuon, gioiHan);
+    if (!Number.isFinite(d) || Math.abs(d) < 1) continue;
+
+    for (const id of ids) viTriX.set(id, viTriX.get(id) + d);
+  }
+}
+
+/** Khoảng cần dịch để khối đứng kề ngay bên người con, phía nó đang đứng. */
+function dichVeGan(viTriX, cum, xCon) {
+  if (xCon === undefined) return null;
+
+  let trai = Infinity, phai = -Infinity;
+  for (const id of cum) {
+    const x = viTriX.get(id);
+    if (x === undefined) continue;
+    if (x < trai) trai = x;
+    if (x + RONG > phai) phai = x + RONG;
+  }
+  if (!Number.isFinite(trai)) return null;
+
+  // Khối đang ở bên nào của người con thì giữ nguyên bên ấy — nhảy sang bên kia
+  // là đường nối đổi hướng, người xem tưởng sơ đồ vừa nhảy chỗ.
+  return (trai + phai) / 2 > xCon + RONG / 2
+    ? (xCon + RONG + LAYOUT.hGap) - trai
+    : (xCon - LAYOUT.hGap) - phai;
+}
+
+/**
+ * Dịch được xa nhất bao nhiêu mà không ô nào đè ô nào.
+ * Trả `±Infinity` khi không có gì chắn đường.
+ */
+function dichToiDa(ct, viTriX, cum, sangTrai) {
+  let gioiHan = sangTrai ? -Infinity : Infinity;
+
+  for (const id of cum) {
+    const x = viTriX.get(id);
+    const m = ct.muc.get(id);
+    if (x === undefined) continue;
+
+    for (const kh of ct.dsNguoi) {
+      if (cum.has(kh)) continue;
+      if (ct.muc.get(kh) !== m) continue;
+      const xk = viTriX.get(kh);
+      if (xk === undefined) continue;
+
+      if (sangTrai) {
+        if (xk < x) gioiHan = Math.max(gioiHan, (xk + RONG + LAYOUT.hGap) - x);
+      } else if (xk > x) {
+        gioiHan = Math.min(gioiHan, (xk - RONG - LAYOUT.hGap) - x);
+      }
+    }
+  }
+  return gioiHan;
+}
+
 function deLenNhau(ct, viTriX, cum, d) {
   for (const id of cum) {
     const x = viTriX.get(id);
