@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate}, services/repo,
 //            utils/{graph,text,date}
-// Phiên bản: 1.3.0 · Cập nhật: 18/08/2026 15:40
+// Phiên bản: 1.3.1 · Cập nhật: 18/08/2026 16:25
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -1116,7 +1116,7 @@ export function xoaNguoi(personId, xuLy = {}) {
  * Dựng cây đã xoá, rồi đọc ra ba loại hậu quả bằng cách SO hai chỉ mục.
  *
  * @returns {{kq:object, indexMoi:object, soHangXom:number,
- *            thanhLe:string[], mocCoi:{unionId:string, soCon:number}[]}|null}
+ *            thanhLe:string[], mocCoi:{unionId:string, cacCon:string[]}[]}|null}
  *
  * `thanhLe` — những người mà sau lần xoá này không còn nối với ai. Đọc bằng
  * `checkOrphanNode` của `domains/validate.js`, chạy hai lần trên hai chỉ mục và
@@ -1170,9 +1170,10 @@ function doHauQuaXoa(personId, ghiNhan) {
     if (!u) continue;
     const conSong = (Array.isArray(u.partners) ? u.partners : [])
       .filter((pid) => pid && indexMoi.personById.has(pid));
-    const soCon = (Array.isArray(u.children) ? u.children : [])
-      .filter((c) => c && c.personId && indexMoi.personById.has(c.personId)).length;
-    if (conSong.length === 0 && soCon > 0) mocCoi.push({ unionId: uid, soCon });
+    const cacCon = (Array.isArray(u.children) ? u.children : [])
+      .filter((c) => c && c.personId && indexMoi.personById.has(c.personId))
+      .map((c) => c.personId);
+    if (conSong.length === 0 && cacCon.length > 0) mocCoi.push({ unionId: uid, cacCon });
   }
 
   return { kq, indexMoi, soHangXom: hangXom.size, thanhLe, mocCoi };
@@ -1190,15 +1191,25 @@ function cauKeHauQua(personId) {
               'trong số họ bị xoá theo — con cháu vẫn còn nguyên.');
   }
 
+  // ⚠ Hai khối dưới đây nói về hai chuyện KHÁC HẲN NHAU về mức độ, nên người
+  // nào đã bị kể ở khối trên thì khối dưới phải bỏ qua. Bản đầu kể cả hai, và
+  // dòng thứ hai hạ nhẹ mức độ của dòng thứ nhất — đúng một người, hai giọng.
+  const daKe = new Set(xoaHT.thanhLe);
+
   for (const id of xoaHT.thanhLe) {
-    dong.push(tenNguoi(id) + ' sẽ không còn nối với ai. Họ vẫn nằm trong gia phả, ' +
-              'nhưng chỉ hiện ra khi chính họ được đưa ra giữa sơ đồ.');
+    dong.push('⚠ ' + tenNguoi(id) + ' sẽ MẤT ĐƯỜNG VỀ. Sau khi xoá, không sơ đồ ' +
+              'nào còn vẽ ra họ nữa, kể cả sơ đồ của chính họ hàng gần nhất. Bản ' +
+              'ghi vẫn nguyên vẹn trong file, và Cài đặt → Rà soát dữ liệu sẽ kể ' +
+              'tên họ ra, nhưng app CHƯA có màn hình danh sách để mở họ lên và ' +
+              'nối lại. Cân nhắc nối họ vào chỗ khác trước, rồi hãy xoá.');
   }
 
   for (const m of xoaHT.mocCoi) {
-    dong.push(m.soCon + ' người con của cặp ' + m.unionId + ' sẽ không còn cha mẹ ' +
-              'nào hiện trên sơ đồ. Họ vẫn còn đủ trong gia phả, chỉ là phía trên ' +
-              'đầu họ trống.');
+    const conKhac = m.cacCon.filter((id) => !daKe.has(id));
+    if (conKhac.length === 0) continue;
+    dong.push(conKhac.map(tenNguoi).join(' · ') + ' sẽ không còn cha mẹ nào hiện ' +
+              'trên sơ đồ (cặp ' + m.unionId + '). Họ vẫn nối được với người khác ' +
+              'nên vẫn tìm tới được, chỉ là phía trên đầu họ trống.');
   }
 
   if (state.focusPersonId === personId) {
