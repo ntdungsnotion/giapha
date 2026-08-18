@@ -3,7 +3,7 @@
 // Vai trò  : Rà soát dữ liệu gia phả — chặn cái sai chắc chắn, cảnh báo cái đáng ngờ
 // Lớp      : domains — được gọi bởi: pages · được phép gọi: utils, config
 // Phụ thuộc: utils/date.js, utils/graph.js, utils/text.js
-// Phiên bản: 1.1.0 · Cập nhật: 17/08/2026 23:35
+// Phiên bản: 1.2.0 · Cập nhật: 18/08/2026 15:40
 // ============================================================
 //
 // HÀM THUẦN. Không gọi services, không chạm DOM, không đọc state.
@@ -277,14 +277,37 @@ export function checkSpouseAgeGap(index, unionId) {
  * quên nối quan hệ. Trên sơ đồ họ vô hình: sơ đồ vẽ quanh một người trung tâm,
  * nên người không có cạnh nào thì không bao giờ xuất hiện trừ khi chính họ được
  * chọn làm trung tâm.
+ *
+ * --- Vì sao KHÔNG đếm số union, mà đi tìm một NGƯỜI (sửa 18/08/2026, b21) ---
+ *
+ * Bản đầu đếm `unionsAsPartner.length + unionsAsChild.length` và coi khác 0 là
+ * đạt. Đếm như thế thì một người thuộc về một cặp mà mọi người khác trong cặp
+ * ấy đều đã bị xoá vẫn được tính là "có nối" — trong khi trên sơ đồ họ đã đứng
+ * một mình hoàn toàn (`layout.js` bỏ qua cặp có dưới hai partner và không có
+ * con). Câu hỏi đúng không phải *"có thuộc cặp nào không"* mà *"còn ai đứng
+ * chung với họ không"*.
+ *
+ * Trên dữ liệu chưa có bản ghi nào bị xoá thì hai cách cho kết quả giống hệt
+ * nhau — đó chính là lý do lỗ hổng này sống được từ bước 17 tới bước 21.
  */
 export function checkOrphanNode(index, personId) {
   const nguoi = layNguoi(index, personId);
   if (!nguoi) return boQua('thiếu bản ghi người');
 
-  const soLamVoChong = (index.unionsAsPartner.get(personId) || []).length;
-  const soLamCon     = (index.unionsAsChild.get(personId)   || []).length;
-  if (soLamVoChong > 0 || soLamCon > 0) return dat();
+  const cacUnion = (index.unionsAsPartner.get(personId) || [])
+    .concat(index.unionsAsChild.get(personId) || []);
+
+  for (const unionId of cacUnion) {
+    const u = index.unionById.get(unionId);
+    if (!u) continue;
+    for (const pid of Array.isArray(u.partners) ? u.partners : []) {
+      if (pid && pid !== personId && index.personById.has(pid)) return dat();
+    }
+    for (const c of Array.isArray(u.children) ? u.children : []) {
+      const cid = c && c.personId;
+      if (cid && cid !== personId && index.personById.has(cid)) return dat();
+    }
+  }
 
   return canhBao(moTaNguoi(nguoi) +
                  ' chưa nối với ai — không có cha mẹ, không có vợ/chồng, không có con.');

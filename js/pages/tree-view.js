@@ -2,9 +2,9 @@
 // giapha · js/pages/tree-view.js
 // Vai trò  : MÀN HÌNH CHÍNH — sơ đồ cây, đổi người trung tâm
 // Lớp      : pages — được phép gọi mọi lớp dưới
-// Phụ thuộc: state, domains/{bloodline,layout,render}, utils/text,
+// Phụ thuộc: state, domains/{bloodline,layout,render,union}, utils/text,
 //            pages/{person-detail,person-edit,settings}
-// Phiên bản: 1.7.0 · Cập nhật: 18/08/2026 10:05
+// Phiên bản: 1.8.0 · Cập nhật: 18/08/2026 15:40
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -65,9 +65,10 @@ import { state, notify } from '../state.js';
 import { computeVisibleSet, findStubPoints } from '../domains/bloodline.js';
 import { computeLayout } from '../domains/layout.js';
 import { renderTree } from '../domains/render.js';
+import { getSpouses, getParents, getChildren, getSiblings } from '../domains/union.js';
 import { fullName, doiSongNguoi } from '../utils/text.js';
 import { openPersonDetail, closePersonDetail } from './person-detail.js';
-import { openPersonForm, closePersonForm, quickAddChild } from './person-edit.js';
+import { openPersonForm, closePersonForm, quickAddChild, xoaNguoi } from './person-edit.js';
 import { openSettings, closeSettings } from './settings.js';
 
 let khungCuon = null;   // div cuộn được, bọc quanh SVG
@@ -699,7 +700,7 @@ function moTheNguoiTrungTam() {
 }
 
 /**
- * Ba việc thẻ thông tin báo ngược ra ngoài. Gom một chỗ để hai nơi mở thẻ —
+ * Bốn việc thẻ thông tin báo ngược ra ngoài. Gom một chỗ để hai nơi mở thẻ —
  * chạm giữ và nút ⓘ — không bao giờ mọc ra hai bộ nút khác nhau.
  */
 function xuLyThe() {
@@ -707,6 +708,7 @@ function xuLyThe() {
     onChonNguoi: (id) => setFocusPerson(id),
     onSuaNguoi:  moFormSua,
     onThemCon:   moFormThemCon,
+    onXoaNguoi:  moHopXoa,
   };
 }
 
@@ -731,6 +733,67 @@ function moFormSua(personId) {
  */
 function moFormThemCon(noiVao) {
   quickAddChild(noiVao, { onDaLuu: () => refresh() });
+}
+
+/**
+ * Mở hộp xác nhận xoá.
+ *
+ * ⚠ `nguoiThayThe` phải tính TRƯỚC khi xoá, và truyền vào hộp. Tính sau thì
+ * người ấy đã biến khỏi `state.index` và không còn hàng xóm nào để hỏi — sơ đồ
+ * rơi thẳng vào màn hình *"người trung tâm không còn trong gia phả"*, một ngõ
+ * cụt mà từ đó người dùng không tự ra được (màn hình Cài đặt chỉ đặt được người
+ * ĐANG đứng giữa làm mặc định, nó không có chỗ chọn người khác).
+ */
+function moHopXoa(personId) {
+  const thay = (state.focusPersonId === personId) ? nguoiDungThayCho(personId) : null;
+
+  xoaNguoi(personId, {
+    nguoiThayThe: thay,
+    onDaXoa: () => {
+      if (state.focusPersonId === personId && thay) {
+        state.focusPersonId = thay;
+        notify();
+      }
+      refresh();
+    },
+    onDaHoanTac: () => {
+      if (thay && state.focusPersonId === thay) {
+        state.focusPersonId = personId;   // trả lại đúng chỗ người dùng đang đứng
+        notify();
+      }
+      refresh();
+    },
+  });
+}
+
+/**
+ * Ai sẽ được đưa ra giữa sơ đồ thay cho người sắp bị xoá.
+ *
+ * Ưu tiên theo mức gần gũi: vợ/chồng → cha mẹ → con → anh chị em. Ai cũng được,
+ * miễn sơ đồ mới còn vẽ ra được người sắp mất và bối cảnh quanh họ — người dùng
+ * vừa xoá xong thường muốn nhìn ngay chỗ vừa đụng vào.
+ *
+ * Hết cả bốn thì lấy gốc cây ghi trong file, cùng lắm lấy bất kỳ ai khác — cùng
+ * bậc thang mà `repo.chonNguoiTrungTam()` dùng lúc mở app. Trả null chỉ khi gia
+ * phả không còn ai khác, và lúc ấy màn hình lời nhắn là câu trả lời đúng.
+ */
+function nguoiDungThayCho(personId) {
+  const index = state.index;
+  if (!index) return null;
+
+  for (const nhom of [getSpouses, getParents, getChildren, getSiblings]) {
+    for (const m of nhom(index, personId)) {
+      if (m && m.personId !== personId && index.personById.has(m.personId)) return m.personId;
+    }
+  }
+
+  const goc = state.tree && state.tree.tree && state.tree.tree.rootPersonId;
+  if (goc && goc !== personId && index.personById.has(goc)) return goc;
+
+  for (const id of index.personById.keys()) {
+    if (id !== personId) return id;
+  }
+  return null;
 }
 
 function nutTron(chu, nhan, chay) {

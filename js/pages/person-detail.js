@@ -3,7 +3,7 @@
 // Vai trò  : Thẻ thông tin hiện ra khi chạm giữ vào một người
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union}, services/repo, utils/{text,date}
-// Phiên bản: 1.2.0 · Cập nhật: 18/08/2026 08:53
+// Phiên bản: 1.3.0 · Cập nhật: 18/08/2026 15:40
 // ============================================================
 //
 // Trường trống thì ẨN CẢ HÀNG: không nhãn, không giá trị, không "Không rõ".
@@ -44,11 +44,15 @@ const GIOI = { M: 'Nam', F: 'Nữ' };   // 'U' cố ý KHÔNG có mặt — xem 
  *
  * @param {string} personId
  * @param {{onChonNguoi?:function(string), onSuaNguoi?:function(string),
- *          onThemCon?:function({unionId?:string, chaMeId?:string})}} [xuLy]
+ *          onThemCon?:function({unionId?:string, chaMeId?:string}),
+ *          onXoaNguoi?:function(string)}} [xuLy]
  *        `onChonNguoi` chạy khi người dùng bấm một người trong phần quan hệ,
  *        hoặc bấm nút "Đưa ra giữa sơ đồ". Thẻ tự đóng trước khi gọi.
  *        `onSuaNguoi` chạy khi bấm "Sửa hồ sơ"; không truyền thì nút không mọc.
  *        `onThemCon` chạy khi bấm "Thêm con", kèm CHỖ NỐI đã chọn xong.
+ *        `onXoaNguoi` chạy khi bấm "Xoá khỏi gia phả". Thẻ KHÔNG hỏi lại gì —
+ *        hộp xác nhận và cả đường hoàn tác nằm ở `person-edit.js`, nơi có sẵn
+ *        đường ghi. Thẻ này chỉ mở cửa.
  */
 export function openPersonDetail(personId, xuLy = {}) {
   closePersonDetail();
@@ -391,6 +395,31 @@ function veChanThe(p, xuLy) {
 
   chan.append(giua, dong);
   boc.append(khoiChon, chan);
+
+  // Xoá đứng RIÊNG một hàng, dưới cùng, không cùng hàng với bốn nút kia. Bốn nút
+  // trên là việc làm hằng ngày và người ta bấm theo trí nhớ vị trí; nhét nút xoá
+  // vào giữa chúng là mời một cú chạm nhầm. Nó cũng là chữ suông chứ không phải
+  // khối màu — nút to màu đỏ giữa thẻ thì thành thứ đầu tiên mắt nhìn vào.
+  if (xuLy.onXoaNguoi) {
+    const xoa = document.createElement('button');
+    xoa.type = 'button';
+    xoa.textContent = coQuyen ? 'Xoá khỏi gia phả' : 'Xoá khỏi gia phả — bạn chỉ có quyền xem';
+    xoa.disabled = !coQuyen;
+    xoa.style.cssText =
+      'display:block;margin:14px auto 0;padding:8px 12px;font-family:inherit;' +
+      'font-size:13px;color:#8a3a2a;background:none;border:none;' +
+      'text-decoration:underline;touch-action:manipulation;' +
+      'cursor:' + (coQuyen ? 'pointer' : 'not-allowed') + ';' +
+      'opacity:' + (coQuyen ? '1' : '.45');
+    if (coQuyen) {
+      xoa.addEventListener('click', () => {
+        closePersonDetail();
+        xuLy.onXoaNguoi(p.id);
+      });
+    }
+    boc.append(xoa);
+  }
+
   return boc;
 }
 

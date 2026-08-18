@@ -3,7 +3,7 @@
 // Vai trò  : Nghiệp vụ hồ sơ cá nhân — tạo, sửa, đọc thông tin một người
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: utils/text.js, utils/date.js, utils/id.js
-// Phiên bản: 1.2.0 · Cập nhật: 18/08/2026 10:05
+// Phiên bản: 1.3.0 · Cập nhật: 18/08/2026 15:40
 // ============================================================
 import { fullName, coGiaTri } from '../utils/text.js';
 import { parseLooseDate } from '../utils/date.js';
@@ -224,10 +224,72 @@ function datKhoiNgay(nguoi, khoa, khoi, ghi) {
   }
 }
 
-/** Xoá mềm: đặt cờ deleted. KHÔNG xoá khỏi mảng. */
-export function softDeletePerson(tree, personId, byEmail) { /* TODO — giai đoạn 2 */ }
+/**
+ * Xoá MỀM một người: chỉ đặt cờ `deleted`. KHÔNG xoá khỏi mảng, và KHÔNG đụng
+ * một chữ nào vào `unions`.
+ *
+ * @param {object} tree
+ * @param {string} personId
+ * @param {{boi?:string, luc?:string}} [ghiNhan]
+ * @returns {{tree:object, person:object, diff:object}|null}
+ *          null khi không có ai mang mã ấy, HOẶC khi cờ đã đúng sẵn — không có
+ *          gì để làm thì không dựng ra một lần lưu rỗng.
+ *
+ * --- Vì sao KHÔNG dọn dẹp `unions` cùng lúc ------------------------------
+ *
+ * Cám dỗ là gỡ luôn mã người ấy khỏi `partners` và `children` cho "sạch". Đừng.
+ * Hai lý do, lý do thứ hai mới là lý do thật:
+ *
+ * 1. Đường ĐỌC đã lọc sẵn rồi, ở cả ba chặng: `buildIndex` bỏ qua người mang cờ
+ *    và không ghi họ vào bảng tra (`utils/graph.js`, hàm `themMotLan`);
+ *    `bloodline.js` lọc lại lần nữa bằng `index.personById.has`; `layout.js` chỉ
+ *    nhận partner nằm trong tập hiển thị. Người bị xoá đã biến mất khỏi sơ đồ mà
+ *    không cần ai đụng vào `unions`.
+ * 2. HOÀN TÁC phải trả lại ĐÚNG thứ đã có. Gỡ mã khỏi `partners`/`children` thì
+ *    `restorePerson` phải nhớ được người ấy đứng ở union nào, thứ mấy trong hàng
+ *    anh em, `order` bao nhiêu, quan hệ đẻ hay nuôi — tức là phải chép một bản
+ *    sao thứ hai của mối nối vào đâu đó, và bản sao ấy sẽ trôi khác bản gốc.
+ *    Lật đúng MỘT cờ thì hoàn tác là lật ngược lại, không mất gì.
+ *
+ * ⚠ Hệ quả phải biết: xoá một người KHÔNG xoá ai khác, kể cả con cháu. Một cặp
+ * mất hết partner sống mà vẫn còn con thì mấy người con ấy vẫn còn nguyên, chỉ
+ * là trên sơ đồ họ không còn thấy cha mẹ nào. Nơi gọi phải NÓI RA điều đó trước
+ * khi xoá — xem `pages/person-edit.js`, luật 8.
+ */
+export function softDeletePerson(tree, personId, ghiNhan) {
+  return datCoXoa(tree, personId, true, ghiNhan);
+}
 
-export function restorePerson(tree, personId, byEmail) { /* TODO — giai đoạn 2 */ }
+/** Đưa một người đã xoá trở lại. Chỉ lật cờ `deleted` về false. */
+export function restorePerson(tree, personId, ghiNhan) {
+  return datCoXoa(tree, personId, false, ghiNhan);
+}
+
+function datCoXoa(tree, personId, coXoa, ghiNhan) {
+  if (!tree || !Array.isArray(tree.persons) || !personId) return null;
+
+  const cu = tree.persons.find((p) => p && p.id === personId);
+  if (!cu) return null;
+
+  const truoc = cu.deleted === true;
+  if (truoc === coXoa) return null;
+
+  const moi = JSON.parse(JSON.stringify(cu));
+  moi.deleted = coXoa;
+
+  if (!moi.meta || typeof moi.meta !== 'object') moi.meta = {};
+  if (ghiNhan && coGiaTri(ghiNhan.luc)) moi.meta.updatedAt = String(ghiNhan.luc);
+  if (ghiNhan && coGiaTri(ghiNhan.boi)) moi.meta.updatedBy = String(ghiNhan.boi);
+
+  const cayMoi = Object.assign({}, tree, {
+    persons: tree.persons.map((p) => (p && p.id === personId ? moi : p)),
+  });
+
+  const diff = {};
+  diff[personId + '.deleted'] = [truoc, coXoa];
+
+  return { tree: cayMoi, person: moi, diff };
+}
 
 /**
  * Lấy tên chính để hiển thị.

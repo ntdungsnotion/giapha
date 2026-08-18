@@ -3,7 +3,7 @@
 // Vai trò  : Nghiệp vụ hôn nhân và quan hệ cha mẹ – con
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: utils/id.js, utils/date.js
-// Phiên bản: 1.1.0 · Cập nhật: 18/08/2026 10:05
+// Phiên bản: 1.2.0 · Cập nhật: 18/08/2026 15:40
 // ============================================================
 //
 // NHẮC LẠI HAI ĐIỀU HAY BỊ LẪN:
@@ -273,6 +273,15 @@ export function thuTuConTheoTuoi(tree, unionId) {
 // từ những người tìm được. Ai sửa file này mà cho chúng đi sâu thêm một bậc
 // ("lấy luôn các cháu") thì phải chuyển sang `utils/graph.bfs()` — gia phả là
 // đồ thị, và bản dữ liệu làm việc đang có sẵn hai vòng.
+//
+// ⚠ BỐN HÀM DƯỚI ĐÂY CHỈ TRẢ VỀ NGƯỜI CÒN TRONG CHỈ MỤC (sửa 18/08/2026, bước
+// 21). `buildIndex` bỏ người mang cờ `deleted` ra khỏi `personById`, nhưng mã họ
+// VẪN nằm nguyên trong `partners`/`children` của union — xoá mềm cố ý không dọn
+// mấy mảng ấy, để hoàn tác chỉ phải lật lại một cờ (xem `person.softDeletePerson`).
+// Nên đọc thẳng `u.partners` mà không lọc là kể tên một người đã bị xoá như thể
+// họ vẫn còn. Từ bước 19 trở về trước lỗi này không lộ ra được, đơn giản vì
+// chưa có bản ghi nào mang cờ ấy; phép thử `chat-2-5a` bắt được nó ngay lần
+// chạy đầu.
 
 /** Các union mà người này làm CON. Mảng rỗng nếu không có bộ cha mẹ nào. */
 export function getParentUnions(index, personId) {
@@ -297,7 +306,9 @@ export function getParents(index, personId) {
   for (const u of getParentUnions(index, personId)) {
     const relation = quanHeCua(u, personId);
     for (const id of Array.isArray(u.partners) ? u.partners : []) {
-      if (id && id !== personId) ra.push({ personId: id, unionId: u.id, relation });
+      if (id && id !== personId && index.personById.has(id)) {
+        ra.push({ personId: id, unionId: u.id, relation });
+      }
     }
   }
   return ra;
@@ -311,7 +322,7 @@ export function getChildren(index, personId) {
   const ra = [];
   for (const u of getPartnerUnions(index, personId)) {
     for (const c of Array.isArray(u.children) ? u.children : []) {
-      if (!c || !c.personId) continue;
+      if (!c || !c.personId || !index.personById.has(c.personId)) continue;
       ra.push({
         personId: c.personId,
         unionId:  u.id,
@@ -340,6 +351,7 @@ export function getSiblings(index, personId) {
   for (const u of getParentUnions(index, personId)) {
     for (const c of Array.isArray(u.children) ? u.children : []) {
       if (!c || !c.personId || daCo.has(c.personId)) continue;
+      if (!index.personById.has(c.personId)) continue;
       daCo.add(c.personId);
       ra.push({ personId: c.personId, unionId: u.id, relation: c.relation || 'birth' });
     }
@@ -357,7 +369,7 @@ export function getSpouses(index, personId) {
   const ra = [];
   for (const u of getPartnerUnions(index, personId)) {
     for (const id of Array.isArray(u.partners) ? u.partners : []) {
-      if (!id || id === personId) continue;
+      if (!id || id === personId || !index.personById.has(id)) continue;
       ra.push({
         personId: id,
         unionId:  u.id,
