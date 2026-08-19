@@ -3,8 +3,8 @@
 // Vai trò  : MÀN HÌNH CHÍNH — sơ đồ cây, đổi người trung tâm
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render,union}, utils/text,
-//            pages/{person-detail,person-edit,settings}
-// Phiên bản: 1.10.0 · Cập nhật: 18/08/2026 17:35
+//            pages/{person-detail,person-edit,person-list,settings}
+// Phiên bản: 1.11.0 · Cập nhật: 19/08/2026 22:25
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -24,7 +24,7 @@
 // Bố cục nút, đối chiếu Quick Family Tree (chat 1.5 và 1.6):
 //   Trên trái  — cột 4 nút chọn số đời TỔ TIÊN + ô nhập tay số đời
 //   Dưới trái  — cột 4 nút chọn phạm vi HẬU DUỆ + ô nhập tay + công tắc dâu/rể
-//   Trên phải  — Cài đặt · Tìm kiếm · Chụp ảnh sơ đồ
+//   Trên phải  — Cài đặt · Tìm người (bước 24) · Chụp ảnh sơ đồ (chưa làm)
 //   Dưới phải  — Thông tin · Phóng to · Thu nhỏ · Đưa người trung tâm về giữa
 //
 // Cả ba cụm nút neo vào `vungSoDo`, KHÔNG vào `khungCuon`: `donKhung()` dọn
@@ -69,6 +69,7 @@ import { getSpouses, getParents, getChildren, getSiblings } from '../domains/uni
 import { fullName, doiSongNguoi } from '../utils/text.js';
 import { openPersonDetail, closePersonDetail } from './person-detail.js';
 import { openPersonForm, closePersonForm, quickAddChild, xoaNguoi } from './person-edit.js';
+import { openPersonList, closePersonList } from './person-list.js';
 import { openSettings, closeSettings } from './settings.js';
 
 let khungCuon = null;   // div cuộn được, bọc quanh SVG
@@ -99,6 +100,7 @@ export function mountTreeView(containerEl) {
   // `containerEl` — dọn ruột container không đụng tới chúng, nên phải đóng tay.
   closePersonDetail();
   closePersonForm();
+  closePersonList();
   closeSettings();
   containerEl.innerHTML = '';
   containerEl.style.cssText =
@@ -158,7 +160,8 @@ export function refresh() {
 
   if (!index || !focus) {
     hienLoiNhan('Chưa chọn được người trung tâm.',
-                'Mở màn hình Cài đặt để chọn một người, hoặc kiểm tra lại file dữ liệu.');
+                'Bấm nút 🔍 ở góc trên bên phải để tìm một người trong gia phả, ' +
+                'hoặc kiểm tra lại file dữ liệu.');
     return;
   }
 
@@ -176,7 +179,8 @@ export function refresh() {
     hienLoiNhan(
       p ? 'Không vẽ được sơ đồ quanh ' + fullName(p) + '.'
         : 'Người trung tâm ' + focus + ' không còn trong gia phả.',
-      'Có thể bản ghi này đã bị xoá. Chọn một người khác ở màn hình Cài đặt.');
+      'Có thể bản ghi này đã bị xoá. Bấm nút 🔍 ở góc trên bên phải để tìm ' +
+      'và chọn một người khác.');
     return;
   }
 
@@ -682,16 +686,46 @@ function veHopNut() {
 }
 
 /**
- * Cụm nút góc TRÊN PHẢI. Giai đoạn 1 mới có Cài đặt; Tìm kiếm và Chụp ảnh sơ
- * đồ để giai đoạn sau — dựng chỗ trống sẵn còn hơn dời cả cụm nút về sau.
+ * Cụm nút góc TRÊN PHẢI: Cài đặt · Tìm người. Chụp ảnh sơ đồ để giai đoạn sau.
+ *
+ * Nút 🔍 là cửa vào THỨ HAI của cả gia phả, và là cửa duy nhất tới những người
+ * sơ đồ không vẽ ra (bước 24). Nó neo vào `vungSoDo` như mọi nút khác, nên vẫn
+ * còn đó cả khi sơ đồ không vẽ được gì — đúng lúc cần nó nhất.
  */
 function veHopNutTrenPhai() {
   const hop = document.createElement('div');
   hop.style.cssText =
     'position:absolute;right:12px;top:12px;z-index:10;' +
     'display:flex;flex-direction:column;align-items:stretch;gap:8px';
-  hop.append(nutTron('⚙', 'Cài đặt', () => openSettings()));
+  hop.append(
+    nutTron('⚙', 'Cài đặt', () => openSettings()),
+    nutTron('🔍', 'Tìm người trong gia phả', () => moDanhSachNguoi()),
+  );
   return hop;
+}
+
+/**
+ * Mở danh sách người, và nối nó với thẻ thông tin.
+ *
+ * Danh sách CỐ Ý không tự đóng khi thẻ mở ra: đóng thẻ là quay lại đúng chỗ
+ * đang tìm. Nhưng mọi việc DẪN ĐI ĐÂU ĐÓ — đổi người trung tâm, mở form sửa,
+ * thêm con, xoá — thì phải đóng danh sách trước, vì sau những việc ấy sơ đồ đã
+ * khác và cái danh sách còn nằm đè lên trên là thứ che mất kết quả người dùng
+ * vừa gây ra. Bọc từng callback ở đây, không sửa `xuLyThe()`: hai nơi mở thẻ
+ * kia (chạm giữ và nút ⓘ) không có danh sách nào để đóng.
+ */
+function moDanhSachNguoi() {
+  const goc = xuLyThe();
+  const dongTruoc = (fn) => (x) => { closePersonList(); fn(x); };
+
+  openPersonList({
+    onXemHoSo: (id) => openPersonDetail(id, {
+      onChonNguoi: dongTruoc(goc.onChonNguoi),
+      onSuaNguoi:  dongTruoc(goc.onSuaNguoi),
+      onThemCon:   dongTruoc(goc.onThemCon),
+      onXoaNguoi:  dongTruoc(goc.onXoaNguoi),
+    }),
+  });
 }
 
 function moTheNguoiTrungTam() {

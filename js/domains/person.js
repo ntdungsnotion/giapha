@@ -3,9 +3,9 @@
 // Vai trò  : Nghiệp vụ hồ sơ cá nhân — tạo, sửa, đọc thông tin một người
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: utils/text.js, utils/date.js, utils/id.js
-// Phiên bản: 1.3.0 · Cập nhật: 18/08/2026 15:40
+// Phiên bản: 1.4.0 · Cập nhật: 19/08/2026 21:40
 // ============================================================
-import { fullName, coGiaTri } from '../utils/text.js';
+import { fullName, coGiaTri, removeDiacritics, doiSongNguoi } from '../utils/text.js';
 import { parseLooseDate } from '../utils/date.js';
 import { nextId } from '../utils/id.js';
 
@@ -326,5 +326,143 @@ export function getAlternateNames(person) {
   return ra;
 }
 
-/** Tìm người theo tên, không phân biệt dấu. */
-export function searchPersons(tree, keyword) { /* TODO — cùng màn hình Tìm kiếm */ }
+// ============================================================
+// TÌM NGƯỜI — bước 24
+// ============================================================
+//
+// --- Vì sao hàm này đọc CÂY chứ không đọc CHỈ MỤC -----------------------
+//
+// Mọi màn hình khác của app đi qua `state.index`, và `buildIndex()` cố ý bỏ
+// qua bản ghi mang cờ `deleted`. Nhưng màn hình Danh sách người sinh ra đúng
+// vì app đang coi *"được vẽ"* là *"tồn tại"*: sơ đồ vẽ quanh một người trung
+// tâm, nên ai không nối với ai thì không cửa nào tới được (ca thật: xoá
+// `P0060` làm `P0061` chỉ còn 1/63 người trung tâm nhìn thấy).
+//
+// Đọc thẳng `tree.persons` là chỗ DUY NHẤT trong app nhìn thấy toàn bộ kho —
+// kể cả người chưa nối với ai, và kể cả người đã xoá mềm nếu nơi gọi xin.
+// Đi qua chỉ mục thì hàm này thừa: nó chỉ lặp lại đúng những người sơ đồ đã vẽ.
+//
+// --- Người đã xoá mềm: MẶC ĐỊNH KHÔNG kể ra ------------------------------
+//
+// Mặc định `gomDaXoa: false` để danh sách nói cùng một thứ tiếng với sơ đồ và
+// thẻ thông tin. Nơi gọi xin `gomDaXoa: true` thì phải tự lo phần sau: thẻ
+// thông tin đọc từ `index`, mà `index` không có họ — mở danh sách kể tên người
+// đã xoá rồi bấm vào không ra gì là tệ hơn không kể tên. Màn hình bước 24 CỐ Ý
+// không bật cờ này; nó dành cho đường "thùng rác" của bước sau.
+//
+// --- Năm hạng khớp, và vì sao xếp đúng thứ tự này ------------------------
+//
+//   0. mã ĐÚNG y hệt      — gõ `P0061` thì người ấy phải đứng đầu, không bàn
+//   1. một TIẾNG của tên bắt đầu bằng chữ đang gõ — "dung" ra "Nguyễn Trọng
+//      Dũng". Người Việt tra theo TÊN chứ không theo họ, nên hạng này phải
+//      đứng trên hạng "nằm đâu đó trong tên"
+//   2. nằm đâu đó trong tên chính
+//   3. khớp một TÊN KHÁC (huý, tự, thụy, pháp danh, thường gọi)
+//   4. mã chứa chuỗi đang gõ — gõ "0061" vẫn ra `P0061`
+//
+// Tên khác xếp dưới tên chính vì màn hình hiện tên chính; khớp mà không thấy
+// chữ mình vừa gõ ở đâu là thứ làm người dùng tưởng máy hỏng — nên hạng 3 kèm
+// theo `tenKhac` để nơi gọi in ra *"tên huý: …"*.
+
+/** Số dòng trả về tối đa khi nơi gọi không nói gì. Xem ghi chú `conThua`. */
+export const TIM_TOI_DA = 200;
+
+/**
+ * Tìm người theo tên hoặc theo mã, không phân biệt dấu và hoa thường.
+ *
+ * @param {object} tree      cây gia phả (object gốc của file JSON)
+ * @param {string} keyword   chuỗi người dùng gõ; RỖNG = lấy cả danh sách
+ * @param {{gomDaXoa?:boolean, toiDa?:number}} [tuyChon]
+ * @returns {{ket:Array, tongKhop:number, tongNguoi:number, conThua:number}}
+ *   `ket` — mỗi mục `{ id, person, ten, doiSong, deleted, hang, khop, tenKhac }`
+ *     `khop`  : 'ma' | 'ten' | 'tenKhac'
+ *     `ten`   : tên chính đã ghép sẵn; RỖNG là chuyện có thật (bản ghi chưa có
+ *               tên nào), nơi gọi phải tự lo chữ thay thế
+ *   `tongKhop` — số người khớp TRƯỚC khi cắt bớt
+ *   `conThua`  — số người khớp mà không lọt vào `ket`; > 0 thì màn hình phải
+ *                nói ra, im lặng cắt bớt là nói dối về kho dữ liệu
+ *
+ * ⚠ Chữ ký khác bản khung `(tree, keyword)`: thêm tham số thứ ba, và trả về
+ * một object chứ không phải một mảng. Trả mảng thì `conThua` không có chỗ đứng,
+ * và màn hình buộc phải tự đếm lại lần nữa trên cùng bộ dữ liệu.
+ *
+ * Hàm THUẦN: không đụng `tree`, không đọc đồng hồ, không chạm DOM. `person`
+ * trong mỗi mục là THAM CHIẾU tới bản ghi gốc — nơi gọi chỉ được đọc.
+ */
+export function searchPersons(tree, keyword, tuyChon) {
+  const ds  = (tree && Array.isArray(tree.persons)) ? tree.persons : [];
+  const tuy = tuyChon || {};
+  const gomDaXoa = tuy.gomDaXoa === true;
+  const toiDa = Number.isFinite(tuy.toiDa) ? Math.max(0, Math.trunc(tuy.toiDa)) : TIM_TOI_DA;
+
+  const kim = removeDiacritics(typeof keyword === 'string' ? keyword : '').trim();
+
+  let tongNguoi = 0;
+  const khop = [];
+
+  for (const p of ds) {
+    if (!p || !p.id) continue;
+    if (!gomDaXoa && p.deleted === true) continue;
+    tongNguoi++;
+
+    const m = doHang(p, kim);
+    if (!m) continue;
+
+    khop.push({
+      id:      p.id,
+      person:  p,
+      ten:     fullName(p),
+      doiSong: doiSongNguoi(p),
+      deleted: p.deleted === true,
+      hang:    m.hang,
+      khop:    m.khop,
+      tenKhac: m.tenKhac || '',
+    });
+  }
+
+  // Cùng hạng thì xếp theo TÊN, người chưa có tên xuống cuối — họ chỉ tìm được
+  // bằng mã, mà xếp một loạt dòng trống lên đầu danh sách thì che mất phần
+  // người dùng đọc được. Cùng tên thì xếp theo mã cho thứ tự ổn định: cùng một
+  // cây phải luôn cho cùng một thứ tự, nếu không thì bài kiểm nào cũng lung lay.
+  khop.sort((a, b) => {
+    if (a.hang !== b.hang) return a.hang - b.hang;
+    const ca = a.ten === '' ? 1 : 0;
+    const cb = b.ten === '' ? 1 : 0;
+    if (ca !== cb) return ca - cb;
+    const t = a.ten.localeCompare(b.ten, 'vi');
+    if (t !== 0) return t;
+    return a.id < b.id ? -1 : (a.id > b.id ? 1 : 0);
+  });
+
+  const ket = toiDa > 0 ? khop.slice(0, toiDa) : khop;
+  return { ket, tongKhop: khop.length, tongNguoi, conThua: khop.length - ket.length };
+}
+
+/**
+ * Một người khớp chuỗi đang gõ ở hạng nào, hay không khớp.
+ * `kim` đã bỏ dấu và chuyển chữ thường sẵn ở nơi gọi — bỏ dấu lại lần nữa cho
+ * mỗi người là việc thừa, mà gia phả có thể tới hàng nghìn bản ghi.
+ */
+function doHang(p, kim) {
+  const tenPhang = removeDiacritics(fullName(p));
+  if (kim === '') return { hang: 1, khop: 'ten' };
+
+  const maPhang = String(p.id).toLowerCase();
+  if (maPhang === kim) return { hang: 0, khop: 'ma' };
+
+  if (tenPhang !== '') {
+    for (const tieng of tenPhang.split(/\s+/)) {
+      if (tieng !== '' && tieng.indexOf(kim) === 0) return { hang: 1, khop: 'ten' };
+    }
+    if (tenPhang.indexOf(kim) !== -1) return { hang: 2, khop: 'ten' };
+  }
+
+  for (const k of getAlternateNames(p)) {
+    if (removeDiacritics(k.ten).indexOf(kim) !== -1) {
+      return { hang: 3, khop: 'tenKhac', tenKhac: k.ten };
+    }
+  }
+
+  if (maPhang.indexOf(kim) !== -1) return { hang: 4, khop: 'ma' };
+  return null;
+}
