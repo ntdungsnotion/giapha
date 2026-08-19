@@ -3,7 +3,7 @@
 // Vai trò  : Nghiệp vụ hôn nhân và quan hệ cha mẹ – con
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: utils/id.js, utils/date.js
-// Phiên bản: 1.2.0 · Cập nhật: 18/08/2026 15:40
+// Phiên bản: 1.3.0 · Cập nhật: 20/08/2026 09:30
 // ============================================================
 //
 // NHẮC LẠI HAI ĐIỀU HAY BỊ LẪN:
@@ -29,9 +29,22 @@
 // ⚠ Thêm hai bản ghi trong một lần lưu thì phải NỐI ĐUÔI: cây trả về của hàm
 // trước là cây đầu vào của hàm sau. `nextId()` đọc cây, nên chạy hai hàm tạo
 // trên cùng một cây cũ sẽ ra hai bản ghi TRÙNG MÃ.
+//
+// --- BỐN CẶP ĐỐI XỨNG, và một câu hỏi đi kèm (bước 26) ------------------
+//
+//   addChild   ↔ removeChild        con của một cặp
+//   addPartner ↔ removePartner      vợ/chồng của một cặp
+//   createUnion ↔ softDeleteUnion   ( ↔ restoreUnion để hoàn tác )
+//   reorderChildren · swapPartnerOrder · updateUnion
+//
+// Sau MỌI lần gỡ, nơi gọi phải hỏi thêm một câu mà không hàm gỡ nào tự trả lời:
+// ***cặp này còn lý do tồn tại không?*** Câu trả lời là `conLyDoTonTai()`, và nó
+// có BA dòng chứ không phải hai — đọc ghi chú của chính hàm ấy trước khi dùng.
+// Để hàm gỡ tự xoá cặp thì nó hết thuần theo nghĩa "làm đúng một việc", và nơi
+// gọi mất mất cơ hội kể cho người dùng biết là cả cặp sắp biến mất.
 
 import { nextId } from '../utils/id.js';
-import { mocNgay } from '../utils/date.js';
+import { mocNgay, parseLooseDate } from '../utils/date.js';
 
 /** Những quan hệ cha mẹ – con mà dữ liệu chấp nhận. */
 export const QUAN_HE_CON = ['birth', 'adopted', 'step', 'foster', 'thua_tu'];
@@ -147,15 +160,333 @@ export function addChild(tree, unionId, personId, relation) {
   return { tree: cayMoi, union: moi, diff };
 }
 
-export function updateUnion(tree, unionId, changes) { /* TODO — chat 2.5 */ }
+/**
+ * Sửa các trường của một cặp: `status`, `rank`, `note`, khối `marriage`.
+ *
+ * @returns {{tree:object, union:object, diff:object, thayDoi:boolean}|null}
+ *
+ * Cùng khuôn với `person.updatePerson`, kể cả chỗ `marriage.iso` tính lại từ
+ * `marriage.raw` mỗi khi `raw` đổi: `raw` là SỰ THẬT người ta chép được, `iso`
+ * chỉ là thứ máy đọc được. Nơi gọi đưa thẳng `iso` vào thì hàm tin nơi gọi.
+ *
+ * ⚠ KHÔNG đụng tới `partners` và `children`. Hai mảng ấy có hàm riêng
+ * (`addPartner`/`removePartner`, `addChild`/`removeChild`) vì mỗi lần chạm vào
+ * chúng còn phải hỏi tiếp câu *"cặp này còn lý do tồn tại không"* — xem
+ * `conLyDoTonTai`. Cho `updateUnion` nhận luôn hai mảng ấy là mở một cửa thứ hai
+ * đi vòng qua câu hỏi đó.
+ */
+export function updateUnion(tree, unionId, changes) {
+  if (!tree || !Array.isArray(tree.unions) || !unionId) return null;
 
-/** Xoá mềm: đặt cờ deleted. KHÔNG xoá khỏi mảng. */
-export function softDeleteUnion(tree, unionId) { /* TODO — chat 2.5 */ }
+  const cu = tree.unions.find((u) => u && u.id === unionId);
+  if (!cu) return null;
 
-export function removeChild(tree, unionId, personId) { /* TODO — chat 2.5 */ }
+  const moi  = JSON.parse(JSON.stringify(cu));
+  const diff = {};
+  const ch   = changes || {};
+  const ghi  = (duong, truoc, sau) => { diff[unionId + '.' + duong] = [truoc, sau]; };
 
-/** Đổi vị trí trái/phải của hai vợ chồng trên sơ đồ. */
-export function swapPartnerOrder(tree, unionId) { /* TODO — chat 2.5 */ }
+  if (ch.status !== undefined) {
+    const sau = chuoi(ch.status) || 'married';
+    if (moi.status !== sau) { ghi('status', moi.status, sau); moi.status = sau; }
+  }
+
+  if (ch.rank !== undefined) {
+    const n   = Number(ch.rank);
+    const sau = (Number.isFinite(n) && n > 0) ? n : 1;
+    if (moi.rank !== sau) { ghi('rank', moi.rank, sau); moi.rank = sau; }
+  }
+
+  if (ch.note !== undefined) {
+    const sau   = chuoi(ch.note);
+    const truoc = typeof moi.note === 'string' ? moi.note : '';
+    if (truoc !== sau) { ghi('note', truoc, sau); moi.note = sau; }
+  }
+
+  if (ch.marriage && typeof ch.marriage === 'object') {
+    if (!moi.marriage || typeof moi.marriage !== 'object') {
+      moi.marriage = { iso: null, raw: '', place: '' };
+    }
+    const m = moi.marriage;
+
+    if (ch.marriage.raw !== undefined) {
+      const sau   = chuoi(ch.marriage.raw);
+      const truoc = typeof m.raw === 'string' ? m.raw : '';
+      if (truoc !== sau) {
+        ghi('marriage.raw', truoc, sau);
+        m.raw = sau;
+
+        const isoCu  = (m.iso === undefined || m.iso === null || m.iso === '') ? null : m.iso;
+        const isoMoi = ch.marriage.iso !== undefined
+          ? (chuoi(ch.marriage.iso) || null)
+          : parseLooseDate(sau).iso;
+        if (isoCu !== isoMoi) { ghi('marriage.iso', isoCu, isoMoi); m.iso = isoMoi; }
+      }
+    }
+
+    if (ch.marriage.place !== undefined) {
+      const sau   = chuoi(ch.marriage.place);
+      const truoc = typeof m.place === 'string' ? m.place : '';
+      if (truoc !== sau) { ghi('marriage.place', truoc, sau); m.place = sau; }
+    }
+  }
+
+  const cayMoi = Object.assign({}, tree, {
+    unions: tree.unions.map((u) => (u && u.id === unionId ? moi : u)),
+  });
+
+  return { tree: cayMoi, union: moi, diff, thayDoi: Object.keys(diff).length > 0 };
+}
+
+/**
+ * Xoá mềm: đặt cờ deleted. KHÔNG xoá khỏi mảng.
+ * @returns {{tree:object, union:object, diff:object}|null}
+ *          null khi không có cặp ấy, hoặc khi cờ đã đúng sẵn.
+ */
+export function softDeleteUnion(tree, unionId) { return datCoXoaUnion(tree, unionId, true); }
+
+/** Hoàn tác của `softDeleteUnion`: lật cờ ngược lại. */
+export function restoreUnion(tree, unionId) { return datCoXoaUnion(tree, unionId, false); }
+
+function datCoXoaUnion(tree, unionId, co) {
+  if (!tree || !Array.isArray(tree.unions) || !unionId) return null;
+
+  const cu = tree.unions.find((u) => u && u.id === unionId);
+  if (!cu) return null;
+  if ((cu.deleted === true) === co) return null;   // cờ đã đúng sẵn
+
+  const moi = JSON.parse(JSON.stringify(cu));
+  moi.deleted = co;
+
+  const cayMoi = Object.assign({}, tree, {
+    unions: tree.unions.map((u) => (u && u.id === unionId ? moi : u)),
+  });
+
+  const diff = {};
+  diff[unionId + '.deleted'] = [cu.deleted === true, co];
+
+  return { tree: cayMoi, union: moi, diff };
+}
+
+/**
+ * Gỡ một người con ra khỏi một cặp.
+ *
+ * @returns {{tree:object, union:object, diff:object}|null}
+ *          null khi thiếu cặp, hoặc người ấy VỐN không phải con của cặp này.
+ *
+ * ⚠ KHÔNG đánh số lại `order` của những người con còn lại. Cám dỗ là dồn về
+ * 1…n cho gọn; đừng. `layout.js` chỉ SẮP theo `order`, nên một lỗ hổng trong
+ * dãy số không hại gì — còn đánh số lại thì mỗi anh chị em không hề bị đụng tới
+ * cũng có một dòng trong `diff`, và lịch sử `changeLog` kể rằng cả nhà vừa đổi
+ * chỗ trong khi thật ra chỉ một người rời đi. `addChild` lấy số lớn nhất cộng
+ * một nên lỗ hổng ấy cũng không bao giờ sinh ra hai người trùng số.
+ *
+ * ⚠ Hàm này KHÔNG tự xoá cặp khi gỡ mất người con cuối cùng — nó là hàm thuần
+ * làm đúng một việc. Câu hỏi *"cặp này còn lý do tồn tại không"* là việc của nơi
+ * gọi, và câu trả lời nằm ở `conLyDoTonTai` ngay dưới đây.
+ */
+export function removeChild(tree, unionId, personId) {
+  if (!tree || !Array.isArray(tree.unions) || !unionId || !personId) return null;
+
+  const cu = tree.unions.find((u) => u && u.id === unionId && !u.deleted);
+  if (!cu) return null;
+
+  const cacCon = (Array.isArray(cu.children) ? cu.children : []).filter((c) => c && c.personId);
+  if (!cacCon.some((c) => c.personId === personId)) return null;
+
+  const moi = JSON.parse(JSON.stringify(cu));
+  moi.children = (Array.isArray(cu.children) ? cu.children : [])
+    .filter((c) => !(c && c.personId === personId));
+
+  const cayMoi = Object.assign({}, tree, {
+    unions: tree.unions.map((u) => (u && u.id === unionId ? moi : u)),
+  });
+
+  const diff = {};
+  diff[unionId + '.children'] = [
+    cacCon.map((c) => c.personId).join(' + '),
+    moi.children.map((c) => c && c.personId).filter(Boolean).join(' + '),
+  ];
+
+  return { tree: cayMoi, union: moi, diff };
+}
+
+/**
+ * Thêm một người đã có sẵn vào một cặp, với tư cách VỢ/CHỒNG.
+ *
+ * @returns {{tree:object, union:object, diff:object}|null}
+ *          null khi thiếu cặp, thiếu người, người ấy đã ở trong cặp, hoặc cặp
+ *          đã đủ HAI người.
+ *
+ * ⚠ Chặn ở hai người là cố ý, và nó KHÔNG phải một phán xét về đa thê: trong mô
+ * hình dữ liệu này **đa thê là NHIỀU CẶP**, không phải một cặp ba người —
+ * `U0004`/`U0005`, hai đời vợ ông Cương, là ca thật đang có trong dữ liệu. Cho
+ * `partners` dài ba người thì `rank` (vợ cả / vợ thứ) hết chỗ bám, `layout.js`
+ * không biết vẽ ai bên trái ai bên phải, và `gedcom.js` không ánh xạ nổi sang
+ * cặp `HUSB`/`WIFE`.
+ *
+ * ⚠ `partnerOrder` được nối thêm ở CUỐI, và được dọn cho khớp `partners` trước
+ * đã — hai mảng lệch nhau thì `layout.js` đọc `partnerOrder` ra một mã không
+ * còn trong cặp. Nhắc lại: `partnerOrder` là vị trí TRÁI/PHẢI, chỉ được dùng khi
+ * hai người cùng giới hoặc thiếu giới (QUY-TAC-VE §2); `rank` mới là vợ cả/vợ thứ.
+ */
+export function addPartner(tree, unionId, personId) {
+  if (!tree || !Array.isArray(tree.unions) || !unionId || !personId) return null;
+  if (!Array.isArray(tree.persons)) return null;
+  if (!tree.persons.some((p) => p && p.id === personId && !p.deleted)) return null;
+
+  const cu = tree.unions.find((u) => u && u.id === unionId && !u.deleted);
+  if (!cu) return null;
+
+  const ds = (Array.isArray(cu.partners) ? cu.partners : []).filter(Boolean);
+  if (ds.indexOf(personId) >= 0) return null;
+  if (ds.length >= 2) return null;
+
+  const moi = JSON.parse(JSON.stringify(cu));
+  moi.partners = ds.concat([personId]);
+  moi.partnerOrder = (Array.isArray(cu.partnerOrder) ? cu.partnerOrder : [])
+    .filter((id) => id && moi.partners.indexOf(id) >= 0)
+    .concat([personId]);
+
+  const cayMoi = Object.assign({}, tree, {
+    unions: tree.unions.map((u) => (u && u.id === unionId ? moi : u)),
+  });
+
+  const diff = {};
+  diff[unionId + '.partners'] = [ds.join(' + '), moi.partners.join(' + ')];
+
+  return { tree: cayMoi, union: moi, diff };
+}
+
+/**
+ * Gỡ một người ra khỏi hàng VỢ/CHỒNG của một cặp.
+ *
+ * @returns {{tree:object, union:object, diff:object}|null}
+ *          null khi thiếu cặp, hoặc người ấy vốn không phải partner của cặp này.
+ *
+ * ⚠ HỆ QUẢ PHẢI NÓI RA TRƯỚC KHI GỌI, và nó lớn hơn vẻ ngoài của việc: quan hệ
+ * cha mẹ – con trong mô hình này đi QUA cặp, chứ không nối thẳng người với
+ * người. Nên gỡ một người ra khỏi `partners` của một cặp CÒN CON thì người ấy
+ * đồng thời thôi làm cha/mẹ của tất cả những người con ấy. Không có cách nào
+ * tách hai việc — muốn giữ quan hệ cha con mà bỏ quan hệ vợ chồng thì thứ phải
+ * đổi là `status` của cặp (`'divorced'`), không phải `partners`. Nơi gọi phải kể
+ * tên từng người con ra trước khi hỏi (`pages/person-edit.js`, luật 9).
+ */
+export function removePartner(tree, unionId, personId) {
+  if (!tree || !Array.isArray(tree.unions) || !unionId || !personId) return null;
+
+  const cu = tree.unions.find((u) => u && u.id === unionId && !u.deleted);
+  if (!cu) return null;
+
+  const ds = (Array.isArray(cu.partners) ? cu.partners : []).filter(Boolean);
+  if (ds.indexOf(personId) < 0) return null;
+
+  const moi = JSON.parse(JSON.stringify(cu));
+  moi.partners = ds.filter((id) => id !== personId);
+  moi.partnerOrder = (Array.isArray(cu.partnerOrder) ? cu.partnerOrder : [])
+    .filter((id) => id && id !== personId && moi.partners.indexOf(id) >= 0);
+
+  const cayMoi = Object.assign({}, tree, {
+    unions: tree.unions.map((u) => (u && u.id === unionId ? moi : u)),
+  });
+
+  const diff = {};
+  diff[unionId + '.partners'] = [ds.join(' + '), moi.partners.join(' + ')];
+
+  return { tree: cayMoi, union: moi, diff };
+}
+
+/**
+ * Cặp này còn KHẲNG ĐỊNH được điều gì không? Không thì nơi gọi phải xoá mềm nó.
+ *
+ * Gọi sau MỌI lần gỡ, dù gỡ người con hay gỡ vợ/chồng.
+ *
+ *   · từ 2 partner trở lên       → GIỮ — *"hai người này là vợ chồng"*. Đúng dù
+ *     chưa có người con nào, và `layout.js` vẫn vẽ cặp ấy ra.
+ *   · 1 partner và từ 1 con      → GIỮ — *"người này là cha/mẹ của mấy người
+ *     kia"*. Gia phả cũ đầy những bà mẹ không còn ai nhớ tên chồng.
+ *   · 0 partner và từ 2 con      → GIỮ — *"mấy người này là anh em ruột"*. Một
+ *     `FAM` chỉ có `CHIL`, không `HUSB` lẫn `WIFE`, là hợp lệ theo GEDCOM và
+ *     đúng cảnh đời trên cùng của gia phả cũ, nơi chỉ còn nhớ được mấy anh em.
+ *   · còn lại (0–1 partner, 0 con · 0 partner, 1 con) → hết khẳng định, XOÁ MỀM.
+ *
+ * --- ĐÍNH CHÍNH luật đã chốt ở bước 21 -----------------------------------
+ *
+ * `NK-INDEX` chép luật ấy thành ba dòng: *"≥2 partner → giữ; 0–1 partner mà ≥2
+ * con → giữ; 0–1 partner mà ≤1 con → XOÁ MỀM."* Dòng cuối **quét nhầm** ca
+ * **1 partner + 1 con** — mà đó là ca `layout.js` VẼ RA (điều kiện bỏ qua của nó
+ * là `partners.length < 2` **và** `children.length === 0`, hai vế cùng lúc). Xoá
+ * cặp ấy là bẻ gãy một quan hệ cha/mẹ – con có thật, chỉ vì cặp có mỗi một người
+ * con và người cha thì goá.
+ *
+ * Luật cũ viết ra khi đang nhìn đúng MỘT ca — *gỡ người con cuối cùng ra khỏi
+ * một cặp một người*, tức ca `con === 0` sau khi gỡ. Áp cho ca ấy thì nó đúng.
+ * Lại đúng cái họ lỗi mà dự án này ghi đi ghi lại: **quy tắc phát biểu qua ví dụ
+ * điển hình của nó** (`QUY-TAC-VE §7` bước 12, `§9` bước 15, luật B bước 20,
+ * ghi chú `raSoatMotNguoi` bước 18). Nên câu hỏi ở đây được viết lại cho khỏi
+ * phải liệt kê ca: ***cặp này còn khẳng định được điều gì không?***
+ *
+ * ⚠ Hàm ĐẾM TRÊN BẢN GHI, không đếm qua chỉ mục. Người mang cờ `deleted` vẫn
+ * nằm nguyên trong `partners`/`children` (xoá mềm cố ý không dọn hai mảng ấy —
+ * xem `person.softDeletePerson`), nên một cặp mà mọi người đã bị xoá mềm vẫn
+ * được tính là còn khẳng định. Đúng ý: hoàn tác một người là họ hiện lại ngay,
+ * không phải dựng lại cả cặp.
+ */
+export function conLyDoTonTai(union) {
+  if (!union) return false;
+
+  const soPartner = (Array.isArray(union.partners) ? union.partners : [])
+    .filter(Boolean).length;
+  const soCon = (Array.isArray(union.children) ? union.children : [])
+    .filter((c) => c && c.personId).length;
+
+  if (soPartner >= 2) return true;                    // hai người này là vợ chồng
+  if (soPartner === 1 && soCon >= 1) return true;     // người này là cha/mẹ của…
+  return soPartner === 0 && soCon >= 2;               // mấy người này là anh em ruột
+}
+
+/**
+ * Đổi vị trí trái/phải của hai vợ chồng trên sơ đồ.
+ *
+ * @returns {{tree:object, union:object, diff:object}|null}
+ *          null khi cặp không có, hoặc chưa đủ hai người để mà đổi chỗ.
+ *
+ * ⚠ Chỉ đổi `partnerOrder`, tuyệt đối không đụng `partners`: thứ tự trong
+ * `partners` không mang nghĩa gì cả, còn `partnerOrder` mới là vị trí trên hình.
+ *
+ * ⚠ Và phải biết trước khi trông đợi vào nó: `layout.js` xếp nam bên trái, nữ
+ * bên phải theo GIỚI TÍNH, nên `partnerOrder` chỉ có tác dụng khi hai người
+ * CÙNG GIỚI hoặc thiếu giới (QUY-TAC-VE §2). Gọi hàm này cho một cặp nam–nữ thì
+ * dữ liệu đổi thật mà hình không nhúc nhích — đúng ý, nhưng nơi gọi phải nói
+ * trước, nếu không người dùng bấm rồi tưởng app hỏng.
+ */
+export function swapPartnerOrder(tree, unionId) {
+  if (!tree || !Array.isArray(tree.unions) || !unionId) return null;
+
+  const cu = tree.unions.find((u) => u && u.id === unionId && !u.deleted);
+  if (!cu) return null;
+
+  const dsPartner = (Array.isArray(cu.partners) ? cu.partners : []).filter(Boolean);
+  if (dsPartner.length < 2) return null;
+
+  // `partnerOrder` thiếu hoặc lệch thì lấy `partners` làm gốc — thà đổi chỗ trên
+  // một dải dựng lại còn hơn đọc một dải kể tên người không còn trong cặp.
+  const cuOrder = (Array.isArray(cu.partnerOrder) ? cu.partnerOrder : [])
+    .filter((id) => id && dsPartner.indexOf(id) >= 0);
+  const goc = (cuOrder.length === dsPartner.length) ? cuOrder : dsPartner;
+
+  const moi = JSON.parse(JSON.stringify(cu));
+  moi.partnerOrder = goc.slice().reverse();
+
+  const cayMoi = Object.assign({}, tree, {
+    unions: tree.unions.map((u) => (u && u.id === unionId ? moi : u)),
+  });
+
+  const diff = {};
+  diff[unionId + '.partnerOrder'] = [goc.join(' + '), moi.partnerOrder.join(' + ')];
+
+  return { tree: cayMoi, union: moi, diff };
+}
 
 /**
  * Đặt lại thứ tự anh chị em.

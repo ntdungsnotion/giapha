@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render,union}, utils/text,
 //            pages/{person-detail,person-edit,person-list,settings}
-// Phiên bản: 1.11.0 · Cập nhật: 19/08/2026 22:25
+// Phiên bản: 1.12.0 · Cập nhật: 20/08/2026 09:30
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -68,7 +68,8 @@ import { renderTree } from '../domains/render.js';
 import { getSpouses, getParents, getChildren, getSiblings } from '../domains/union.js';
 import { fullName, doiSongNguoi } from '../utils/text.js';
 import { openPersonDetail, closePersonDetail } from './person-detail.js';
-import { openPersonForm, closePersonForm, quickAddChild, xoaNguoi } from './person-edit.js';
+import { openPersonForm, closePersonForm, quickAddChild, quickAddParent,
+         quickAddSpouse, linkExisting, goNoiNguoi, xoaNguoi } from './person-edit.js';
 import { openPersonList, closePersonList } from './person-list.js';
 import { openSettings, closeSettings } from './settings.js';
 
@@ -718,12 +719,20 @@ function moDanhSachNguoi() {
   const goc = xuLyThe();
   const dongTruoc = (fn) => (x) => { closePersonList(); fn(x); };
 
+  // Bọc CẢ TÁM, không bọc bốn rồi để bốn cái mới đi thẳng: bốn việc của bước 26
+  // cũng mở hộp riêng của chúng, và cái danh sách còn nằm đè lên trên vẫn che
+  // mất đúng kết quả người dùng vừa gây ra. `onThemChaMe` nhận hai tham số nên
+  // phải bọc riêng — `dongTruoc` chỉ chuyền được một.
   openPersonList({
     onXemHoSo: (id) => openPersonDetail(id, {
-      onChonNguoi: dongTruoc(goc.onChonNguoi),
-      onSuaNguoi:  dongTruoc(goc.onSuaNguoi),
-      onThemCon:   dongTruoc(goc.onThemCon),
-      onXoaNguoi:  dongTruoc(goc.onXoaNguoi),
+      onChonNguoi:  dongTruoc(goc.onChonNguoi),
+      onSuaNguoi:   dongTruoc(goc.onSuaNguoi),
+      onThemChaMe:  (pid, gioi) => { closePersonList(); goc.onThemChaMe(pid, gioi); },
+      onThemBanDoi: dongTruoc(goc.onThemBanDoi),
+      onThemCon:    dongTruoc(goc.onThemCon),
+      onKetNoi:     dongTruoc(goc.onKetNoi),
+      onGoNoi:      dongTruoc(goc.onGoNoi),
+      onXoaNguoi:   dongTruoc(goc.onXoaNguoi),
     }),
   });
 }
@@ -734,15 +743,23 @@ function moTheNguoiTrungTam() {
 }
 
 /**
- * Bốn việc thẻ thông tin báo ngược ra ngoài. Gom một chỗ để hai nơi mở thẻ —
+ * Tám việc thẻ thông tin báo ngược ra ngoài. Gom một chỗ để hai nơi mở thẻ —
  * chạm giữ và nút ⓘ — không bao giờ mọc ra hai bộ nút khác nhau.
+ *
+ * ⚠ Bảy trong tám việc này là bảy mục của MENU VÒNG TRÒN, và cả bảy đều phải có
+ * mặt ở đây. Thiếu một cái thì mục ấy vẫn mọc ra trên thẻ nhưng mờ đi và không
+ * bấm được — tức một nút chết, đúng thứ điểm dừng của bước 26 cấm.
  */
 function xuLyThe() {
   return {
-    onChonNguoi: (id) => setFocusPerson(id),
-    onSuaNguoi:  moFormSua,
-    onThemCon:   moFormThemCon,
-    onXoaNguoi:  moHopXoa,
+    onChonNguoi:  (id) => setFocusPerson(id),
+    onSuaNguoi:   moFormSua,
+    onThemChaMe:  moFormThemChaMe,
+    onThemBanDoi: moFormThemBanDoi,
+    onThemCon:    moFormThemCon,
+    onKetNoi:     moKetNoi,
+    onGoNoi:      moGoNoi,
+    onXoaNguoi:   moHopXoa,
   };
 }
 
@@ -767,6 +784,51 @@ function moFormSua(personId) {
  */
 function moFormThemCon(noiVao) {
   quickAddChild(noiVao, { onDaLuu: () => refresh() });
+}
+
+/**
+ * Thêm một người cha hoặc mẹ. `gioi` do thẻ thông tin hỏi xong rồi mới báo ra.
+ *
+ * `refresh()` chứ không `setFocusPerson(idNguoiMoi)`: cha mẹ vừa thêm đứng ngay
+ * phía trên người dùng đang xem, tức đã có mặt trong sơ đồ đang mở — trừ khi
+ * người ta đang lọc 0 đời tổ tiên, và lúc ấy kéo cả sơ đồ đi là làm mất chỗ họ
+ * đang đứng để đổi lấy một thứ họ tự bấm hai lần là thấy.
+ */
+function moFormThemChaMe(personId, gioi) {
+  quickAddParent(personId, gioi, { onDaLuu: () => refresh() });
+}
+
+function moFormThemBanDoi(personId) {
+  quickAddSpouse(personId, { onDaLuu: () => refresh() });
+}
+
+/**
+ * Kết nối với một người ĐÃ CÓ SẴN: chọn người trước, chọn quan hệ sau.
+ *
+ * ⚠ THỨ TỰ NÀY LÀ CỐ Ý. Hỏi quan hệ trước rồi mới mở danh sách thì hai lớp phủ
+ * chồng lên nhau — hộp của `person-edit.js` ở `z-index` 35, danh sách ở 30, nên
+ * cái mở sau lại nằm dưới cái mở trước và người dùng bấm vào khoảng không. Chọn
+ * người trước thì mỗi lúc chỉ có đúng một lớp phủ trên màn hình.
+ *
+ * ⚠ Và chỗ chọn người ĐÃ CÓ SẴN từ bước 24: `openPersonList({ onChonNguoi })`
+ * tự đổi tiêu đề thành "Chọn một người". Đừng dựng cái thứ hai.
+ */
+function moKetNoi(personId) {
+  openPersonList({
+    onChonNguoi: (targetId) => {
+      closePersonList();
+      linkExisting(personId, targetId, '', { onDaLuu: () => refresh() });
+    },
+  });
+}
+
+/**
+ * Gỡ một mối nối. Không cần màn hình Danh sách người: mối nối của một người
+ * đếm trên đầu ngón tay, và bắt người ta đi tìm bằng ô gõ tên một người mà app
+ * đang có sẵn danh sách là bắt làm thừa.
+ */
+function moGoNoi(personId) {
+  goNoiNguoi(personId, { onDaLuu: () => refresh() });
 }
 
 /**

@@ -89,7 +89,8 @@ export function openPersonList(xuLy = {}) {
   const hop = document.createElement('div');
   hop.id = 'giapha-danh-sach';
   hop.style.cssText =
-    'background:#fffdf9;border-radius:14px;padding:18px;width:100%;max-width:420px;' +
+    'background:#fffdf9;border-radius:14px;padding:18px;box-sizing:border-box;' +
+    'width:100%;max-width:420px;' +
     'height:82vh;display:flex;flex-direction:column;' +
     'box-shadow:0 8px 32px rgba(42,38,34,.28)';
 
