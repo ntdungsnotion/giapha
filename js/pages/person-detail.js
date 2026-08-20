@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
 //            utils/{text,date,image}
-// Phiên bản: 1.8.0 · Cập nhật: 20/08/2026 16:40
+// Phiên bản: 1.9.0 · Cập nhật: 20/08/2026 21:10
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -113,7 +113,7 @@ const KIEU_HOP =
  *          onThemChaMe?:function(string,string), onThemBanDoi?:function(string),
  *          onThemCon?:function({unionId?:string, chaMeId?:string}),
  *          onKetNoi?:function(string), onGoNoi?:function(string),
- *          onXoaNguoi?:function(string)}} [xuLy]
+ *          onXoaNguoi?:function(string), onSuaCap?:function(string)}} [xuLy]
  *        `onChonNguoi`  bấm một người trong phần quan hệ, hoặc nút "Đưa ra giữa
  *                       sơ đồ". Thẻ tự đóng trước khi gọi.
  *        `onSuaNguoi`   nút *"Sửa hồ sơ"* dưới THẺ (không còn ở vòng tròn).
@@ -124,6 +124,8 @@ const KIEU_HOP =
  *        `onKetNoi`     nơi gọi mở màn hình Danh sách người để chọn người kia.
  *        `onGoNoi`      nơi gọi mở danh sách mối nối hiện có.
  *        `onXoaNguoi`   thẻ KHÔNG hỏi lại gì.
+ *        `onSuaCap`     nút dưới nhóm Vợ/chồng. Chỉ có mã NGƯỜI — người có nhiều
+ *                       cặp thì `person-edit.js` hỏi cặp nào (bước 29).
  *
  * ⚠ SÁU MỤC CỦA VÒNG TRÒN ĐỀU LÀ CỬA, KHÔNG PHẢI VIỆC. Mọi hộp xác nhận, mọi
  * phép rà, mọi đường ghi và mọi đường hoàn tác nằm ở `person-edit.js` — nơi có
@@ -420,7 +422,7 @@ function veQuanHe(index, p, xuLy) {
   }
 
   ra.push(...veNhom('Cha mẹ', chaMe, xuLy));
-  ra.push(...veNhom('Vợ/chồng', banDoi, xuLy));
+  ra.push(...veNhom('Vợ/chồng', banDoi, xuLy, nutSuaCap(p, xuLy)));
   ra.push(...veNhom('Con', con, xuLy));
   return ra;
 }
@@ -443,7 +445,43 @@ function themNguoi(vao, index, id, ghiChu) {
   vao.push({ id, ghiChu: ghiChu || '' });
 }
 
-function veNhom(tieuDe, danhSach, xuLy) {
+/**
+ * Nút *"Sửa cặp"*, đứng ngay dưới danh sách vợ/chồng (bước 29).
+ *
+ * ⚠ **KHÔNG cho nó lên vành vòng tròn.** Vành đã co từ tám mục xuống sáu ở
+ * bước 26, và co là để mỗi mục có 60° thay vì 45° — thêm mục thứ bảy là trả
+ * lại đúng cái hỏng vừa sửa xong (nhãn của mục này đè lên vòng tròn của mục
+ * kế). Chỗ đúng của nó là ngay dưới thứ nó sắp sửa, cùng một lý do đã đưa
+ * *"Sửa hồ sơ"* xuống dưới THẺ.
+ *
+ * ⚠ Và nó là một nút RIÊNG một dòng, không phải một đích chạm thứ hai nhét vào
+ * dòng tên người: hai đích chạm sát nhau trong một dòng cao 44px là mời bấm
+ * nhầm (luật đã chốt ở `pages/person-list.js`).
+ *
+ * @returns {HTMLElement|null} null khi nơi gọi không nhận việc này — lúc ấy
+ *          nhóm Vợ/chồng hiện như cũ, không có nút chết nào mọc ra.
+ */
+function nutSuaCap(p, xuLy) {
+  if (!xuLy || !xuLy.onSuaCap) return null;
+  if (!suaDuoc()) return null;   // chỉ có quyền xem thì không mọc nút sửa
+
+  const nut = document.createElement('button');
+  nut.type = 'button';
+  nut.dataset.viec = 'sua-cap';
+  nut.style.cssText =
+    'display:block;width:100%;text-align:left;padding:9px 11px;font-family:inherit;' +
+    'font-size:13px;color:#8a8078;border:1px dashed #e6e0d8;border-radius:8px;' +
+    'background:none;cursor:pointer;touch-action:manipulation';
+  nut.textContent = 'Sửa cặp — ngày cưới, ly hôn, thứ bậc, chỗ đứng trên sơ đồ';
+
+  nut.addEventListener('click', () => {
+    closePersonDetail();
+    xuLy.onSuaCap(p.id);
+  });
+  return nut;
+}
+
+function veNhom(tieuDe, danhSach, xuLy, nutPhu) {
   if (danhSach.length === 0) return [];   // nhóm rỗng thì ẩn cả nhóm
 
   const nhan = document.createElement('div');
@@ -484,6 +522,7 @@ function veNhom(tieuDe, danhSach, xuLy) {
     hop.append(nut);
   }
 
+  if (nutPhu) hop.append(nutPhu);
   return [nhan, hop];
 }
 

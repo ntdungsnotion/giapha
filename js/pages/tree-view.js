@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render,union}, utils/text,
 //            pages/{person-detail,person-edit,person-list,settings}
-// Phiên bản: 1.14.0 · Cập nhật: 20/08/2026 16:40
+// Phiên bản: 1.15.0 · Cập nhật: 20/08/2026 21:10
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -70,8 +70,9 @@ import { fullName, doiSongNguoi } from '../utils/text.js';
 import { openPersonMenu, openPersonDetail,
          closePersonDetail } from './person-detail.js';
 import { openPersonForm, closePersonForm, quickAddChild, quickAddParent,
-         quickAddSpouse, linkExisting, goNoiNguoi, xoaNguoi } from './person-edit.js';
-import { openPersonList, closePersonList } from './person-list.js';
+         quickAddSpouse, linkExisting, goNoiNguoi, xoaNguoi,
+         openUnionForm, khoiPhucNguoi, khoiPhucCap } from './person-edit.js';
+import { openPersonList, closePersonList, openThungRac } from './person-list.js';
 import { openSettings, closeSettings } from './settings.js';
 
 let khungCuon = null;   // div cuộn được, bọc quanh SVG
@@ -730,6 +731,7 @@ function moDanhSachNguoi() {
   // phả"* dẫn sang vòng tròn, và vòng tròn ấy nhận đúng bộ hàm xử lý bọc sẵn
   // dưới đây — nên đường nào cũng đóng danh sách trước khi đi tiếp.
   openPersonList({
+    onThungRac: moThungRac,
     onXemHoSo: (id) => openPersonDetail(id, {
       onChonNguoi:  dongTruoc(goc.onChonNguoi),
       onSuaNguoi:   dongTruoc(goc.onSuaNguoi),
@@ -739,9 +741,37 @@ function moDanhSachNguoi() {
       onKetNoi:     dongTruoc(goc.onKetNoi),
       onGoNoi:      dongTruoc(goc.onGoNoi),
       onXoaNguoi:   dongTruoc(goc.onXoaNguoi),
+      onSuaCap:     dongTruoc(goc.onSuaCap),
     }),
   });
 }
+
+
+/**
+ * Mở form sửa cặp. `refresh()` chứ không dời người trung tâm: ngày cưới và
+ * thứ bậc không đổi ai đứng đâu, còn công tắc *đổi chỗ trái/phải* thì đổi đúng
+ * hai ô đang nằm trong sơ đồ người dùng đang nhìn.
+ */
+function moFormSuaCap(personId) {
+  openUnionForm(personId, { onDaLuu: () => refresh() });
+}
+
+/**
+ * Mở THÙNG RÁC, và nối hai đường quay lại của nó.
+ *
+ * Sau mỗi lần đưa trở lại thì **mở lại thùng rác**, không đóng hẳn: xoá nhầm
+ * thường xoá nhầm vài thứ liền nhau — người bị xoá kéo theo cặp của họ — nên
+ * bắt người dùng bấm 🔍 → Thùng rác lại từ đầu cho mỗi dòng là bắt làm thừa.
+ * `refresh()` chạy trước để sơ đồ phía sau đã đúng khi thùng rác mở lại.
+ */
+function moThungRac() {
+  const moLai = () => { refresh(); moThungRac(); };
+  openThungRac({
+    onKhoiPhucNguoi: (id) => khoiPhucNguoi(id, { onDaLuu: moLai }),
+    onKhoiPhucCap:   (id) => khoiPhucCap(id,   { onDaLuu: moLai }),
+  });
+}
+
 
 /**
  * Nút ⓘ ở cụm trên phải: mở MENU của người đang đứng giữa, không mở thẳng thẻ
@@ -757,12 +787,12 @@ function moTheNguoiTrungTam() {
 }
 
 /**
- * Tám việc thẻ thông tin báo ngược ra ngoài. Gom một chỗ để hai nơi mở thẻ —
+ * CHÍN việc thẻ thông tin báo ngược ra ngoài. Gom một chỗ để hai nơi mở thẻ —
  * chạm giữ và nút ⓘ — không bao giờ mọc ra hai bộ nút khác nhau.
  *
- * ⚠ Bảy trong tám việc này là bảy mục của MENU VÒNG TRÒN, và cả bảy đều phải có
- * mặt ở đây. Thiếu một cái thì mục ấy vẫn mọc ra trên thẻ nhưng mờ đi và không
- * bấm được — tức một nút chết, đúng thứ điểm dừng của bước 26 cấm.
+ * ⚠ Sáu trong chín việc này là sáu mục của MENU VÒNG TRÒN, và cả sáu đều phải
+ * có mặt ở đây. Thiếu một cái thì mục ấy vẫn mọc ra trên thẻ nhưng mờ đi và
+ * không bấm được — tức một nút chết, đúng thứ điểm dừng của bước 26 cấm.
  */
 function xuLyThe() {
   return {
@@ -774,6 +804,7 @@ function xuLyThe() {
     onKetNoi:     moKetNoi,
     onGoNoi:      moGoNoi,
     onXoaNguoi:   moHopXoa,
+    onSuaCap:     moFormSuaCap,
   };
 }
 

@@ -3,7 +3,7 @@
 // Vai trò  : Nghiệp vụ hôn nhân và quan hệ cha mẹ – con
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: utils/id.js, utils/date.js
-// Phiên bản: 1.3.0 · Cập nhật: 20/08/2026 09:30
+// Phiên bản: 1.4.0 · Cập nhật: 20/08/2026 21:10
 // ============================================================
 //
 // NHẮC LẠI HAI ĐIỀU HAY BỊ LẪN:
@@ -36,6 +36,7 @@
 //   addPartner ↔ removePartner      vợ/chồng của một cặp
 //   createUnion ↔ softDeleteUnion   ( ↔ restoreUnion để hoàn tác )
 //   reorderChildren · swapPartnerOrder · updateUnion
+//   listDeletedUnions              kể tên cặp trong THÙNG RÁC (bước 29)
 //
 // Sau MỌI lần gỡ, nơi gọi phải hỏi thêm một câu mà không hàm gỡ nào tự trả lời:
 // ***cặp này còn lý do tồn tại không?*** Câu trả lời là `conLyDoTonTai()`, và nó
@@ -266,6 +267,42 @@ function datCoXoaUnion(tree, unionId, co) {
   diff[unionId + '.deleted'] = [cu.deleted === true, co];
 
   return { tree: cayMoi, union: moi, diff };
+}
+
+/**
+ * Kể ra mọi cặp đang mang cờ `deleted` — thứ màn hình THÙNG RÁC cần.
+ *
+ * @param {object} tree
+ * @returns {{id:string, union:object, partnerIds:string[], childIds:string[]}[]}
+ *          xếp theo mã cho thứ tự ổn định; mảng rỗng khi thùng rác không có cặp nào.
+ *
+ * --- Vì sao hàm này đọc CÂY chứ không đọc CHỈ MỤC -----------------------
+ *
+ * Cùng một lý do đã làm `person.searchPersons` đọc thẳng `tree.persons`:
+ * `buildIndex()` cố ý bỏ qua mọi bản ghi mang cờ `deleted`, nên đi qua chỉ mục
+ * thì hàm này luôn trả về mảng rỗng — đúng cái nó sinh ra để tìm lại là thứ
+ * chỉ mục không bao giờ có.
+ *
+ * `union` trả ra là THAM CHIẾU tới bản ghi gốc. Nơi gọi chỉ được đọc; muốn đưa
+ * cặp trở lại thì gọi `restoreUnion`, hàm ấy tự chép bản sao.
+ */
+export function listDeletedUnions(tree) {
+  const ds = (tree && Array.isArray(tree.unions)) ? tree.unions : [];
+  const ra = [];
+
+  for (const u of ds) {
+    if (!u || !u.id || u.deleted !== true) continue;
+    ra.push({
+      id: u.id,
+      union: u,
+      partnerIds: (Array.isArray(u.partners) ? u.partners : []).filter(Boolean),
+      childIds: (Array.isArray(u.children) ? u.children : [])
+        .filter((c) => c && c.personId).map((c) => c.personId),
+    });
+  }
+
+  ra.sort((a, b) => (a.id < b.id ? -1 : (a.id > b.id ? 1 : 0)));
+  return ra;
 }
 
 /**

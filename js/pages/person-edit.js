@@ -1,10 +1,11 @@
 // ============================================================
 // giapha · js/pages/person-edit.js
-// Vai trò  : Form thêm/sửa người, ảnh đại diện, và các thao tác thêm quan hệ
+// Vai trò  : Form thêm/sửa người và SỬA CẶP, ảnh đại diện, thêm quan hệ,
+//            xoá · hoàn tác · đưa trở lại từ thùng rác
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate,media,render},
 //            services/{repo,gas}, utils/{graph,text,date,image}
-// Phiên bản: 1.8.0 · Cập nhật: 20/08/2026 16:40
+// Phiên bản: 1.9.0 · Cập nhật: 20/08/2026 21:10
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -107,7 +108,8 @@ import { state } from '../state.js';
 import { updatePerson, createPerson,
          softDeletePerson, restorePerson } from '../domains/person.js';
 import { createUnion, addChild, addPartner, removeChild, removePartner,
-         softDeleteUnion, conLyDoTonTai, reorderChildren, thuTuConTheoTuoi,
+         softDeleteUnion, restoreUnion, conLyDoTonTai, reorderChildren,
+         thuTuConTheoTuoi, updateUnion, swapPartnerOrder,
          getParentUnions, getPartnerUnions, getSpouses, getChildren } from '../domains/union.js';
 import { validateAll, checkOrphanNode } from '../domains/validate.js';
 import { datAnhDaiDien, clearPortrait } from '../domains/media.js';
@@ -128,6 +130,7 @@ let xuLyNgoai  = {};
 let dangLuu    = false;
 let daXemCanhBao = false;   // đã hiện cảnh báo và người dùng vẫn muốn lưu
 // 'sua' · 'themCon' · 'themChaMe' · 'themBanDoi' · 'xoa' · 'chon' · 'noi' · 'go'
+// · 'suaCap' (bước 29)
 let cheDo      = 'sua';
 // themCon    : { unionId } hoặc { chaMeId }
 // themChaMe  : { childId, unionId, gioi }   — unionId rỗng = tạo cặp cha mẹ mới
@@ -138,6 +141,7 @@ let sapXepLai  = false;  // câu trả lời ấy có phải "sắp xếp lại 
 let xoaHT      = null;   // chế độ xoa: kết quả doHauQuaXoa() của lần mở này
 let noiCtx     = null;   // chế độ noi: { personId, targetId, loai, unionId }
 let goHT       = null;   // chế độ go : kết quả doHauQuaGoNoi() của lần mở này
+let capDangSua = null;   // chế độ suaCap: mã cặp đang mở trong form
 
 // --- ẢNH ĐẠI DIỆN (bước 28) ---------------------------------------------
 //
@@ -267,6 +271,7 @@ export function closePersonForm() {
   xoaHT        = null;
   noiCtx       = null;
   goHT         = null;
+  capDangSua   = null;
   khoiAnh      = null;
   anhChon      = null;
   anhBo        = false;
@@ -916,7 +921,8 @@ function veChan(nguoi, luuDuoc) {
       : 'background:#2a2622;color:#fffdf9;border:1px solid #2a2622;opacity:.45;cursor:not-allowed');
   if (luuDuoc) {
     nutLuu.addEventListener('click', () => {
-      if (cheDo === 'themCon') handleAddChild();
+      if (cheDo === 'suaCap') handleSaveUnion();
+      else if (cheDo === 'themCon') handleAddChild();
       else if (cheDo === 'themChaMe' || cheDo === 'themBanDoi') handleAddNguoiThan();
       else handleSave(nguoi);
     });
@@ -3080,4 +3086,630 @@ async function ghiBanGhi(nguoiThem, cacUnion, moTa) {
   } catch (e) {
     return { ok: false, loi: e && e.message ? e.message : String(e) };
   }
+}
+
+// ============================================================
+// SỬA CẶP — bước 29
+// ============================================================
+//
+// `updateUnion` và `swapPartnerOrder` viết ở bước 26 cho đủ bộ, có phép kiểm,
+// mà chưa nút nào gọi. Đây là nút của chúng.
+//
+// --- BỐN quyết định của form sửa cặp -------------------------------------
+//
+// 1. **Form này KHÔNG đụng `partners` và `children`.** Thêm hay bớt người trong
+//    cặp đã có đường riêng — *Kết nối* và *Gỡ nối* của bước 26 — và mỗi lần
+//    chạm vào hai mảng ấy còn phải hỏi tiếp câu *"cặp này còn lý do tồn tại
+//    không"* (`conLyDoTonTai`). Cho form này sửa luôn hai mảng ấy là mở một cửa
+//    thứ hai đi vòng qua câu hỏi đó — đúng điều `domains/union.js` dặn.
+//
+// 2. **Đổi chỗ trái/phải là một CÔNG TẮC trong form, không phải một nút riêng.**
+//    Nút riêng thì mỗi lần bấm là một lần ghi xuống Drive, và người dùng thử
+//    ba lần là ba mục trong `changeLog`. Công tắc thì cả form đi xuống trong
+//    MỘT lần lưu — luật 4 của đường ghi dữ liệu.
+//
+// 3. **Và công tắc ấy nói trước rằng nó có thể không đổi được gì.**
+//    `layout.js` xếp nam bên trái, nữ bên phải theo GIỚI TÍNH; `partnerOrder`
+//    chỉ có tác dụng khi hai người CÙNG GIỚI hoặc thiếu giới (QUY-TAC-VE §2).
+//    Không nói ra thì người dùng bấm, lưu, nhìn sơ đồ không nhúc nhích, và kết
+//    luận là app hỏng.
+//
+// 4. **`rank` và `partnerOrder` là HAI THỨ KHÁC NHAU, và form nói rõ điều đó.**
+//    `rank` là thứ bậc vợ cả / vợ thứ — một sự thật về gia đình. `partnerOrder`
+//    là vị trí trái/phải trên hình — một chuyện của cái sơ đồ. Gộp hai cái là
+//    nói sai về gia đình người ta.
+
+/**
+ * Mở form sửa cặp của một người. Người ấy có nhiều cặp thì hỏi cặp nào trước.
+ *
+ * @param {string} mocId  người đang đứng giữa việc này
+ * @param {{onDaLuu?:function(string)}} [xuLy]
+ */
+export function openUnionForm(mocId, xuLy = {}) {
+  const index = state.index;
+  if (!index || !index.personById.has(mocId)) return;
+
+  const ds = getPartnerUnions(index, mocId);
+
+  if (ds.length === 0) {
+    moHopBao('Chưa có cặp nào để sửa',
+             tenNguoi(mocId) + ' chưa đứng trong cặp vợ chồng nào, nên chưa có ' +
+             'ngày cưới hay thứ bậc nào để ghi. Thêm vợ/chồng hoặc Kết nối ' +
+             'trước đã — hai mục ấy nằm ở vòng tròn.', false);
+    return;
+  }
+
+  if (ds.length === 1) { moFormCap(ds[0].id, xuLy); return; }
+
+  moHopChon('chon', xuLy, {
+    tieuDe: 'Sửa cặp nào?',
+    phu:    tenNguoi(mocId) + '  ·  ' + mocId,
+    cauMo:  tenNguoi(mocId) + ' đứng trong ' + ds.length + ' cặp. Mỗi cặp có ' +
+            'ngày cưới và thứ bậc riêng:',
+    cacMuc: ds.map((u) => ({
+      ma:  u.id,
+      chu: 'Cặp với ' + keTenPartner(u.id),
+      phu: moTaCap(u),
+      chay: () => moFormCap(u.id, xuLy),
+    })),
+  });
+}
+
+function moFormCap(unionId, xuLy) {
+  const u = state.index && state.index.unionById.get(unionId);
+  if (!u) return;
+
+  closePersonForm();
+  xuLyNgoai  = xuLy || {};
+  cheDo      = 'suaCap';
+  capDangSua = unionId;
+
+  lopPhu = document.createElement('div');
+  lopPhu.style.cssText = KIEU_LOP_PHU;
+
+  const hop = document.createElement('div');
+  hop.id = 'giapha-form-cap';   // mốc cho bài kiểm hành vi, xem kiem-thung-rac.mjs
+  hop.style.cssText = KIEU_HOP;
+
+  const tieuDe = document.createElement('div');
+  tieuDe.textContent = 'Sửa cặp';
+  tieuDe.style.cssText = 'font-size:19px;font-weight:600';
+
+  const phu = document.createElement('div');
+  phu.textContent = keTenPartner(unionId) + '  ·  ' + unionId;
+  phu.style.cssText =
+    'font-size:12px;color:#b3aaa0;margin-top:3px;letter-spacing:.03em;line-height:1.45';
+
+  hop.append(tieuDe, phu);
+  hop.append(...veCacOCap(u));
+
+  khoiKetQua = document.createElement('div');
+  hop.append(khoiKetQua);
+
+  const canTro = canTroLuu();
+  if (canTro) hienNhan(canTro, true);
+
+  hop.append(veChan(null, !canTro));
+
+  // Bấm ra ngoài KHÔNG đóng — cùng lý do với form hồ sơ: nó đang giữ những gì
+  // người ta vừa gõ.
+  lopPhu.append(hop);
+  document.body.append(lopPhu);
+}
+
+function veCacOCap(u) {
+  const ra = [];
+
+  ra.push(veNhan('Ngày cưới'));
+  ra.push(oNgayCuoi(u));
+  ra.push(oChu('marriagePlace', 'Nơi cưới', (u.marriage || {}).place, 'Làng, xã, tỉnh'));
+
+  ra.push(veNhan('Cặp này bây giờ'));
+  ra.push(veChonTrangThai(u));
+
+  ra.push(veNhan('Thứ bậc'));
+  ra.push(oThuBac(u));
+
+  ra.push(veNhan('Chỗ đứng trên sơ đồ'));
+  ra.push(veDoiChoTraiPhai(u));
+
+  ra.push(veNhan('Ghi chú về cặp này'));
+  ra.push(oNhieuDong('note', u.note, 'Cưới ở quê, cụ Bá làm chủ hôn…'));
+
+  return ra;
+}
+
+/**
+ * Ô ngày cưới, kèm đúng dòng *"máy đọc được gì"* của ô ngày sinh — `raw` là sự
+ * thật, `iso` chỉ là thứ máy đọc được, và người dùng phải nhìn thấy chỗ ấy làm
+ * việc (chốt 18/08/2026).
+ */
+function oNgayCuoi(u) {
+  const boc = document.createElement('div');
+  boc.style.cssText = 'margin-top:6px';
+
+  const m = (u && typeof u.marriage === 'object' && u.marriage) ? u.marriage : {};
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = coGiaTri(m.raw) ? String(m.raw) : '';
+  input.placeholder = '1972  ·  12/3/1972  ·  khoảng 1972';
+  input.setAttribute('aria-label', 'Ngày cưới');
+  input.style.cssText = KIEU_O;
+  o.marriage = input;
+
+  const doc = document.createElement('div');
+  doc.style.cssText = 'font-size:11px;line-height:1.45;color:#8a8078;margin-top:4px';
+  const capNhat = () => { doc.textContent = mayDocDuocGi(input.value); };
+  input.addEventListener('input', capNhat);
+  capNhat();
+
+  boc.append(input, doc);
+  return boc;
+}
+
+/** Hai nút: đang là vợ chồng, hay đã ly hôn. */
+function veChonTrangThai(u) {
+  const hang = document.createElement('div');
+  hang.style.cssText = 'display:flex;gap:6px;margin-top:6px';
+
+  const CAC = [
+    { ma: 'married',  chu: 'Đang là vợ chồng' },
+    { ma: 'divorced', chu: 'Đã ly hôn' },
+  ];
+  let dangChon = u.status === 'divorced' ? 'divorced' : 'married';
+  const cacNut = [];
+
+  const veLai = () => {
+    for (const { ma, nut } of cacNut) {
+      nut.style.cssText = KIEU_NUT_CHON +
+        (ma === dangChon
+          ? 'background:#2a2622;color:#fffdf9;border:1px solid #2a2622;font-weight:600'
+          : 'background:#faf8f5;color:#2a2622;border:1px solid #e6e0d8');
+    }
+  };
+
+  for (const c of CAC) {
+    const nut = document.createElement('button');
+    nut.type = 'button';
+    nut.textContent = c.chu;
+    nut.dataset.trangThai = c.ma;
+    nut.addEventListener('click', () => { dangChon = c.ma; veLai(); });
+    cacNut.push({ ma: c.ma, nut });
+    hang.append(nut);
+  }
+  veLai();
+
+  // Đọc bằng hàm, cùng lối với ô giới tính — xem `veChonGioi`.
+  o.trangThai = { value: '', doc: () => dangChon };
+
+  const nhac = document.createElement('div');
+  nhac.textContent =
+    'Ly hôn KHÔNG gỡ ai ra khỏi cặp: hai người vẫn là cha mẹ của những người ' +
+    'con đứng dưới, và sơ đồ vẫn vẽ đúng như thế.';
+  nhac.style.cssText = 'font-size:11px;line-height:1.45;color:#8a8078;margin-top:4px';
+
+  const boc = document.createElement('div');
+  boc.append(hang, nhac);
+  return boc;
+}
+
+/**
+ * `rank` — vợ cả là 1, vợ thứ là 2, 3… KHÔNG phải vị trí trái/phải trên sơ đồ.
+ *
+ * Ô số chứ không phải danh sách chọn: gia phả cũ có cụ bốn đời vợ, và một danh
+ * sách cứng thì lần nào cũng thiếu đúng cái con số người ta cần.
+ */
+function oThuBac(u) {
+  const boc = document.createElement('div');
+  boc.style.cssText = 'margin-top:6px';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.inputMode = 'numeric';
+  input.value = String(thuBacHienTai(u));
+  input.setAttribute('aria-label', 'Thứ bậc của cặp này');
+  input.style.cssText = KIEU_O;
+  o.rank = input;
+
+  const nhac = document.createElement('div');
+  nhac.textContent =
+    '1 là vợ cả / chồng đầu, 2 là vợ thứ hai… Đây là thứ bậc trong gia đình, ' +
+    'không phải chỗ đứng trái phải trên hình.';
+  nhac.style.cssText = 'font-size:11px;line-height:1.45;color:#8a8078;margin-top:4px';
+
+  boc.append(input, nhac);
+  return boc;
+}
+
+/** Thiếu `rank` thì coi như 1 — cặp duy nhất của một người là cặp thứ nhất. */
+function thuBacHienTai(u) {
+  return (typeof u.rank === 'number' && u.rank > 0) ? u.rank : 1;
+}
+
+/**
+ * Công tắc đổi chỗ trái/phải, kèm lời nói trước rằng nó có thể không đổi được
+ * gì — quyết định 3 ở đầu mục.
+ */
+function veDoiChoTraiPhai(u) {
+  const boc = document.createElement('div');
+
+  const ds = (Array.isArray(u.partners) ? u.partners : []).filter(Boolean);
+  if (ds.length < 2) {
+    const mot = document.createElement('div');
+    mot.textContent =
+      'Cặp này mới có một người, nên chưa có chỗ trái phải nào để đổi.';
+    mot.style.cssText = 'font-size:12px;line-height:1.5;color:#8a8078;margin-top:6px';
+    boc.append(mot);
+    o.doiCho = null;
+    return boc;
+  }
+
+  const nhan = document.createElement('label');
+  nhan.style.cssText =
+    'display:flex;align-items:center;gap:9px;margin-top:6px;padding:9px 11px;' +
+    'border:1px solid #e6e0d8;border-radius:9px;background:#faf8f5;' +
+    'font-size:14px;cursor:pointer;touch-action:manipulation';
+
+  const hopChon = document.createElement('input');
+  hopChon.type = 'checkbox';
+  hopChon.checked = false;
+  hopChon.style.cssText = 'width:18px;height:18px;accent-color:#2a2622';
+  o.doiCho = hopChon;
+
+  const chu = document.createElement('span');
+  chu.textContent = 'Đổi chỗ trái ↔ phải trên sơ đồ';
+
+  nhan.append(hopChon, chu);
+  boc.append(nhan);
+
+  if (khacGioi(ds)) {
+    const canh = document.createElement('div');
+    canh.textContent =
+      'Hai người này khác giới, mà sơ đồ luôn xếp nam bên trái, nữ bên phải. ' +
+      'Đổi thì dữ liệu có đổi thật, nhưng hình sẽ đứng nguyên như cũ.';
+    canh.style.cssText = 'font-size:11px;line-height:1.45;color:#8a8078;margin-top:4px';
+    boc.append(canh);
+  }
+
+  return boc;
+}
+
+/** Đúng hai người, một nam một nữ — lúc ấy `partnerOrder` không đổi được hình. */
+function khacGioi(partnerIds) {
+  const gioi = partnerIds
+    .map((id) => state.index.personById.get(id))
+    .filter(Boolean)
+    .map((p) => p.sex);
+  return gioi.indexOf('M') >= 0 && gioi.indexOf('F') >= 0;
+}
+
+/**
+ * Lưu cặp. Cùng trình tự với `handleSave`: rà trên cây MỚI, một lần ghi duy
+ * nhất, giao diện chỉ đổi sau khi máy chủ gật.
+ *
+ * ⚠ Chỉ gửi vào `changes` những gì THẬT SỰ khác bản đang lưu. `updateUnion` tự
+ * so sánh, nhưng nó so với giá trị đã chuẩn hoá: cặp chưa có `status` mà gửi
+ * `'married'` xuống thì nó thấy `undefined !== 'married'` và ghi một dòng
+ * `changeLog` cho một việc chẳng ai làm. Mở form rồi bấm Lưu ngay phải là một
+ * việc KHÔNG để lại dấu vết.
+ */
+async function handleSaveUnion() {
+  if (dangLuu) return;
+
+  const u = state.index && state.index.unionById.get(capDangSua);
+  if (!u) {
+    hienNhan('Không tìm thấy cặp này nữa. Tải lại trang rồi thử lại.', true);
+    return;
+  }
+
+  const changes = {
+    note: docO('note'),
+    marriage: { raw: docO('marriage'), place: docO('marriagePlace') },
+  };
+
+  const ttMoi   = o.trangThai ? o.trangThai.doc() : 'married';
+  const ttCu    = u.status === 'divorced' ? 'divorced' : (u.status || 'married');
+  if (ttMoi !== ttCu) changes.status = ttMoi;
+
+  const bacMoi = Number(String(docO('rank')).trim());
+  if (Number.isFinite(bacMoi) && bacMoi > 0 && bacMoi !== thuBacHienTai(u)) {
+    changes.rank = bacMoi;
+  }
+
+  const kq = updateUnion(state.tree, capDangSua, changes);
+  if (!kq) {
+    hienNhan('Không tìm thấy cặp này nữa. Tải lại trang rồi thử lại.', true);
+    return;
+  }
+
+  // Đổi chỗ NỐI ĐUÔI vào cây mà `updateUnion` vừa trả về — hai hàm chạy trên
+  // hai cây khác nhau thì cây gửi lên chỉ mang một trong hai thay đổi.
+  const doiCho = !!(o.doiCho && o.doiCho.checked);
+  const kqDoi  = doiCho ? swapPartnerOrder(kq.tree, capDangSua) : null;
+
+  const cayCuoi  = kqDoi ? kqDoi.tree  : kq.tree;
+  const capCuoi  = kqDoi ? kqDoi.union : kq.union;
+  const diffCuoi = kqDoi ? Object.assign({}, kq.diff, kqDoi.diff) : kq.diff;
+
+  if (Object.keys(diffCuoi).length === 0) {
+    hienNhan('Chưa có gì thay đổi so với bản đang lưu, nên không cần lưu lại.', false);
+    return;
+  }
+
+  // Phạm vi `'union'` chạy đúng một phép: khoảng cách tuổi vợ chồng. Nó không
+  // nói về ngày cưới — nhưng nó nói về chính cặp vừa đụng vào, nên vẫn chạy,
+  // vẫn theo luật 2 (rà trên cây MỚI với chỉ mục MỚI).
+  const indexMoi = buildIndex(cayCuoi);
+  const raSoat = validateAll(cayCuoi, indexMoi, 'union', { unionId: capDangSua });
+
+  if (!raSoat.canSave) {
+    hienNhan('Chưa lưu được — có chỗ không thể đúng được:', true,
+             raSoat.errors.map((m) => m.message));
+    return;
+  }
+
+  if (raSoat.warnings.length > 0 && !daXemCanhBao) {
+    daXemCanhBao = true;
+    nutLuu.textContent = 'Vẫn lưu';
+    hienNhan('Có chỗ đáng xem lại. Gia phả cũ có những chuyện thật mà nghe như ' +
+             'lỗi, nên app không chặn — bấm "Vẫn lưu" nếu bạn biết là đúng:', false,
+             raSoat.warnings.map((m) => m.message));
+    return;
+  }
+
+  dangLuu = true;
+  nutLuu.disabled = true;
+  nutLuu.style.opacity = '.45';
+  hienNhan('Đang lưu…', false);
+
+  const ketQua = await ghiBanGhi(null, [capCuoi], {
+    action: 'update',
+    target: capDangSua,
+    note:   'Sửa cặp ' + keTenPartner(capDangSua) + '.',
+    diff:   diffCuoi,
+  });
+
+  dangLuu = false;
+  if (!lopPhu) return;
+
+  if (!(ketQua && ketQua.ok)) {
+    nutLuu.disabled = false;
+    nutLuu.style.opacity = '1';
+    hienLoiGhi(ketQua, 'Cặp này VẪN như cũ.');
+    return;
+  }
+
+  if (xuLyNgoai.onDaLuu) xuLyNgoai.onDaLuu(capDangSua);
+  closePersonForm();
+}
+
+// ============================================================
+// THÙNG RÁC — đưa trở lại (bước 29)
+// ============================================================
+//
+// Hai hàm dưới đây là chỗ đến của hai callback trong `pages/person-list.js`.
+// Chúng ở đây chứ không ở đó vì cùng một lý do đã đặt mọi hộp xác nhận của
+// bước 26 vào file này: **đường ghi xuống Drive chỉ có một chỗ.**
+//
+// ⚠ Cả hai đọc thẳng `state.tree`, KHÔNG đọc `state.index`. `buildIndex()` bỏ
+// qua mọi bản ghi mang cờ `deleted`, nên tra chỉ mục ở đây là luôn không thấy gì.
+
+/**
+ * Đưa một người đã xoá trở lại gia phả.
+ *
+ * @param {string} personId
+ * @param {{onDaLuu?:function(string)}} [xuLy]
+ */
+export function khoiPhucNguoi(personId, xuLy = {}) {
+  const nguoi = timNguoiTrongCay(personId);
+  if (!nguoi) {
+    moHopBao('Không tìm thấy bản ghi',
+             'Không còn ai mang mã ' + personId + ' trong gia phả. Tải lại ' +
+             'trang rồi mở lại thùng rác.', true);
+    return;
+  }
+  if (nguoi.deleted !== true) {
+    moHopBao('Người này đang ở trong gia phả',
+             tenTrongCay(state.tree, personId) + ' không nằm trong thùng rác ' +
+             'nữa — có thể người khác vừa đưa họ trở lại. Tải lại trang để thấy ' +
+             'bản mới nhất.', false);
+    return;
+  }
+
+  const chan = moHopTrang('chon', xuLy, 'Đưa trở lại gia phả',
+                          tenTrongCay(state.tree, personId) + '  ·  ' + personId);
+  hienNhan('Người này sẽ hiện lại trên sơ đồ, đúng chỗ cũ — xoá mềm không gỡ ' +
+           'một mối nối nào, nên không có gì phải nối lại.',
+           false, cauKeKhiTroLai(personId));
+
+  chan.append(
+    nutChanDam('Đưa trở lại', () => chayKhoiPhucNguoi(personId)),
+    nutChanXoa('Huỷ', false, () => closePersonForm()),
+  );
+}
+
+/**
+ * Những gì người dùng cần biết TRƯỚC khi bấm. Hai câu, và câu thứ hai là câu
+ * hay gặp: người bị xoá vì gỡ nối thì cặp của họ cũng nằm trong thùng rác, và
+ * đưa mỗi người trở lại thì sơ đồ vẫn chưa vẽ ra họ.
+ */
+function cauKeKhiTroLai(personId) {
+  const cacCap = (Array.isArray(state.tree.unions) ? state.tree.unions : [])
+    .filter((u) => u && coMatTrongCap(u, personId));
+  if (cacCap.length === 0) {
+    return ['Người này không đứng trong cặp nào, nên sau khi trở lại vẫn chưa ' +
+            'nối với ai. Tìm họ ở màn hình Danh sách người.'];
+  }
+
+  const capXoa = cacCap.filter((u) => u.deleted === true);
+  if (capXoa.length === cacCap.length) {
+    return ['Mọi cặp của người này cũng đang nằm trong thùng rác (' +
+            capXoa.map((u) => u.id).join(', ') + '), nên sơ đồ vẫn chưa vẽ ra ' +
+            'họ. Đưa nốt mấy cặp ấy trở lại thì mối nối mới sống lại.'];
+  }
+  return [];
+}
+
+function coMatTrongCap(u, personId) {
+  const laPartner = (Array.isArray(u.partners) ? u.partners : []).indexOf(personId) >= 0;
+  const laCon = (Array.isArray(u.children) ? u.children : [])
+    .some((c) => c && c.personId === personId);
+  return laPartner || laCon;
+}
+
+async function chayKhoiPhucNguoi(personId) {
+  if (dangLuu) return;
+
+  const luc = stampNow();
+  const boi = (state.phien && state.phien.email) || '';
+  const kq  = restorePerson(state.tree, personId, { boi, luc });
+  if (!kq) {
+    hienNhan('Không đưa trở lại được — bản ghi vừa đổi. Tải lại trang rồi thử lại.', true);
+    return;
+  }
+
+  dangLuu = true;
+  hienNhan('Đang đưa trở lại…', false);
+
+  const ten = tenTrongCay(kq.tree, personId);
+  const ketQua = await ghiMotNguoi(kq.person, {
+    action: 'restore',
+    target: personId,
+    note:   'Đưa ' + ten + ' trở lại gia phả từ thùng rác.',
+    diff:   kq.diff,
+  });
+
+  dangLuu = false;
+  if (!lopPhu) return;
+
+  if (!(ketQua && ketQua.ok)) {
+    hienLoiGhi(ketQua, 'Người này VẪN đang trong thùng rác.');
+    return;
+  }
+
+  if (xuLyNgoai.onDaLuu) xuLyNgoai.onDaLuu(personId);
+  baoXongMotViec('Đã đưa ' + ten + ' trở lại gia phả.');
+}
+
+/**
+ * Đưa một cặp đã xoá trở lại.
+ *
+ * @param {string} unionId
+ * @param {{onDaLuu?:function(string)}} [xuLy]
+ */
+export function khoiPhucCap(unionId, xuLy = {}) {
+  const u = timCapTrongCay(unionId);
+  if (!u) {
+    moHopBao('Không tìm thấy cặp',
+             'Không còn cặp nào mang mã ' + unionId + '. Tải lại trang rồi mở ' +
+             'lại thùng rác.', true);
+    return;
+  }
+  if (u.deleted !== true) {
+    moHopBao('Cặp này đang ở trong gia phả',
+             'Cặp ' + unionId + ' không nằm trong thùng rác nữa — có thể người ' +
+             'khác vừa đưa nó trở lại. Tải lại trang để thấy bản mới nhất.', false);
+    return;
+  }
+
+  const ten = (Array.isArray(u.partners) ? u.partners : [])
+    .filter(Boolean).map((id) => tenTrongCay(state.tree, id));
+
+  const chan = moHopTrang('chon', xuLy, 'Đưa cặp trở lại',
+                          (ten.length > 0 ? ten.join('  ↔  ') : 'Cặp chưa có ai') +
+                          '  ·  ' + unionId);
+  hienNhan('Cặp trở lại là mọi mối nối của nó trở lại cùng một lúc: vợ chồng, ' +
+           'và cả quan hệ cha mẹ – con của những người con đứng dưới.',
+           false, cauKeKhiCapTroLai(u));
+
+  chan.append(
+    nutChanDam('Đưa trở lại', () => chayKhoiPhucCap(unionId)),
+    nutChanXoa('Huỷ', false, () => closePersonForm()),
+  );
+}
+
+/** Cặp sống lại mà người trong cặp vẫn nằm trong thùng rác thì phải nói ra. */
+function cauKeKhiCapTroLai(u) {
+  const ra = [];
+
+  const conXoa = (Array.isArray(u.partners) ? u.partners : [])
+    .filter(Boolean)
+    .filter((id) => {
+      const p = timNguoiTrongCay(id);
+      return p && p.deleted === true;
+    });
+
+  if (conXoa.length > 0) {
+    ra.push('Vẫn còn ' + conXoa.map((id) => tenTrongCay(state.tree, id)).join(', ') +
+            ' đang nằm trong thùng rác, nên sơ đồ chưa vẽ ra cặp này. Đưa nốt ' +
+            'họ trở lại thì mới thấy.');
+  }
+
+  const soCon = (Array.isArray(u.children) ? u.children : [])
+    .filter((c) => c && c.personId).length;
+  if (soCon > 0) {
+    ra.push(soCon + ' người con sẽ có lại cha mẹ trên sơ đồ.');
+  }
+  return ra;
+}
+
+async function chayKhoiPhucCap(unionId) {
+  if (dangLuu) return;
+
+  const kq = restoreUnion(state.tree, unionId);
+  if (!kq) {
+    hienNhan('Không đưa trở lại được — cặp vừa đổi. Tải lại trang rồi thử lại.', true);
+    return;
+  }
+
+  dangLuu = true;
+  hienNhan('Đang đưa trở lại…', false);
+
+  const ketQua = await ghiBanGhi(null, [kq.union], {
+    action: 'restore',
+    target: unionId,
+    note:   'Đưa cặp ' + unionId + ' trở lại gia phả từ thùng rác.',
+    diff:   kq.diff,
+  });
+
+  dangLuu = false;
+  if (!lopPhu) return;
+
+  if (!(ketQua && ketQua.ok)) {
+    hienLoiGhi(ketQua, 'Cặp này VẪN đang trong thùng rác.');
+    return;
+  }
+
+  if (xuLyNgoai.onDaLuu) xuLyNgoai.onDaLuu(unionId);
+  baoXongMotViec('Đã đưa cặp ' + unionId + ' trở lại gia phả.');
+}
+
+/** Báo xong, và để lại đúng một nút Đóng — cùng khuôn với đường hoàn tác. */
+function baoXongMotViec(cau) {
+  hienNhan(cau, false);
+  const hang = document.createElement('div');
+  hang.style.cssText = 'margin-top:10px';
+  hang.append(nutChon('Đóng', true, () => closePersonForm()));
+  khoiKetQua.append(hang);
+}
+
+/** Nút chân màu đậm — việc CHÍNH của hộp. `nutChanXoa` chỉ có nhạt và đỏ. */
+function nutChanDam(chu, chay) {
+  const nut = document.createElement('button');
+  nut.type = 'button';
+  nut.textContent = chu;
+  nut.style.cssText = KIEU_NUT_CHAN + 'flex:1 1 45%;text-align:center;' +
+    'background:#2a2622;color:#fffdf9;border:1px solid #2a2622;font-weight:600';
+  nut.addEventListener('click', chay);
+  return nut;
+}
+
+function timNguoiTrongCay(personId) {
+  const ds = (state.tree && Array.isArray(state.tree.persons)) ? state.tree.persons : [];
+  return ds.find((p) => p && p.id === personId) || null;
+}
+
+function timCapTrongCay(unionId) {
+  const ds = (state.tree && Array.isArray(state.tree.unions)) ? state.tree.unions : [];
+  return ds.find((u) => u && u.id === unionId) || null;
 }
