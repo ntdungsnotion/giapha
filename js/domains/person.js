@@ -3,7 +3,7 @@
 // Vai trò  : Nghiệp vụ hồ sơ cá nhân — tạo, sửa, đọc thông tin một người
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: utils/{text,date,id}
-// Phiên bản: 1.5.0 · Cập nhật: 20/08/2026 16:40
+// Phiên bản: 1.6.0 · Cập nhật: 21/08/2026 11:20
 // ============================================================
 import { fullName, coGiaTri, removeDiacritics, doiSongNguoi } from '../utils/text.js';
 import { parseLooseDate } from '../utils/date.js';
@@ -46,6 +46,17 @@ export function createPerson(tree, data, ghiNhan) {
     birth: { iso: null, raw: '', place: '' },
     death: { iso: null, raw: '', place: '' },
     burialPlace: '',
+
+    // Bộ THÔNG DỤNG của gia phả Việt (CAU-TRUC-DU-LIEU_V03, 21/08/2026).
+    // Nằm PHẲNG cạnh `burialPlace`, KHÔNG nằm trong `vn`: cả sáu đều có thẻ
+    // GEDCOM chuẩn, còn `vn.*` chỉ dành cho thứ phải bịa ra một thẻ `_` riêng.
+    title:       '',
+    occupation:  '',
+    education:   '',
+    religion:    '',
+    residence:   '',
+    nationality: '',
+
     // Mặc định CÒN SỐNG — chủ dự án chốt 18/08/2026 sau lần thử đầu trên app
     // thật. Người thêm bằng tay gần như luôn là người đang sống; người đã khuất
     // thì đã nằm sẵn trong gia phả từ đợt nhập liệu hàng loạt. Bản nháp đầu để
@@ -74,10 +85,21 @@ export function createPerson(tree, data, ghiNhan) {
  *        {
  *          name:  { surname, middle, given },   // áp vào mục names type:'chinh'
  *          sex, living, burialPlace, note,
+ *          title, occupation, education, religion, residence, nationality,
  *          birth: { raw, place, iso? },
  *          death: { raw, place, iso? },
  *          gio,                                  // ngày giỗ ÂM LỊCH -> vn.gio
+ *          doi,                                  // Đời           -> vn.generation
+ *          chi,                                  // Chi / nhánh   -> vn.branch
  *        }
+ *
+ * ⚠ Sáu trường thông dụng nhận CHUỖI TỰ DO, không có danh sách chọn — lý lẽ
+ * đầy đủ ở `CAU-TRUC-DU-LIEU_V03`. Tóm tắt: gia phả cũ chép nghề nghiệp và tôn
+ * giáo bằng chữ của người chép, ép vào danh sách là làm mất chữ gốc.
+ *
+ * ⚠ `nationality` mang **DÂN TỘC** (Kinh, Tày, Mường…), không mang quốc tịch.
+ * Nó ánh xạ về thẻ GEDCOM `NATI` lúc xuất, và đó là chỗ DUY NHẤT trong schema
+ * mà tên trường tiếng Anh không nói đúng thứ nó chứa.
  * @param {{boi?:string, luc?:string}} [ghiNhan]  người sửa và thời điểm, để ghi
  *        vào `meta`. Hàm này KHÔNG đọc đồng hồ máy — nơi gọi đưa vào, nhờ vậy
  *        nó vẫn là hàm thuần và bài kiểm chạy được với một mốc thời gian cố định.
@@ -124,6 +146,16 @@ export function updatePerson(tree, personId, changes, ghiNhan) {
   datChuoi(moi, 'burialPlace', ch.burialPlace, ghi);
   datChuoi(moi, 'note',        ch.note,        ghi);
 
+  // Bộ thông dụng (V03). Cùng một phép đặt với `burialPlace` — không trường
+  // nào trong sáu cái này cần luật riêng, và đó chính là lý do chúng đứng
+  // phẳng cạnh nhau thay vì mỗi cái một hàm.
+  datChuoi(moi, 'title',       ch.title,       ghi);
+  datChuoi(moi, 'occupation',  ch.occupation,  ghi);
+  datChuoi(moi, 'education',   ch.education,   ghi);
+  datChuoi(moi, 'religion',    ch.religion,    ghi);
+  datChuoi(moi, 'residence',   ch.residence,   ghi);
+  datChuoi(moi, 'nationality', ch.nationality, ghi);
+
   if (ch.living !== undefined) {
     const sau = ch.living === true;
     if (moi.living !== sau) { ghi('living', moi.living, sau); moi.living = sau; }
@@ -132,6 +164,8 @@ export function updatePerson(tree, personId, changes, ghiNhan) {
   datKhoiNgay(moi, 'birth', ch.birth, ghi);
   datKhoiNgay(moi, 'death', ch.death, ghi);
   datNgayGio(moi, ch.gio, ghi);
+  datDoi(moi, ch.doi, ghi);
+  datVnChuoi(moi, 'branch', ch.chi, ghi);
 
   const thayDoi = Object.keys(diff).length > 0;
 
@@ -199,6 +233,53 @@ function datNgayGio(nguoi, giaTri, ghi) {
   if (!nguoi.vn || typeof nguoi.vn !== 'object') nguoi.vn = {};
   nguoi.vn.gio = sau;
   ghi('vn.gio', truoc, sau);
+}
+
+/**
+ * ĐỜI — `vn.generation`, **số nguyên dương hoặc VẮNG MẶT**.
+ *
+ * ⚠ **Ô trống phải XOÁ HẲN khoá, không được lưu số 0.** Đời 0 không có nghĩa
+ * gì trong gia phả, mà một khi đã nằm trong dữ liệu thì nó là một con số thật
+ * — và mọi phép đếm, mọi bản xuất GEDCOM sau này đều phải học cách bỏ qua nó.
+ * Vắng mặt là *"chưa ai ghi"*, và đó đúng là sự thật của phần lớn bản ghi.
+ *
+ * ⚠ **Chữ không đọc ra số thì KHÔNG ĐỘNG VÀO.** Gõ nhầm "năm" vào ô Đời mà app
+ * lặng lẽ xoá mất số 5 đang có là mất dữ liệu do một lỗi gõ phím. Form là chỗ
+ * nói cho người dùng biết họ gõ sai, không phải chỗ này.
+ */
+function datDoi(nguoi, giaTri, ghi) {
+  if (giaTri === undefined) return;
+
+  const chu   = String(giaTri).trim();
+  const truoc = (nguoi.vn && Number.isFinite(Number(nguoi.vn.generation)) &&
+                 Number(nguoi.vn.generation) > 0)
+    ? Number(nguoi.vn.generation) : null;
+
+  let sau = null;
+  if (chu !== '') {
+    const n = Number(chu);
+    if (!Number.isFinite(n) || n <= 0 || Math.floor(n) !== n) return;   // gõ sai: không đụng
+    sau = n;
+  }
+
+  if (truoc === sau) return;
+  if (!nguoi.vn || typeof nguoi.vn !== 'object') nguoi.vn = {};
+  if (sau === null) delete nguoi.vn.generation;
+  else nguoi.vn.generation = sau;
+  ghi('vn.generation', truoc === null ? '' : truoc, sau === null ? '' : sau);
+}
+
+/** Một trường CHỮ trong nhóm `vn`. Dùng cho `branch`; `gio` có hàm riêng vì nó có sẵn từ trước. */
+function datVnChuoi(nguoi, khoa, giaTri, ghi) {
+  if (giaTri === undefined) return;
+
+  const sau   = giaTri === null ? '' : String(giaTri).trim();
+  const truoc = (nguoi.vn && typeof nguoi.vn[khoa] === 'string') ? nguoi.vn[khoa] : '';
+  if (truoc === sau) return;
+
+  if (!nguoi.vn || typeof nguoi.vn !== 'object') nguoi.vn = {};
+  nguoi.vn[khoa] = sau;
+  ghi('vn.' + khoa, truoc, sau);
 }
 
 /** Một trường chuỗi phẳng. Cắt khoảng trắng thừa hai đầu, giữ nguyên phần giữa. */

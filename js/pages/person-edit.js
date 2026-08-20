@@ -5,7 +5,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate,media,render},
 //            services/{repo,gas}, utils/{graph,text,date,image}
-// Phiên bản: 1.10.0 · Cập nhật: 21/08/2026 09:40
+// Phiên bản: 1.11.0 · Cập nhật: 21/08/2026 11:20
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -460,9 +460,51 @@ function veCacO(nguoi) {
                (nguoi.vn && nguoi.vn.gio) || '', '20 tháng Chạp'));
   ra.push(veConSong(nguoi.living === true));
 
+  // --- BỘ THÔNG DỤNG của gia phả Việt (CAU-TRUC-DU-LIEU_V03) -------------
+  //
+  // ⚠ **Đặt SAU khối Mất, TRƯỚC Ghi chú — không xen vào giữa những khối cũ.**
+  // Người đã quen form này tìm Tên · Giới tính · Sinh · Mất ở đúng chỗ cũ; tám
+  // ô mới mọc thêm ở cuối thì không ai phải học lại thứ gì.
+  //
+  // ⚠ **Chữ mờ ở đây là VÍ DỤ, cố ý, và KHÔNG mâu thuẫn với luật bước 19.**
+  // Luật ấy cấm chữ mờ ví dụ ở BA Ô TÊN liền nhau, vì ba ví dụ ghép lại thành
+  // tên một người có thật và người dùng đọc ra "app đang mặc định người này".
+  // Ô "Nghề nghiệp" thì không có cách nào ghép với ô bên cạnh thành một điều
+  // khẳng định về ai cả — ở đây ví dụ dạy đúng thứ cần dạy: ô này chứa cái gì.
+  //
+  // ⚠ **KHÔNG có danh sách chọn cho Tôn giáo và Nghề nghiệp.** Gia phả cũ chép
+  // bằng chữ của người chép — *"làm ruộng"*, *"thợ rèn"*, *"thờ cúng tổ tiên"*
+  // — và ép vào danh sách là bắt người nhập chọn cái gần đúng rồi quên mất chữ
+  // gốc. Cái giá: *"Phật giáo"* và *"đạo Phật"* máy không biết là một. Chấp
+  // nhận, vì app này không thống kê theo tôn giáo.
+  ra.push(veNhan('Đời và chi'));
+  ra.push(oChu('doi', 'Đời thứ mấy', doiHienTai(nguoi), '5'));
+  ra.push(oChu('chi', 'Chi / nhánh',
+               (nguoi.vn && nguoi.vn.branch) || '', 'Chi Giáp'));
+
+  ra.push(veNhan('Cuộc đời'));
+  ra.push(oChu('title',      'Chức tước, phẩm hàm', nguoi.title,      'Cử nhân, Chánh tổng'));
+  ra.push(oChu('occupation', 'Nghề nghiệp',         nguoi.occupation, 'Làm ruộng, dạy học'));
+  ra.push(oChu('education',  'Học vấn',             nguoi.education,  'Tú tài'));
+  ra.push(oChu('religion',   'Tôn giáo',            nguoi.religion,   'Thờ cúng tổ tiên'));
+  // "khác nơi sinh" nằm ngay trong nhãn, không nằm ở một dòng chú thích riêng:
+  // nơi sinh là MỘT ĐIỂM, nơi ở là chỗ sống phần đời — hai ô này gần giống nhau
+  // đến mức không nói ra thì người dùng điền trùng, và bản xuất GEDCOM sau này
+  // có `BIRT/PLAC` và `RESI` chép y hệt nhau.
+  ra.push(oChu('residence',  'Quê quán / nơi ở (khác nơi sinh)', nguoi.residence,
+               'Hà Nam — nơi sống lâu nhất'));
+  ra.push(oChu('nationality', 'Dân tộc',            nguoi.nationality, 'Kinh'));
+
+  // ⚠ Chữ mờ của ô này đã ĐỔI ngày 21/08/2026, và lý do đáng ghi lại: bản cũ
+  // mời người dùng gõ *"Chức tước, quê quán"* vào đây — đúng hai thứ vừa có ô
+  // riêng ngay phía trên. Để nguyên là dạy người ta chép chức tước vào ô ghì chú,
+  // rồi bản xuất GEDCOM không có được một thẻ `TITL` nào.
+  //
+  // Không phép kiểm nào bắt được chỗ này — chữ mờ sai vẫn là một chuỗi hợp lệ.
+  // Nó lộ ra khi CHỤP ẢNH cái form (`kiem-thu/xem-truong-moi.mjs`, tm-2.png).
   ra.push(veNhan('Ghi chú'));
   ra.push(oNhieuDong('note', nguoi.note,
-                     'Chức tước, quê quán, chuyện gia đình cần nhớ…'));
+                     'Chuyện gia đình cần nhớ, điều không có ô riêng…'));
 
   return ra;
 }
@@ -966,6 +1008,14 @@ async function handleSave(nguoi) {
   const luc = stampNow();
   const boi = (state.phien && state.phien.email) || '';
 
+  // ⚠ Ô ĐỜI phải chặn Ở ĐÂY, không chặn trong `domains/person.js`.
+  // `datDoi()` cố ý KHÔNG ĐỘNG VÀO khi đọc không ra số — lặng lẽ xoá mất số 5
+  // đang có vì một lỗi gõ phím là mất dữ liệu. Nhưng "không động vào" mà không
+  // ai nói gì thì người dùng bấm Lưu, thấy báo thành công, và tin rằng mình vừa
+  // ghi được Đời. Đây là chỗ nói ra.
+  const loiDoi = viSaoDoiSai(docO('doi'));
+  if (loiDoi) { hienNhan(loiDoi, true); return; }
+
   // Bản ghi mới tính đúng MỘT lần, dùng cho cả phép rà lẫn lần ghi — luật 1 ở
   // đầu file. `updatePerson` là hàm thuần, `state.tree` không bị đụng tới.
   const kq = updatePerson(state.tree, nguoi.id, gomThayDoi(), { boi, luc });
@@ -1396,6 +1446,18 @@ function gomThayDoi() {
     burialPlace: docO('burialPlace'),
     gio:         docO('gio'),
     note:        docO('note'),
+
+    // Bộ thông dụng (V03). `doi` và `chi` đi vào `vn.generation`/`vn.branch`;
+    // sáu cái còn lại nằm phẳng trên `person`. Việc ánh xạ ấy là của
+    // `domains/person.updatePerson`, không phải của form.
+    title:       docO('title'),
+    occupation:  docO('occupation'),
+    education:   docO('education'),
+    religion:    docO('religion'),
+    residence:   docO('residence'),
+    nationality: docO('nationality'),
+    doi:         docO('doi'),
+    chi:         docO('chi'),
     birth: { raw: docO('birth'), place: docO('birthPlace') },
     death: { raw: docO('death'), place: docO('deathPlace') },
   };
@@ -1441,6 +1503,37 @@ function mucTenChinh(nguoi) {
   const ds = Array.isArray(nguoi.names) ? nguoi.names : [];
   const muc = ds.find((n) => n && n.type === 'chinh') || ds[0] || {};
   return { surname: muc.surname || '', middle: muc.middle || '', given: muc.given || '' };
+}
+
+/**
+ * Đời đang lưu, đọc ra CHỮ để điền vào ô. Không có thì ô trống — không điền
+ * số 0, vì đời 0 không có nghĩa gì và người dùng sẽ tưởng gia phả đã ghi vậy.
+ */
+function doiHienTai(nguoi) {
+  const n = nguoi && nguoi.vn ? Number(nguoi.vn.generation) : NaN;
+  return (Number.isFinite(n) && n > 0) ? String(n) : '';
+}
+
+/**
+ * Lý do ô Đời không dùng được, hoặc null nếu dùng được. Ô TRỐNG là hợp lệ —
+ * phần lớn bản ghi trong một cuốn gia phả cũ không ai đánh số đời.
+ */
+function viSaoDoiSai(chu) {
+  const t = String(chu || '').trim();
+  if (t === '') return null;
+
+  const n = Number(t);
+  if (!Number.isFinite(n)) {
+    return 'Ô "Đời thứ mấy" chỉ nhận một con số — bạn đang gõ "' + t + '". ' +
+           'Chưa biết đời thứ mấy thì để trống ô ấy.';
+  }
+  if (Math.floor(n) !== n) {
+    return 'Đời phải là số nguyên, không có đời ' + t + '.';
+  }
+  if (n <= 0) {
+    return 'Đời phải lớn hơn 0. Đời đầu tiên của một dòng họ là đời 1.';
+  }
+  return null;
 }
 
 function khoiNgayCua(khoi) {

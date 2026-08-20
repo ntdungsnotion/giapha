@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
 //            utils/{text,date,image}
-// Phiên bản: 1.10.0 · Cập nhật: 21/08/2026 09:40
+// Phiên bản: 1.11.0 · Cập nhật: 21/08/2026 11:20
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -269,6 +269,29 @@ function veHangThongTin(p) {
   veHang(bang, 'An táng', p.burialPlace);
   veHang(bang, 'Ngày giỗ', ngayGio(p));
   veHang(bang, tuoiTho(p).nhan, tuoiTho(p).giaTri);
+
+  // --- BỘ THÔNG DỤNG (CAU-TRUC-DU-LIEU_V03) ------------------------------
+  //
+  // ⚠ **Đây là chỗ luật "trường trống thì KHÔNG vẽ hàng đó" thật sự bị thử.**
+  // Luật có từ 14/08/2026, nhưng tới hôm nay thẻ mới chỉ có tám hàng và gần như
+  // bản ghi nào cũng điền được vài hàng. Thêm tám hàng nữa mà vẽ cả hàng rỗng
+  // thì thẻ của một người chỉ còn ai nhớ mỗi cái tên sẽ dài thành một trang
+  // giấy trắng kẻ dòng — và người đọc phải lướt qua mười sáu dòng trống để tìm
+  // hai dòng có chữ. `veHang()` tự bỏ qua giá trị rỗng, nên gọi cả tám là an
+  // toàn; đừng ai "sửa" nó thành vẽ luôn hàng trống cho đều.
+  //
+  // ⚠ Thứ tự KHÔNG giống thứ tự các ô trong form, và đó là chủ ý. Form HỎI nên
+  // xếp theo nhóm câu hỏi; thẻ KỂ nên xếp theo thứ tự người ta muốn biết về một
+  // người: làm gì, học gì, ở đâu, thờ ai.
+  veHang(bang, 'Chức tước', p.title);
+  veHang(bang, 'Nghề nghiệp', p.occupation);
+  veHang(bang, 'Học vấn', p.education);
+  veHang(bang, 'Quê quán', p.residence);
+  veHang(bang, 'Dân tộc', p.nationality);
+  veHang(bang, 'Tôn giáo', p.religion);
+  veHang(bang, 'Đời', doiCua(p));
+  veHang(bang, 'Chi / nhánh', p.vn && p.vn.branch);
+
   veHang(bang, 'Ghi chú', p.note, true);
 
   const ra = [bang];
@@ -291,6 +314,20 @@ function veHangThongTin(p) {
 }
 
 /** "12/03/1927 · Hà Nội" — phần nào trống thì bỏ hẳn, không để dấu chấm lơ lửng. */
+/**
+ * Đời, kể ra thành chữ. Số 0 hoặc không phải số thì coi như CHƯA AI GHI, và
+ * `veHang()` sẽ bỏ hẳn hàng ấy — chứ không kể ra "Đời 0".
+ *
+ * ⚠ Trả về *"thứ 5"* chứ không phải *"Đời thứ 5"*: nhãn của hàng đã là chữ
+ * *Đời* rồi, nên lặp lại nó trong giá trị thành *"Đời — Đời thứ 5"*. Cũng
+ * không trả về mỗi con số: *"thứ"* là chữ nói rằng đây là thứ bậc, không
+ * phải số lượng.
+ */
+function doiCua(p) {
+  const n = p && p.vn ? Number(p.vn.generation) : NaN;
+  return (Number.isFinite(n) && n > 0) ? ('thứ ' + n) : '';
+}
+
 function ghepNgayNoi(khoiNgay) {
   if (!khoiNgay || typeof khoiNgay !== 'object') return '';
   return [formatDate(khoiNgay), khoiNgay.place].filter(coGiaTri).join(' · ');
