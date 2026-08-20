@@ -3,7 +3,7 @@
 // Vai trò  : Hằng số hiển thị phía trình duyệt.
 // Lớp      : config — không gọi file nào khác
 // Phụ thuộc: (không)
-// Phiên bản: 0.6.0 · Cập nhật: 20/08/2026 12:40
+// Phiên bản: 0.7.0 · Cập nhật: 20/08/2026 15:10
 // ============================================================
 //
 // LƯU Ý: từ khi chuyển sang kiến trúc Apps Script, file này KHÔNG còn
@@ -22,7 +22,18 @@ export const PHOTO = {
   // XIN Drive bản 200px: màn hình điện thoại có tỷ lệ pixel gấp 2–3, xin đúng
   // 40 thì ảnh rỗ.
   banKinhTrenO: 20,
-  leTrenO:       6,   // cách từ mép trên ô xuống đỉnh vòng ảnh
+
+  // Cách từ mép trên ô xuống đỉnh vòng ảnh.
+  //
+  // ⚠ **BẰNG 0, và đó là một quyết định chứ không phải bỏ sót.** Ô sơ đồ nay
+  // không có viền (bước 28), nên "mép trên ô" chỉ còn là một toạ độ, không
+  // phải một đường kẻ ai nhìn thấy. Để nó bằng 0 thì **đỉnh vòng ảnh CHÍNH LÀ
+  // mép trên ô**, và mọi nét đi từ trên xuống — nét treo con, nốt cụt mọc lên —
+  // chạm đúng vào vòng ảnh, không dừng lơ lửng cách nó mấy pixel.
+  //
+  // Để 6 thì mỗi nét ấy hụt đúng 6px. Sáu pixel không ai gọi tên được, nhưng
+  // nhìn vào thì thấy sơ đồ "rời rạc" mà không chỉ ra được vì sao.
+  leTrenO:       0,
 };
 
 // Kích thước sơ đồ (pixel)
@@ -33,9 +44,12 @@ export const PHOTO = {
 //
 // ⚠ **64 → 104 ở bước 28** (20/08/2026), để chừa chỗ cho vòng ảnh 40px ở đầu
 // ô. Chủ dự án chọn phương án B sau khi xem bốn phương án vẽ đúng cỡ thật —
-// xem `kiem-thu/o-co-anh.html`. Cái giá đã đo trên 59 sơ đồ, không phải ước
-// lượng: **sơ đồ cao thêm 27%**, bản lớn nhất từ 1036 lên 1316px. Đổi lại,
-// bề ngang KHÔNG đổi — mà bề ngang mới là thứ điện thoại thiếu.
+// xem `kiem-thu/o-co-anh.html`. Bề ngang KHÔNG đổi, mà bề ngang mới là thứ
+// điện thoại thiếu.
+//
+// Con số này đọc CÙNG `vGap` bên dưới, đừng đọc riêng. Đo thật trên 59 sơ đồ
+// (`kiem-thu/do-o-co-anh.mjs`): ô cao thêm 62% mà **sơ đồ chỉ cao thêm 4%**
+// (trung bình 755 → 786px), vì `vGap` hạ từ 90 xuống 48 cùng lúc.
 //
 // Con số này là chỗ duy nhất quyết định chiều cao ô. `layout.js` chụp nó vào
 // biến riêng NGAY LÚC NẠP (`const CAO = LAYOUT.nodeHeight`), nên sửa lúc chạy
@@ -44,7 +58,27 @@ export const LAYOUT = {
   nodeWidth:  120,
   nodeHeight: 104,
   hGap:        28,   // cách ngang giữa 2 người
-  vGap:        90,   // cách dọc giữa 2 đời
+
+  // Cách dọc giữa 2 đời.
+  //
+  // ⚠ **90 → 48 ở bước 28**, cùng lúc với việc ô cao lên 104 và bỏ viền ô.
+  // Chủ dự án nhìn app thật rồi nói: *"khoảng cách giữa các hàng quá lớn,
+  // lãng phí không gian, nhất là điện thoại"*.
+  //
+  // Hai con số này phải đọc CÙNG NHAU, đừng đọc riêng: thứ mắt nhìn thấy là
+  // **bước hàng** = nodeHeight + vGap.
+  //
+  //     trước bước 28   64 + 90 = 154
+  //     giữa bước 28   104 + 90 = 194   ← chỗ chủ dự án kêu
+  //     nay            104 + 48 = 152
+  //
+  // Tức là ô to hơn hẳn mà sơ đồ vẫn **không cao hơn trước bước 28**. Chỗ
+  // 90px kia sinh ra khi ô mới cao 64 và có viền; bỏ viền rồi thì phần trống
+  // giữa hai hàng vốn đã rộng ra, cộng thêm 90 nữa là thừa hai lần.
+  //
+  // ⚠ Sàn của con số này là `stubLength` (34) — nốt cụt mọc thẳng xuống phải
+  // còn chỗ. 48 còn dư 14px. Hạ nữa thì phải hạ `stubLength` trước.
+  vGap:        48,
   spouseGap:   16,
   stubLength:  34,   // độ dài đường kẻ dẫn tới nốt cụt, hướng LÊN và XUỐNG
   stubRadius:   6,
@@ -52,7 +86,7 @@ export const LAYOUT = {
   // Nốt cụt nằm NGANG phải ngắn hơn, và đây là lý do — đừng gộp lại làm một
   // con số (16/08/2026, chat 1.4).
   //
-  // Chiều dọc có vGap = 90px để mọc ra, chiều ngang chỉ có hGap = 28px giữa
+  // Chiều dọc có vGap (nay 48px) để mọc ra, chiều ngang chỉ có hGap = 28px giữa
   // hai khối anh em. Dùng chung 34px thì nốt tròn rơi hẳn vào trong ô người
   // bên cạnh: đo trên bản 57 người, 14/120 nốt đè lên ô, và ĐÚNG BẰNG toàn bộ
   // số nốt nằm ngang — tức mọi nốt ngang đều hỏng. Sáu bất biến của chat 1.3

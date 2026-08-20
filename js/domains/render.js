@@ -3,7 +3,7 @@
 // Vai trò  : Vẽ SVG từ kết quả layout. Chỉ vẽ, không tính toạ độ sơ đồ.
 // Lớp      : domains — được gọi bởi: pages · được phép gọi: utils, config
 // Phụ thuộc: config (LAYOUT, PHOTO), utils/text, utils/image
-// Phiên bản: 1.2.0 · Cập nhật: 20/08/2026 12:40
+// Phiên bản: 1.3.0 · Cập nhật: 20/08/2026 15:10
 // ============================================================
 //
 // Đây là file sẽ sửa nhiều nhất khi chỉnh giao diện. Giữ nó chỉ chứa việc vẽ,
@@ -41,6 +41,12 @@
 //    Nốt cụt tách làm hai phần: đoạn kẻ đi cùng lượt đường nối, còn NỐT TRÒN
 //    vẽ sau cùng — nốt phải bấm được nên không được để ô nào che mất.
 //
+//    ⚠ **Từ bước 28, cái mang nền đặc KHÔNG còn là cả ô.** Ô đã bỏ viền, và
+//    hình chữ nhật nền chỉ còn che DẢI CHỮ ở nửa dưới. Phần trên do chính
+//    VÒNG ẢNH che — nó đặc, và nó chỉ rộng 40px giữa ô. Đấy là chủ ý: nét vợ
+//    chồng nay chạy ngang tầm khuôn mặt, nên nếu ô che cả dải trên thì nét bị
+//    nuốt mất, chỉ hở 16px ở khe giữa hai ô. Xem `renderPersonNode()`.
+//
 // 3. BA LOẠI NÉT CỐ ĐỊNH (QUY-TAC-VE §8), đọc từ `kind` + `relation`. Không
 //    đổi nét theo mật độ: cùng một nốt mà lúc nét này lúc nét kia thì người
 //    dùng phải học hai luật.
@@ -56,6 +62,22 @@ import { fullName, doiSongNguoi } from '../utils/text.js';
 import { driveThumbUrl, anhMacDinhUri } from '../utils/image.js';
 
 const NS = 'http://www.w3.org/2000/svg';
+
+/**
+ * Đếm số lần đã vẽ, chỉ để dựng mã `clipPath` không đụng nhau.
+ *
+ * ⚠ **Mã `id` trong SVG là mã của CẢ TRANG, không phải của riêng một thẻ
+ * `<svg>`.** Vòng ảnh mỗi ô cần một `clipPath` riêng, và bản đầu đặt mã theo
+ * mã người (`anh-P0001`). Trong app thật chỉ có một sơ đồ nên không sao — ngay
+ * lúc dựng một trang có HAI sơ đồ để đối chiếu thì mọi `url(#anh-P0001)` đều
+ * trỏ về cái thứ nhất, ở toạ độ khác hẳn, và **ảnh bị cắt sạch: ô chỉ còn một
+ * vòng tròn rỗng**. Ảnh `kiem-thu/ca-kho.png` bắt được đúng cảnh ấy.
+ *
+ * Trong app thật lỗi này chưa bao giờ xảy ra, nhưng nó nằm sẵn đó chờ màn hình
+ * đầu tiên vẽ hai sơ đồ cạnh nhau — mà "so hai người trung tâm" là việc sớm
+ * muộn cũng làm.
+ */
+let demLanVe = 0;
 
 /**
  * Bảng giao diện — màu, cỡ chữ, độ dày nét. Chỗ duy nhất được sửa khi đổi
@@ -74,12 +96,13 @@ export const VE = {
   chuDem:      10,     // số đếm cạnh nốt cụt gộp
   phong:       'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
 
-  lotO:        '#ffffff',
-  lotOBien:    '#f6f2ec',   // nút biên (dâu/rể) — nhạt hơn
-
   // Nền của cả trang sơ đồ. Phải khớp `background` trong gas/index.html và
-  // trong pages/tree-view.js — đây là màu mà `chuCoNen()` dùng để xoá nét
-  // chạy phía dưới chữ. Lệch màu là hiện ra một vệt sáng quanh con số.
+  // trong pages/tree-view.js — đây là màu mà `chuCoNen()` VÀ nền dải chữ của
+  // ô dùng để xoá nét chạy phía dưới. Lệch màu là hiện ra một vệt sáng.
+  //
+  // ⚠ Bước 28 bỏ hai màu `lotO` (#ffffff) và `lotOBien` (#f6f2ec): ô không còn
+  // nền riêng, nó tô đúng màu trang. Đừng dựng lại chúng để "cho ô nổi lên" —
+  // ô nổi lên đúng là cái khung mà chủ dự án đã bảo bỏ.
   nenTrang:    '#faf8f5',
   chuChinh:    '#2a2622',
   chuPhu:      '#8a8078',
@@ -96,12 +119,13 @@ export const VE = {
 
   dayNetCon:   1.6,
   dayNetVo:    1.2,
-  dayVienO:    1.6,
-  dayQuang:    3,
+  dayQuang:    3,          // vòng cam quanh ảnh người trung tâm
 
   motNetDut:   '6 4',      // con nuôi
   motNetGachCham: '5 3 1 3',   // nốt cụt
-  motNetOBien: '4 3',      // viền ô nút biên
+  // Nét đứt của nút biên (dâu/rể). Từ bước 28 nó nằm ở VÀNH ẢNH, không còn ở
+  // viền ô — viền ô đã bỏ. Giữ nguyên khuôn nét để người dùng không phải học lại.
+  motNetOBien: '4 3',
 
   moNetDai:    0.5,        // nét dẫn tới chỗ xa vẽ nhạt hơn
   bo:          8,          // bo góc ô
@@ -120,6 +144,7 @@ export function renderTree(svgEl, layout, index, handlers) {
   while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
   if (!layout || !Array.isArray(layout.nodes) || layout.nodes.length === 0) return;
 
+  demLanVe += 1;
   const xuLy = handlers || {};
   const b    = layout.bounds || { minX: 0, minY: 0, maxX: 0, maxY: 0 };
   const rong = Math.max(1, b.maxX - b.minX);
@@ -190,28 +215,36 @@ function renderPersonNode(node, person, kind) {
   const g = tao('g', { 'data-id': node.id });
   const laBien = kind === 'edge';
 
-  if (node.laTrungTam) {
-    g.append(tao('rect', {
-      x: node.x - 4, y: node.y - 4, width: node.w + 8, height: node.h + 8,
-      rx: VE.bo + 3, fill: 'none',
-      stroke: VE.quangTrungTam, 'stroke-width': VE.dayQuang,
-    }));
-  }
-
+  // --- NỀN ĐẶC, KHÔNG VIỀN, VÀ CHỈ CHE DẢI CHỮ ----------------------------
+  //
+  // ⚠ **Ô vẫn còn, chỉ là không nhìn thấy nữa** — và cái không nhìn thấy ấy
+  // vẫn đang làm một việc thật: che nét chạy phía dưới (LUẬT 2 ở đầu file).
+  // Bỏ hẳn hình chữ nhật này thì nét vợ chồng, nét chéo, nét treo con sẽ chạy
+  // xuyên qua tên người.
+  //
+  // Nó tô bằng ĐÚNG MÀU NỀN TRANG và không có viền. Chủ dự án nói sau khi xem
+  // app thật (20/08/2026): *"vì đã thêm ảnh đại diện là khung tròn nên để thêm
+  // khung bao quanh tên và ảnh làm app rất xấu"*. Đúng — hai khung lồng nhau,
+  // một tròn một vuông, tranh nhau nói cùng một chuyện. Giới tính nay do VÀNH
+  // ẢNH nói, không do viền ô nói nữa.
+  //
+  // ⚠ **Và nó CHỈ che từ dưới vòng ảnh trở xuống.** Che cả ô như bản đầu thì
+  // nét vợ chồng — nay chạy ở tầm khuôn mặt — bị chính hai cái ô của hai vợ
+  // chồng nuốt mất, chỉ còn hở đúng 16px ở khe giữa: một đoạn kẻ trôi lơ lửng
+  // không chạm vào ai. Ở tầm ấy thứ che nét là **chính vòng ảnh** (nó đặc), và
+  // che vừa đủ: nét chui sau khuôn mặt rồi hiện ra ở hai bên, đúng như Quick
+  // Family Tree vẽ nét của người nhiều vợ.
+  const dinhChuY = node.y + PHOTO.leTrenO + 2 * PHOTO.banKinhTrenO + 4;
   g.append(tao('rect', {
-    x: node.x, y: node.y, width: node.w, height: node.h, rx: VE.bo,
-    fill: laBien ? VE.lotOBien : VE.lotO,          // NỀN ĐẶC — luật hai lượt
-    stroke: mauVien(person),
-    'stroke-width': VE.dayVienO,
-    'stroke-opacity': laBien ? 0.55 : 1,
-    'stroke-dasharray': laBien ? VE.motNetOBien : null,
+    x: node.x, y: dinhChuY, width: node.w, height: node.y + node.h - dinhChuY,
+    rx: VE.bo, fill: VE.nenTrang, stroke: 'none',
   }));
 
-  const dauMat = renderDeceasedMark(node, person);
-  if (dauMat) g.append(dauMat);
-
-  const dayAnh = renderAnhTrongO(node, person, laBien);
-  g.append(dayAnh);
+  // ⚠ Quầng người trung tâm KHÔNG còn là hình chữ nhật. Bỏ viền ô mà giữ quầng
+  // chữ nhật thì đúng người dùng nhìn nhiều nhất — người trung tâm — lại là
+  // người duy nhất còn cái khung vừa bị bỏ đi. Nay nó là một VÒNG CAM bọc
+  // ngoài vành ảnh, cùng hình với thứ nó bọc.
+  g.append(renderAnhTrongO(node, person, laBien, node.laTrungTam));
 
   // --- Chữ trong ô ---------------------------------------------------------
   // CHỖ DUY NHẤT render.js được tự tính pixel, và chỉ tính BÊN TRONG ô.
@@ -228,7 +261,7 @@ function renderPersonNode(node, person, kind) {
   //
   // Trường trống thì KHÔNG VẼ HÀNG ĐÓ: không có năm nào thì bỏ hẳn dòng dưới
   // và dồn tên vào giữa vùng chữ. Ô vẫn cao đúng LAYOUT.nodeHeight.
-  const dinhChu = node.y + PHOTO.leTrenO + 2 * PHOTO.banKinhTrenO + 6;
+  const dinhChu = dinhChuY + 2;
   const dayChu  = node.y + node.h - 8;
   const giuaChu = (dinhChu + dayChu) / 2;
 
@@ -236,8 +269,11 @@ function renderPersonNode(node, person, kind) {
   const buocY  = soHang >= 3 ? 16 : 18;
   const dauY   = giuaChu - ((soHang - 1) * buocY) / 2 + coChu * 0.35;
 
+  // Nút biên viết chữ NHẠT HƠN. Cùng lý lẽ với vành nét đứt: trước bước 28
+  // nền ô nhạt hơn đã nói hộ điều ấy, nay không còn nền ô nào để nhạt.
+  const mauTen = laBien ? VE.chuPhu : VE.chuChinh;
   dong.forEach((chuoi, i) => {
-    g.append(chu(chuoi, tamX, dauY + i * buocY, coChu, VE.chuChinh, rongChu));
+    g.append(chu(chuoi, tamX, dauY + i * buocY, coChu, mauTen, rongChu));
   });
   if (doi) {
     g.append(chu(doi, tamX, dauY + dong.length * buocY, VE.chuNam, VE.chuPhu, rongChu));
@@ -278,13 +314,13 @@ function renderPersonNode(node, person, kind) {
  * Không có `person` (ô của người đã bị lọc, hoặc mã lạc) thì vẫn vẽ bóng người
  * "không rõ" — ô trống hoác giữa sơ đồ trông như lỗi vẽ.
  */
-function renderAnhTrongO(node, person, laBien) {
+function renderAnhTrongO(node, person, laBien, laTrungTam) {
   const R  = PHOTO.banKinhTrenO;
   const cx = node.x + node.w / 2;
   const cy = node.y + PHOTO.leTrenO + R;
 
   const g  = tao('g');
-  const ma = 'anh-' + String(node.id).replace(/[^A-Za-z0-9_-]/g, '');
+  const ma = 'anh-' + demLanVe + '-' + String(node.id).replace(/[^A-Za-z0-9_-]/g, '');
 
   const cat = tao('clipPath', { id: ma });
   cat.append(tao('circle', { cx, cy, r: R }));
@@ -317,16 +353,32 @@ function renderAnhTrongO(node, person, laBien) {
     thu.src = duong;
   }
 
-  // Vành trắng rồi vành màu: vành trắng tách ảnh khỏi nền ô, vành màu nhắc lại
-  // giới tính ngay cạnh khuôn mặt — ở cỡ 40px thì viền ô đã quá xa để mắt nối
-  // hai thứ ấy với nhau.
+  // Vành trắng rồi vành màu: vành trắng tách ảnh khỏi nền, vành màu nói GIỚI
+  // TÍNH. Từ bước 28 vành màu này là chỗ DUY NHẤT nói giới tính — ô đã bỏ viền.
+  //
+  // ⚠ Và nó cũng là chỗ duy nhất còn nói *"nhánh của người này bị cắt"*: nút
+  // biên (dâu/rể lấy vào) mang vành NÉT ĐỨT. Trước bước 28 việc ấy do viền ô
+  // nét đứt lo; bỏ viền ô mà không chuyển nét đứt sang đây là mất hẳn một
+  // thông tin, chứ không phải làm gọn giao diện.
   g.append(tao('circle', {
     cx, cy, r: R, fill: 'none', stroke: '#ffffff', 'stroke-width': 2,
   }));
   g.append(tao('circle', {
     cx, cy, r: R, fill: 'none', stroke: mauVien(person),
-    'stroke-width': 1.5, 'stroke-opacity': laBien ? 0.4 : 0.75,
+    'stroke-width': laBien ? 1.4 : 1.8,
+    'stroke-opacity': laBien ? 0.6 : 0.85,
+    'stroke-dasharray': laBien ? VE.motNetOBien : null,
   }));
+
+  if (laTrungTam) {
+    g.append(tao('circle', {
+      cx, cy, r: R + 4, fill: 'none',
+      stroke: VE.quangTrungTam, 'stroke-width': VE.dayQuang,
+    }));
+  }
+
+  const dauMat = renderDeceasedMark(cx, cy, R, person);
+  if (dauMat) g.append(dauMat);
 
   return g;
 }
@@ -334,27 +386,43 @@ function renderAnhTrongO(node, person, laBien) {
 /**
  * Ký hiệu người đã mất — Quick Family Tree thiếu cái này, ta nên có.
  *
- * Một góc gấp nhỏ ở mép trên bên trái, màu xám. Cố ý KHÔNG dùng dấu thập:
- * gia phả này không gắn với một tôn giáo nào, ký hiệu cũng không nên gắn.
+ * Cố ý KHÔNG dùng dấu thập: gia phả này không gắn với một tôn giáo nào, ký
+ * hiệu cũng không nên gắn.
+ *
+ * ⚠ **Bước 28 phải đổi chỗ đặt nó, và lý do đáng nhớ.** Trước đó nó là một
+ * GÓC GẤP ở mép trên bên trái ô — một hình chỉ có nghĩa khi có cái góc để mà
+ * gấp. Bỏ viền ô xong, cái tam giác xám ấy nổi lơ lửng giữa nền trang, cách
+ * người gần nhất hai chục pixel, trông y như một vết bẩn. Ảnh `oa-0.png` bắt
+ * được ngay ở lần chụp đầu sau khi bỏ viền.
+ *
+ * Nay nó là một CUNG TRÒN xám ôm nửa dưới vành ảnh: bám vào khuôn mặt, không
+ * bám vào cái khung không còn nữa, và không đè lên vành màu giới tính vì nó
+ * nằm ở bán kính lớn hơn.
  *
  * Đọc `living === false` HOẶC có năm mất. Không suy ngược từ năm sinh — một
  * cụ sinh 1890 mà dữ liệu chưa ghi gì thì ta KHÔNG BIẾT, và không biết thì
  * không đánh dấu.
  */
-function renderDeceasedMark(node, person) {
+function renderDeceasedMark(cx, cy, R, person) {
   if (!person) return null;
   // doiSongNguoi() chỉ chèn dấu gạch khi CÓ năm mất: "1927 – 2001" hoặc "– 2001".
   // Chỉ có năm sinh thì chuỗi là "1962", không dấu gạch nào.
   const coNamMat = doiSongNguoi(person).indexOf('–') !== -1;
   if (person.living !== false && !coNamMat) return null;
 
-  const c = 11;
+  const r = R + 3.5;
   const g = tao('g');
+  // Cung 140° ở đáy vòng ảnh, vẽ từ trái sang phải qua điểm thấp nhất.
+  const goc = (do_) => {
+    const rad = (do_ * Math.PI) / 180;
+    return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
+  };
+  const [x1, y1] = goc(20);
+  const [x2, y2] = goc(160);
   g.append(tao('path', {
-    d: 'M ' + (node.x + VE.bo) + ' ' + node.y +
-       ' h ' + c +
-       ' L ' + (node.x + VE.bo) + ' ' + (node.y + c) + ' Z',
-    fill: VE.chuPhu, 'fill-opacity': 0.55,
+    d: 'M ' + x1 + ' ' + y1 + ' A ' + r + ' ' + r + ' 0 0 1 ' + x2 + ' ' + y2,
+    fill: 'none', stroke: VE.chuPhu, 'stroke-width': 2.4,
+    'stroke-opacity': 0.7, 'stroke-linecap': 'round',
   }));
   const nhan = tao('title');
   nhan.textContent = 'Đã mất';

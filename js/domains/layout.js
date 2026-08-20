@@ -2,8 +2,8 @@
 // giapha · js/domains/layout.js
 // Vai trò  : Tính TOẠ ĐỘ các ô người, đường nối và nốt cụt. Không vẽ gì cả.
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
-// Phụ thuộc: config (LAYOUT)
-// Phiên bản: 1.5.0 · Cập nhật: 18/08/2026 16:10
+// Phụ thuộc: config (LAYOUT, PHOTO)
+// Phiên bản: 1.6.0 · Cập nhật: 20/08/2026 15:10
 // ============================================================
 //
 // Tách khỏi render.js có chủ ý: chỉnh giao diện (màu, phông, bo góc) không
@@ -84,11 +84,38 @@
 //   kind 'child', relation khác    → nét ĐỨT (con nuôi)
 //   nốt cụt                        → nét gạch-chấm, do render.js lo
 
-import { LAYOUT } from '../config.js';
+import { LAYOUT, PHOTO } from '../config.js';
 
 const RONG = LAYOUT.nodeWidth;
 const CAO  = LAYOUT.nodeHeight;
 const DEM  = 24;                  // lề quanh sơ đồ khi tính bounds
+
+/**
+ * MỨC NÉT VỢ CHỒNG bên trong ô — đo từ nóc ô xuống.
+ *
+ * ⚠ **Đúng bằng TÂM VÒNG ẢNH, không phải tâm ô.** Đây là chỗ mọi nét vợ chồng
+ * bám vào, và cũng là chỗ chùm con treo lên.
+ *
+ * Trước bước 28 nó là `CAO / 2` — tâm ô — và lúc ấy đúng, vì ô có VIỀN và có
+ * NỀN ĐẶC nên nét chỉ lộ ra ở khe 16px giữa hai ô, ngang tầm mắt nhìn. Bước 28
+ * bỏ viền ô (chủ dự án: *"khung bao quanh tên và ảnh làm app rất xấu"*), và
+ * lúc đó `CAO / 2` rơi đúng vào DÒNG TÊN: đoạn nét ngắn nối hai người sẽ chạy
+ * ngang giữa hai cái tên. Ở tâm vòng ảnh thì nét nối hai khuôn mặt — đúng thứ
+ * Quick Family Tree làm, và đọc ra ngay không phải học.
+ *
+ * Lấy từ `PHOTO` chứ không gõ lại con số: hai hằng số phải khớp nhau mà nằm
+ * hai nơi thì sớm muộn cũng lệch, và lúc lệch thì nét vợ chồng cắt ngang mặt
+ * người chứ không có gì báo lỗi.
+ */
+const MUC_NET = PHOTO.leTrenO + PHOTO.banKinhTrenO;
+
+/**
+ * Khoảng từ MÉP Ô tới MÉP VÒNG ẢNH theo chiều ngang — 40px với ô rộng 120 và
+ * vòng ảnh bán kính 20. Vòng ảnh nằm giữa ô nên hai bên bằng nhau.
+ *
+ * Dùng để nét vợ chồng chạm được vào khuôn mặt, xem `themNetVoChong()`.
+ */
+const LE_ANH = RONG / 2 - PHOTO.banKinhTrenO;
 
 /**
  * Bố trí toàn bộ sơ đồ quanh một người trung tâm.
@@ -571,7 +598,7 @@ function layDai(ct, neoId) {
   // Độ cao mỗi nấc — chia đều, đừng cộng dồn. Cộng dồn cứng 8px thì đến người
   // thứ tư nét tràn ra khỏi khung.
   const buocNet = n > 1
-    ? Math.min(LAYOUT.spouseStepMax, (CAO / 2 - LAYOUT.spouseStepPadTop) / (n - 1))
+    ? Math.min(LAYOUT.spouseStepMax, (MUC_NET - LAYOUT.spouseStepPadTop) / (n - 1))
     : 0;
 
   const kq = {
@@ -1032,13 +1059,13 @@ function dungDiemTreo(ct) {
       const dai = ct.dai.get(neoId);
       const nut = ct.nodeById.get(neoId);
       x    = nut.x - dai.dxP + dai.khe.get(uid);
-      y    = nut.y + CAO / 2 - (dai.mucNet.get(uid) || 0) * dai.buocNet;
+      y    = nut.y + MUC_NET - (dai.mucNet.get(uid) || 0) * dai.buocNet;
       busY = nut.y + CAO + LAYOUT.vGap / 2;
       kieu = dai.n > 0 ? 'khe' : 'don';
     } else if (u.partners.length === 1) {
       const nut = ct.nodeById.get(u.partners[0]);
       x    = nut.x + RONG / 2;
-      y    = nut.y + CAO / 2;
+      y    = nut.y + MUC_NET;
       busY = nut.y + CAO + LAYOUT.vGap / 2;
       kieu = 'don';
       neoId = u.partners[0];
@@ -1051,7 +1078,7 @@ function dungDiemTreo(ct) {
       // nằm đúng trên cái võng ấy, chứ không phải ở tâm hàng: tại trung điểm
       // giữa hai ô không có ô nào che, nên đoạn kẻ từ tâm hàng xuống sẽ thò
       // hẳn ra ngoài và treo lơ lửng phía trên nét vợ chồng.
-      y    = a.y === b.y ? mucVong(a, b) : (a.y + b.y) / 2 + CAO / 2;
+      y    = a.y === b.y ? mucVong(a, b) : (a.y + b.y) / 2 + MUC_NET;
       busY = Math.max(a.y, b.y) + CAO + LAYOUT.vGap / 2;
       kieu = 'cheo';
       neoId = u.partners[0];
@@ -1152,16 +1179,23 @@ function themNetVoChong(ct, links, uid, aId, bId) {
     const dai   = ct.dai.get(neoId);
     const neo   = ct.nodeById.get(neoId);
     const kia   = neoId === aId ? b : a;
-    const y     = neo.y + CAO / 2 - (dai.mucNet.get(uid) || 0) * dai.buocNet;
-    const x1    = dai.huong > 0 ? neo.x + RONG : neo.x;
-    const x2    = dai.huong > 0 ? kia.x        : kia.x + RONG;
+    const y     = neo.y + MUC_NET - (dai.mucNet.get(uid) || 0) * dai.buocNet;
+    // Nét chạy từ MÉP VÒNG ẢNH sang mép vòng ảnh, không từ mép ô sang mép ô.
+    //
+    // ⚠ Trước bước 28 hai thứ ấy là một, vì mép ô có viền và đó là chỗ mắt
+    // nhìn thấy ô kết thúc. Bỏ viền rồi thì mép ô nằm cách khuôn mặt 40px về
+    // mỗi bên, và nét vợ chồng thành một đoạn 16px trôi lơ lửng ở khoảng giữa,
+    // không chạm vào ai. Ảnh chụp phóng to bắt được; ở cỡ thật thì nó chỉ
+    // trông như sơ đồ hơi rời rạc.
+    const x1    = dai.huong > 0 ? neo.x + RONG - LE_ANH : neo.x + LE_ANH;
+    const x2    = dai.huong > 0 ? kia.x + LE_ANH        : kia.x + RONG - LE_ANH;
     links.push({ kind: 'spouse', relation: null, unionId: uid, from: neoId, to: kia.id,
                  points: [[x1, y], [x2, y]], netDai: false, cheo: false });
     return;
   }
 
-  const ax = a.x + RONG / 2, ay = a.y + CAO / 2;
-  const bx = b.x + RONG / 2, by = b.y + CAO / 2;
+  const ax = a.x + RONG / 2, ay = a.y + MUC_NET;
+  const bx = b.x + RONG / 2, by = b.y + MUC_NET;
 
   if (a.gen !== b.gen) {
     links.push({ kind: 'spouse', relation: null, unionId: uid, from: aId, to: bId,
@@ -1283,15 +1317,15 @@ function viTriNotCut(ct, treoCua, sp, nut) {
       ? (huong > 0 ? nutNeo.x - daiNg.dxP + daiNg.rong : nutNeo.x - daiNg.dxP)
       : (huong > 0 ? nut.x + RONG : nut.x);
     const y = dai
-      ? nut.y + CAO / 2 - (dai.mucNet.get(sp.unionId) || 0) * dai.buocNet
-      : nut.y + CAO / 2;
+      ? nut.y + MUC_NET - (dai.mucNet.get(sp.unionId) || 0) * dai.buocNet
+      : nut.y + MUC_NET;
     return { x: mepDai + huong * LN, y, x1: mepDai, y1: y, angle: huong > 0 ? 0 : 180 };
   }
 
   // Cặp đủ, thiếu con. Né sang bên cạnh chùm con đang vẽ nếu có.
   const huong = dai ? dai.huong : 1;
   let x = treo ? treo.x : nut.x + RONG / 2;
-  const y1 = treo ? treo.y : nut.y + CAO / 2;
+  const y1 = treo ? treo.y : nut.y + MUC_NET;
   if (u.children.length > 0) {
     let mep = null;
     for (const c of u.children) {
