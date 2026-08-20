@@ -1,10 +1,10 @@
 // ============================================================
 // giapha · js/pages/person-detail.js
-// Vai trò  : MENU vòng tròn (cửa mặc định) + THẺ thông tin của một người
+// Vai trò  : MENU vòng tròn (mở từ nút ⓘ · chuột phải) + THẺ thông tin
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
 //            utils/{text,date,image}
-// Phiên bản: 1.9.0 · Cập nhật: 20/08/2026 21:10
+// Phiên bản: 1.10.0 · Cập nhật: 21/08/2026 09:40
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -64,7 +64,7 @@
 import { state } from '../state.js';
 import { suaDuoc } from '../services/repo.js';
 import { getAlternateNames } from '../domains/person.js';
-import { getPartnerUnions } from '../domains/union.js';
+import { getParentUnions, getPartnerUnions } from '../domains/union.js';
 import { mauVien } from '../domains/render.js';
 import { fullName, coGiaTri, doiSongNguoi, ngayGio } from '../utils/text.js';
 import { formatDate, calcAge } from '../utils/date.js';
@@ -126,6 +126,8 @@ const KIEU_HOP =
  *        `onXoaNguoi`   thẻ KHÔNG hỏi lại gì.
  *        `onSuaCap`     nút dưới nhóm Vợ/chồng. Chỉ có mã NGƯỜI — người có nhiều
  *                       cặp thì `person-edit.js` hỏi cặp nào (bước 29).
+ *        `onSapThuTu`   nút dưới nhóm Con. Cửa NHÌN THẤY ĐƯỢC của cử chỉ chạm
+ *                       giữ trên ô sơ đồ (21/08/2026).
  *
  * ⚠ SÁU MỤC CỦA VÒNG TRÒN ĐỀU LÀ CỬA, KHÔNG PHẢI VIỆC. Mọi hộp xác nhận, mọi
  * phép rà, mọi đường ghi và mọi đường hoàn tác nằm ở `person-edit.js` — nơi có
@@ -423,7 +425,7 @@ function veQuanHe(index, p, xuLy) {
 
   ra.push(...veNhom('Cha mẹ', chaMe, xuLy));
   ra.push(...veNhom('Vợ/chồng', banDoi, xuLy, nutSuaCap(p, xuLy)));
-  ra.push(...veNhom('Con', con, xuLy));
+  ra.push(...veNhom('Con', con, xuLy, nutSapThuTu(p, xuLy)));
   return ra;
 }
 
@@ -477,6 +479,50 @@ function nutSuaCap(p, xuLy) {
   nut.addEventListener('click', () => {
     closePersonDetail();
     xuLy.onSuaCap(p.id);
+  });
+  return nut;
+}
+
+/**
+ * Nút *"Sắp thứ tự các con"*, đứng ngay dưới danh sách con (21/08/2026).
+ *
+ * ⚠ **Đây là CÁI NÚT ĐI KÈM cử chỉ ẩn.** Chạm giữ trên một ô sơ đồ bật màn
+ * hình sắp thứ tự, mà chạm giữ thì không có gì trên màn hình nói ra rằng nó tồn
+ * tại — luật chat 1.6: một cử chỉ ẩn phải luôn có một cửa nhìn thấy được.
+ *
+ * ⚠ **KHÔNG cho nó lên vành vòng tròn**, cùng lý lẽ đã viết ở `nutSuaCap`:
+ * vành co từ tám mục xuống sáu ở bước 26 để mỗi mục có 60° thay vì 45°, và mục
+ * thứ bảy là trả lại đúng cái hỏng vừa sửa xong. Chỗ đúng của nó là ngay dưới
+ * thứ nó sắp xếp.
+ *
+ * ⚠ **Chỉ mọc khi có từ hai người con trở lên.** Một nút bấm vào chỉ để nghe
+ * "không có gì để sắp" là một nút chết — đúng thứ điểm dừng của bước 26 cấm.
+ * Người con một thì cửa duy nhất là chạm giữ, và ở đó app trả lời bằng chữ.
+ *
+ * @returns {HTMLElement|null}
+ */
+function nutSapThuTu(p, xuLy) {
+  if (!xuLy || !xuLy.onSapThuTu) return null;
+  if (!suaDuoc()) return null;   // chỉ có quyền xem thì không mọc nút sửa
+
+  const coHang = getPartnerUnions(state.index, p.id).some((u) =>
+    (Array.isArray(u.children) ? u.children : [])
+      .filter((c) => c && c.personId && state.index.personById.has(c.personId))
+      .length >= 2);
+  if (!coHang) return null;
+
+  const nut = document.createElement('button');
+  nut.type = 'button';
+  nut.dataset.viec = 'sap-thu-tu';
+  nut.style.cssText =
+    'display:block;width:100%;text-align:left;padding:9px 11px;font-family:inherit;' +
+    'font-size:13px;color:#8a8078;border:1px dashed #e6e0d8;border-radius:8px;' +
+    'background:none;cursor:pointer;touch-action:manipulation';
+  nut.textContent = 'Sắp thứ tự các con — ai là anh, ai là em';
+
+  nut.addEventListener('click', () => {
+    closePersonDetail();
+    xuLy.onSapThuTu(p.id);
   });
   return nut;
 }

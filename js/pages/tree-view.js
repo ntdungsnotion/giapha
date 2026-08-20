@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render,union}, utils/text,
 //            pages/{person-detail,person-edit,person-list,settings}
-// Phiên bản: 1.16.0 · Cập nhật: 20/08/2026 23:10
+// Phiên bản: 1.17.0 · Cập nhật: 21/08/2026 09:40
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -70,7 +70,8 @@ import { openPersonMenu, openPersonDetail,
          closePersonDetail } from './person-detail.js';
 import { openPersonForm, closePersonForm, quickAddChild, quickAddParent,
          quickAddSpouse, linkExisting, goNoiNguoi, xoaNguoi,
-         openUnionForm, khoiPhucNguoi, khoiPhucCap } from './person-edit.js';
+         openUnionForm, openSapThuTu,
+         khoiPhucNguoi, khoiPhucCap } from './person-edit.js';
 import { openPersonList, closePersonList, openThungRac } from './person-list.js';
 import { openSettings, closeSettings } from './settings.js';
 
@@ -379,17 +380,32 @@ let daGanToanCuc = false;
 
 const NGUONG_KEO = 8;   // px — dưới mức này vẫn tính là một cú chạm, không phải kéo
 
-// --- Chạm giữ để mở thẻ thông tin (chat 1.6) -----------------------------
+// --- Chạm giữ để SẮP THỨ TỰ ANH CHỊ EM (đổi vai 21/08/2026) --------------
 //
 // Chạm NGẮN vào một ô vẫn đổi người trung tâm — đó là tính năng cốt lõi, chốt
-// từ chat 1.4, không đụng vào. Chạm GIỮ mở thẻ thông tin.
+// từ chat 1.4, không đụng vào.
+//
+// ⚠ **Chạm GIỮ đã ĐỔI VAI.** Từ chat 1.6 tới bước 30 nó mở menu vòng tròn; nay
+// nó bật màn hình SẮP THỨ TỰ ANH CHỊ EM. Chủ dự án chốt 21/08/2026: *"gọi vòng
+// tròn do nút ⓘ đảm nhiệm; thao tác giữ tên hoặc ảnh để kích hoạt chế độ sắp
+// xếp"*.
+//
+// Vòng tròn KHÔNG mất cửa nào: bấm đơn đưa người ấy ra giữa, rồi nút ⓘ mở vòng
+// tròn của chính người đang đứng giữa — đường hai chạm ấy đã chạy sẵn từ bước
+// 26, không phải sửa dòng nào. Bấm chuột phải cũng vẫn mở vòng tròn như cũ.
+//
+// ⚠ **Bấm đúp đã LOẠI, đừng dựng lại.** `render.js` gắn `click` thẳng vào ô,
+// nên cú bấm thứ nhất đã gọi `setFocusPerson()` → `refresh()` vẽ lại cả sơ đồ
+// và ô ấy dời về giữa; cú thứ hai rơi vào ô khác. Cách duy nhất cho nó chạy là
+// hoãn MỌI cú bấm đơn ~250ms — tức làm ì đúng thao tác dùng nhiều nhất trong
+// cả app (lập luận đầy đủ ở `NK-B30` mục 10.2).
 //
 // 500ms: dưới 400ms thì một cú chạm hơi chậm của người lớn tuổi đã bị hiểu
 // nhầm thành chạm giữ; trên 600ms thì người dùng tưởng máy không nhận.
 //
 // Chạm giữ xong phải đặt `daKeo = true`. Nghe vô lý vì tay không hề di chuyển,
 // nhưng `daKeo` là cờ "nuốt cú click sắp bắn ra" — không đặt thì nhấc tay lên
-// là sơ đồ vừa mở thẻ vừa đổi người trung tâm.
+// là sơ đồ vừa mở hộp vừa đổi người trung tâm.
 const CHO_CHAM_GIU = 500;
 
 let hendChamGiu = 0;   // id của setTimeout đang chờ
@@ -404,9 +420,10 @@ let hendChamGiu = 0;   // id của setTimeout đang chờ
 // thoại nó là đường duy nhất.
 //
 // Trên điện thoại, chạm giữ có thể làm trình duyệt tự bắn thêm `contextmenu`.
-// Lúc ấy thẻ đã mở rồi, nên `daMoTheLanNay` chặn không cho mở lại — mở lại là
-// dựng lại cả thẻ, người dùng thấy một cái nháy vô cớ.
-let daMoTheLanNay = false;
+// Lúc ấy hộp sắp thứ tự đã mở rồi, nên `daMoHopLanNay` chặn không cho mở tiếp
+// vòng tròn đè lên trên — hai lớp phủ chồng nhau là thứ người dùng không gỡ ra
+// được bằng một cú bấm.
+let daMoHopLanNay = false;
 
 
 function ganCuChi() {
@@ -463,7 +480,7 @@ function chuotPhai(e) {
 
   e.preventDefault();
   huyChamGiu();
-  if (daMoTheLanNay) return;   // chạm giữ vừa mở rồi, đừng dựng lại thẻ
+  if (daMoHopLanNay) return;   // chạm giữ vừa mở hộp sắp thứ tự, đừng đè lên
 
   daKeo = true;                // nuốt cú click sắp bắn ra, như chạm giữ
   keo = null;
@@ -475,7 +492,7 @@ function chamXuong(e) {
   huyChamGiu();
   dangCham.set(e.pointerId, { x: e.clientX, y: e.clientY });
   daKeo = false;
-  daMoTheLanNay = false;
+  daMoHopLanNay = false;
 
   if (dangCham.size === 1) {
     keo = motCuKeo(e.clientX, e.clientY);
@@ -489,11 +506,13 @@ function chamXuong(e) {
 }
 
 /**
- * Hẹn mở thẻ thông tin nếu ngón tay còn nằm yên trên một ô người sau 500ms.
+ * Hẹn bật màn hình sắp thứ tự nếu ngón tay còn nằm yên trên một ô người sau
+ * 500ms.
  *
- * Ô người là `<g data-id="P0001">` do `render.js` sinh. Nốt cụt mang
- * `data-not-cut` và nằm ở nhóm khác, nên chạm giữ vào nốt cụt không mở thẻ —
- * đúng ý, sau nốt cụt có thể là nhiều người chứ không phải một.
+ * Ô người là `<g data-id="P0001">` do `render.js` sinh — cả ảnh lẫn bảng tên
+ * đều nằm trong đó, nên "giữ trên tên hoặc ảnh" đã đúng là cái này. Nốt cụt
+ * mang `data-not-cut` và nằm ở nhóm khác, nên chạm giữ vào nốt cụt không mở gì
+ * — đúng ý, sau nốt cụt có thể là nhiều người chứ không phải một.
  */
 function henChamGiu(e) {
   const o = e.target && e.target.closest ? e.target.closest('[data-id]') : null;
@@ -505,8 +524,8 @@ function henChamGiu(e) {
     if (daKeo || dangCham.size !== 1) return;   // đã kéo, hoặc đã thêm ngón thứ hai
     daKeo = true;                               // nuốt cú click sắp bắn ra
     keo = null;
-    daMoTheLanNay = true;                       // để `contextmenu` khỏi mở lại
-    openPersonMenu(personId, xuLyThe());
+    daMoHopLanNay = true;                       // để `contextmenu` khỏi đè lên
+    moSapAnhChiEm(personId);
   }, CHO_CHAM_GIU);
 }
 
@@ -731,7 +750,7 @@ function moDanhSachNguoi() {
   const goc = xuLyThe();
   const dongTruoc = (fn) => (x) => { closePersonList(); fn(x); };
 
-  // Bọc CẢ TÁM, không bọc bốn rồi để bốn cái mới đi thẳng: bốn việc của bước 26
+  // Bọc CẢ CHÍN, không bọc bốn rồi để những cái mới đi thẳng: bốn việc của bước 26
   // cũng mở hộp riêng của chúng, và cái danh sách còn nằm đè lên trên vẫn che
   // mất đúng kết quả người dùng vừa gây ra.
   //
@@ -751,6 +770,7 @@ function moDanhSachNguoi() {
       onGoNoi:      dongTruoc(goc.onGoNoi),
       onXoaNguoi:   dongTruoc(goc.onXoaNguoi),
       onSuaCap:     dongTruoc(goc.onSuaCap),
+      onSapThuTu:   dongTruoc(goc.onSapThuTu),
     }),
   });
 }
@@ -814,7 +834,31 @@ function xuLyThe() {
     onGoNoi:      moGoNoi,
     onXoaNguoi:   moHopXoa,
     onSuaCap:     moFormSuaCap,
+    onSapThuTu:   moSapCacCon,
   };
+}
+
+/**
+ * Hai cửa vào MỘT màn hình sắp thứ tự, hỏi hai câu khác nhau.
+ *
+ * `'anhChiEm'` — cửa CHẠM GIỮ trên ô sơ đồ: sắp hàng anh chị em của người ấy,
+ *                tức sắp con của cặp CHA MẸ họ.
+ * `'con'`      — cửa NÚT trong thẻ thông tin: sắp con của cặp mà chính người
+ *                ấy làm vợ/chồng.
+ *
+ * ⚠ Cử chỉ ẩn phải có một cái nút đi kèm (luật chat 1.6) — chạm giữ là cử chỉ
+ * ẩn, và cái nút của nó là *"Sắp thứ tự các con"* dưới nhóm Con trong thẻ.
+ *
+ * `refresh()` chứ không dời người trung tâm: đổi thứ tự anh em không đổi ai
+ * đứng giữa, chỉ đổi ai đứng trái ai đứng phải trong đúng cái hàng người dùng
+ * đang nhìn.
+ */
+function moSapAnhChiEm(personId) {
+  openSapThuTu(personId, 'anhChiEm', { onDaLuu: () => refresh() });
+}
+
+function moSapCacCon(personId) {
+  openSapThuTu(personId, 'con', { onDaLuu: () => refresh() });
 }
 
 /**
