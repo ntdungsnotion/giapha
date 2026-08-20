@@ -1,7 +1,7 @@
 // ============================================================
 // giapha · gas/Code.gs   (đặt trong Apps Script)
 // Vai trò  : API máy chủ. Trình duyệt gọi qua google.script.run.
-// Phiên bản: 0.5.0 · Cập nhật: 17/08/2026 19:10
+// Phiên bản: 0.6.0 · Cập nhật: 20/08/2026 11:51
 // ============================================================
 //
 // Triển khai BẮT BUỘC đặt:
@@ -12,10 +12,12 @@
 // trả về email thật và Drive thực thi phân quyền theo danh sách chia sẻ.
 // Đã kiểm chứng ba vòng ở phép thử 3 — xem NK-B03. ĐỪNG ĐỔI.
 //
-// TRẠNG THÁI (17/08/2026, chat 2.1):
+// TRẠNG THÁI (20/08/2026, bước 28):
 //   doGet · layPhien · layCay · trangThaiCaiDat  → đã viết thật
 //   luuCay + sao lưu tự động                     → đã viết thật (chat 2.1)
-//   taiAnh (chat 2.6) · layDanhSachSaoLuu · taoFileDuLieuMoi → còn khung
+//   taiAnh · layAnhBase64 · trangThaiQuyenAnh ·
+//     moQuyenXemAnh · xoaAnhThu                  → đã viết thật (bước 28)
+//   layDanhSachSaoLuu · taoFileDuLieuMoi         → còn khung
 //
 // ⚠ SỬA FILE NÀY XONG PHẢI TRIỂN KHAI LẠI, không thì web app vẫn chạy bản cũ:
 //   Triển khai → Quản lý các bản triển khai → bút chì →
@@ -565,8 +567,231 @@ function bayGio_() {
 // 4. ẢNH VÀ SAO LƯU  — giai đoạn sau
 // ============================================================
 
-/** Nén sẵn phía trình duyệt, ở đây chỉ ghi vào THU_MUC_ANH_ID. */
-function taiAnh(base64, tenFile) { /* TODO — chat 2.6 */ }
+// --- ẢNH: bốn hàm, và ba trong số đó sinh ra để TRẢ LỜI MỘT CÂU HỎI -------
+//
+// Câu hỏi là: **trình duyệt có hiện được ảnh nằm trên Drive hay không**, khi
+// app chạy trong khung iframe của Apps Script và file ảnh KHÔNG mở công khai.
+//
+// Không ai trả lời được câu ấy bằng suy luận. Có ba đường đi, và bước 28 đo cả
+// ba trên máy thật:
+//
+//   1. `drive.google.com/thumbnail?id=…`      — cần cookie Google gửi kèm
+//   2. `lh3.googleusercontent.com/d/…`        — cùng họ, máy chủ khác
+//   3. `layAnhBase64()` — MÁY CHỦ đọc file rồi trả chuỗi về
+//
+// Đường 3 CHẮC CHẮN chạy: script thực thi bằng danh tính người đang truy cập,
+// nên Drive cho đọc đúng những file người ấy được chia sẻ. Cái giá là mỗi tấm
+// ảnh tốn một lần gọi máy chủ. Hai đường đầu rẻ hơn nhiều — nếu chúng chạy.
+//
+// ⚠ ĐỪNG XOÁ `layAnhBase64` kể cả khi đường 1 hoặc 2 thắng. Nó là đường lui
+// duy nhất còn lại nếu Google siết cookie bên thứ ba.
+
+/** Ảnh đã nén ở trình duyệt rồi mới lên tới đây. Quá cỡ này là dấu hiệu hỏng. */
+var TRAN_ANH_BYTE = 3 * 1024 * 1024;
+
+/**
+ * Ghi một tấm ảnh đã nén sẵn vào THU_MUC_ANH_ID.
+ *
+ * KHÔNG đụng gì tới quyền chia sẻ của file. File thừa hưởng quyền của thư mục
+ * Anh, và đó là chỗ chủ dự án quyết định, không phải chỗ này.
+ *
+ * @param {string} base64   chuỗi base64 THUẦN, không có tiền tố `data:`
+ * @param {string} tenFile
+ * @returns {{
+ *   ok: boolean, lyDo: string|null, fileId: string|null, ten: string|null,
+ *   coByte: number, urlThumb: string|null, urlLh3: string|null,
+ *   urlXem: string|null, loi: string|null
+ * }}
+ */
+function taiAnh(base64, tenFile) {
+  var kq = {
+    ok: false, lyDo: null, fileId: null, ten: null, coByte: 0,
+    urlThumb: null, urlLh3: null, urlXem: null, loi: null,
+  };
+
+  var phien = layPhien();
+  if (phien.loi) {
+    kq.lyDo = 'caidat';
+    kq.loi  = phien.loi;
+    return kq;
+  }
+  // Tải ảnh lên là GHI. Người chỉ có quyền xem gia phả thì không được ghi ảnh,
+  // cùng một luật với luuCay().
+  if (!phien.suaDuoc) {
+    kq.lyDo = 'khongcoquyen';
+    kq.loi  = 'Bạn chỉ có quyền xem gia phả nên chưa tải ảnh lên được. ' +
+              'Cần sửa thật thì nhờ ' + NGUOI_QUAN_LY + ' đổi quyền trên Google Drive.';
+    return kq;
+  }
+  if (!THU_MUC_ANH_ID || THU_MUC_ANH_ID.indexOf('DAN_ID_') === 0) {
+    kq.lyDo = 'caidat';
+    kq.loi  = 'Chưa điền THU_MUC_ANH_ID trong Config.gs. Chạy kiemTraConfig() để soi.';
+    return kq;
+  }
+  if (!base64 || typeof base64 !== 'string') {
+    kq.lyDo = 'khongcodulieu';
+    kq.loi  = 'Không nhận được dữ liệu ảnh nào.';
+    return kq;
+  }
+
+  var byte;
+  try {
+    byte = Utilities.base64Decode(base64);
+  } catch (e) {
+    kq.lyDo = 'anhhong';
+    kq.loi  = 'Chuỗi ảnh gửi lên không giải mã được: ' + e.message;
+    return kq;
+  }
+
+  kq.coByte = byte.length;
+  if (byte.length > TRAN_ANH_BYTE) {
+    kq.lyDo = 'quaco';
+    kq.loi  = 'Ảnh nặng ' + Math.round(byte.length / 1024) + ' KB, vượt trần ' +
+              Math.round(TRAN_ANH_BYTE / 1024) + ' KB. Lẽ ra trình duyệt đã nén ' +
+              'trước khi gửi — nặng thế này nghĩa là bước nén không chạy.';
+    return kq;
+  }
+
+  var ten = tenAnhAnToan_(tenFile);
+
+  try {
+    var thuMuc = DriveApp.getFolderById(THU_MUC_ANH_ID);
+    var blob   = Utilities.newBlob(byte, 'image/jpeg', ten);
+    var file   = thuMuc.createFile(blob);
+
+    kq.fileId   = file.getId();
+    kq.ten      = file.getName();
+    kq.urlThumb = 'https://drive.google.com/thumbnail?id=' + kq.fileId + '&sz=w200';
+    kq.urlLh3   = 'https://lh3.googleusercontent.com/d/' + kq.fileId + '=w200';
+    kq.urlXem   = 'https://drive.google.com/file/d/' + kq.fileId + '/view';
+    kq.ok       = true;
+    return kq;
+  } catch (e) {
+    kq.lyDo = 'drivetuchoi';
+    kq.loi  = 'Drive từ chối ghi ảnh vào thư mục Anh: ' + e.message +
+              ' — thường là do thư mục Anh chưa chia sẻ quyền SỬA cho ' +
+              (phien.email || 'tài khoản đang đăng nhập') + '.';
+    return kq;
+  }
+}
+
+/**
+ * MÁY CHỦ đọc file ảnh rồi trả chuỗi base64 về — đường đi chắc chắn chạy.
+ *
+ * Ưu tiên `getThumbnail()`: Drive dựng sẵn một bản nhỏ, thường vài KB, đúng cỡ
+ * ô sơ đồ. Chỉ khi không có bản ấy mới đọc file gốc — mà file gốc do app tải
+ * lên thì cũng đã nén rồi.
+ *
+ * @returns {{ ok, base64: string|null, mime: string|null, coByte: number,
+ *             nguon: string|null, loi: string|null }}
+ */
+function layAnhBase64(fileId) {
+  var kq = { ok: false, base64: null, mime: null, coByte: 0, nguon: null, loi: null };
+  if (!fileId) {
+    kq.loi = 'Chưa cho biết mã file ảnh.';
+    return kq;
+  }
+
+  try {
+    var file = DriveApp.getFileById(String(fileId));
+    var blob = null;
+    try { blob = file.getThumbnail(); } catch (e) { blob = null; }
+
+    if (blob) {
+      kq.nguon = 'thumbnail';
+    } else {
+      blob = file.getBlob();
+      kq.nguon = 'file-goc';
+    }
+
+    var byte  = blob.getBytes();
+    kq.base64 = Utilities.base64Encode(byte);
+    kq.mime   = blob.getContentType() || 'image/jpeg';
+    kq.coByte = byte.length;
+    kq.ok     = true;
+    return kq;
+  } catch (e) {
+    kq.loi = 'Không đọc được ảnh trên Drive: ' + e.message;
+    return kq;
+  }
+}
+
+/**
+ * Đọc quyền chia sẻ hiện tại của một file ảnh. CHỈ ĐỌC, không đổi gì.
+ *
+ * Người không phải chủ file thường KHÔNG được đọc danh sách chia sẻ, nên hàm
+ * này ném lỗi là chuyện bình thường — trả về `khongdocduoc`, không coi là hỏng.
+ */
+function trangThaiQuyenAnh(fileId) {
+  var kq = { ok: false, chiaSe: null, vaiTro: null, loi: null };
+  try {
+    var file = DriveApp.getFileById(String(fileId));
+    kq.chiaSe = String(file.getSharingAccess());
+    kq.vaiTro = String(file.getSharingPermission());
+    kq.ok = true;
+    return kq;
+  } catch (e) {
+    kq.chiaSe = 'khongdocduoc';
+    kq.loi    = e.message;
+    return kq;
+  }
+}
+
+/**
+ * Mở quyền "bất kỳ ai có đường liên kết đều XEM được" cho MỘT file ảnh.
+ *
+ * ⚠ ĐÂY LÀ MỘT QUYẾT ĐỊNH VỀ RIÊNG TƯ, KHÔNG PHẢI MỘT NÚT KỸ THUẬT. Ai có
+ * đường liên kết cũng xem được ảnh, không cần đăng nhập, và Google không rút
+ * lại được những bản đã bị chép đi. Chỉ gọi hàm này khi người dùng bấm một nút
+ * nói rõ điều đó bằng chữ.
+ *
+ * Bước 28 gọi nó trên ĐÚNG MỘT tấm ảnh thử, để biết đường thumbnail có chạy
+ * không khi file đã công khai. Đừng nối nó vào đường tải ảnh thường ngày trước
+ * khi chủ dự án chốt.
+ */
+function moQuyenXemAnh(fileId) {
+  var kq = { ok: false, chiaSe: null, loi: null };
+  try {
+    var file = DriveApp.getFileById(String(fileId));
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    kq.chiaSe = String(file.getSharingAccess());
+    kq.ok = true;
+    return kq;
+  } catch (e) {
+    kq.loi = 'Không đổi được quyền chia sẻ: ' + e.message +
+             ' — chỉ chủ file mới làm được việc này.';
+    return kq;
+  }
+}
+
+/**
+ * Cho một file ảnh vào thùng rác. Dùng để dọn ảnh của phép thử.
+ * `setTrashed` chứ không xoá hẳn — thùng rác Drive giữ thêm 30 ngày.
+ */
+function xoaAnhThu(fileId) {
+  try {
+    DriveApp.getFileById(String(fileId)).setTrashed(true);
+    return { ok: true, loi: null };
+  } catch (e) {
+    return { ok: false, loi: e.message };
+  }
+}
+
+/**
+ * Tên file an toàn: bỏ dấu gạch chéo và ký tự lạ, luôn có đuôi `.jpg`.
+ * Trống thì tự đặt theo dấu thời gian, không để Drive sinh ra "Untitled".
+ */
+function tenAnhAnToan_(tenFile) {
+  var t = String(tenFile || '').replace(/[\\/:*?"<>|\r\n]+/g, ' ').trim();
+  if (!t) {
+    var mui = 'Asia/Ho_Chi_Minh';
+    try { mui = Session.getScriptTimeZone() || mui; } catch (e) {}
+    t = 'anh_' + Utilities.formatDate(new Date(), mui, 'yyyy-MM-dd_HHmmss');
+  }
+  if (t.length > 90) t = t.slice(0, 90);
+  if (!/\.jpe?g$/i.test(t)) t = t.replace(/\.[a-z0-9]{1,5}$/i, '') + '.jpg';
+  return t;
+}
 
 /** Danh sách bản sao lưu trong THU_MUC_SAO_LUU_ID, mới nhất trước. */
 function layDanhSachSaoLuu() { /* TODO — giai đoạn 3, màn hình khôi phục */ }

@@ -2,9 +2,9 @@
 // giapha · js/services/gas.js
 // Vai trò  : Cầu nối duy nhất xuống máy chủ Apps Script.
 //            Bọc google.script.run thành hàm Promise dùng await được.
-// Lớp      : services — được gọi bởi: services/repo · gọi: (không)
+// Lớp      : services — được gọi bởi: services/repo, pages/settings · gọi: (không)
 // Phụ thuộc: (không)
-// Phiên bản: 0.4.0 · Cập nhật: 17/08/2026 19:10
+// Phiên bản: 0.5.0 · Cập nhật: 20/08/2026 11:51
 // ============================================================
 //
 // ĐÂY LÀ RANH GIỚI GIỮA TRÌNH DUYỆT VÀ MÁY CHỦ.
@@ -80,6 +80,37 @@ export function xoaNguoiTrungTamMacDinh() {
 /** Tải ảnh lên. Truyền chuỗi base64 đã nén sẵn phía trình duyệt. */
 export function taiAnh(base64, tenFile) {
   return goi('taiAnh', base64, tenFile);
+}
+
+/**
+ * Nhờ MÁY CHỦ đọc hộ một tấm ảnh trên Drive rồi trả về chuỗi base64.
+ *
+ * Đường này chắc chắn chạy — máy chủ thực thi bằng danh tính người đang truy
+ * cập nên Drive cho đọc đúng những file người ấy được chia sẻ. Cái giá là một
+ * lần gọi máy chủ cho mỗi tấm ảnh. Dùng khi hai đường `<img src>` thẳng tới
+ * Drive không hiện được ảnh.
+ */
+export function layAnhBase64(fileId) {
+  return goi('layAnhBase64', fileId);
+}
+
+/** Đọc quyền chia sẻ hiện tại của một file ảnh. Chỉ đọc, không đổi gì. */
+export function trangThaiQuyenAnh(fileId) {
+  return goi('trangThaiQuyenAnh', fileId);
+}
+
+/**
+ * ⚠ Mở quyền "bất kỳ ai có đường liên kết" cho MỘT file ảnh.
+ * Đây là quyết định về riêng tư, không phải một lệnh kỹ thuật — chỉ gọi từ
+ * chỗ đã nói rõ điều đó bằng chữ cho người dùng đọc.
+ */
+export function moQuyenXemAnh(fileId) {
+  return goi('moQuyenXemAnh', fileId);
+}
+
+/** Cho một file ảnh vào thùng rác. Dùng để dọn ảnh của phép thử. */
+export function xoaAnhThu(fileId) {
+  return goi('xoaAnhThu', fileId);
 }
 
 /** Danh sách bản sao lưu để khôi phục. */

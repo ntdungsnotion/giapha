@@ -1,9 +1,10 @@
 // ============================================================
 // giapha · js/pages/settings.js
-// Vai trò  : Màn hình Cài đặt — người trung tâm mặc định, tự kiểm ghi và rà soát
+// Vai trò  : Màn hình Cài đặt — mặc định, tự kiểm ghi, thử ảnh, rà soát
 // Lớp      : pages — được phép gọi mọi lớp dưới
-// Phụ thuộc: state, services/gas, services/repo, domains/validate, utils/text, utils/date
-// Phiên bản: 1.2.0 · Cập nhật: 17/08/2026 21:40
+// Phụ thuộc: state, services/{gas,repo}, domains/validate,
+//            utils/{text,date,image}
+// Phiên bản: 1.3.0 · Cập nhật: 20/08/2026 11:51
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
@@ -29,10 +30,14 @@
 // người dùng nghĩ app hỏng.
 
 import { state, notify } from '../state.js';
-import { coMayChu, datNguoiTrungTamMacDinh, xoaNguoiTrungTamMacDinh } from '../services/gas.js';
+import {
+  coMayChu, datNguoiTrungTamMacDinh, xoaNguoiTrungTamMacDinh,
+  taiAnh, layAnhBase64, trangThaiQuyenAnh, moQuyenXemAnh, xoaAnhThu,
+} from '../services/gas.js';
 import { luuCay, suaDuoc } from '../services/repo.js';
 import { fullName, coGiaTri, doiSongNguoi } from '../utils/text.js';
 import { stampNow } from '../utils/date.js';
+import { compressImage, driveThumbUrl, driveLh3Url, dataUri, moTaCo } from '../utils/image.js';
 import { validateAll } from '../domains/validate.js';
 
 let lopPhu = null;
@@ -47,6 +52,7 @@ let xuLyNgoai = {};   // { onDoiMacDinh } — nơi gọi truyền vào
 // gọi sai thời điểm.
 let khoiMacDinh = null;
 let khoiThuGhi  = null;
+let khoiThuAnh  = null;
 let khoiRaSoat  = null;
 
 /**
@@ -81,6 +87,7 @@ export function openSettings(xuLy = {}) {
 
   veKhoiMacDinh(hop);
   veKhoiThuGhi(hop);
+  veKhoiThuAnh(hop);
   veKhoiRaSoat(hop);
   veKhoiPhien(hop);
 
@@ -104,7 +111,11 @@ export function closeSettings() {
   lopPhu = null;
   khoiMacDinh = null;
   khoiThuGhi  = null;
+  khoiThuAnh  = null;
   khoiRaSoat  = null;
+  // Đóng màn hình là bỏ luôn kết quả phép thử: giữ lại thì lần mở sau hiện ba
+  // khung ảnh của một tấm đã dọn khỏi Drive, và đó là một kết quả sai.
+  thuAnh = trangThaiThuAnhRong();
 }
 
 // ============================================================
@@ -333,6 +344,391 @@ function moTaSaoLuu(ma) {
   if (ma === 'loi')            return 'Ghi được gia phả, nhưng KHÔNG cất được bản phòng hờ ' +
                                       '(thư mục Sao_luu chỉ chủ dự án mới ghi được).';
   return '';
+}
+
+// ============================================================
+// Khối "Phép thử ảnh" — bước 28
+// ============================================================
+//
+// KHỐI NÀY LÀ MỘT DỤNG CỤ ĐO, KHÔNG PHẢI MỘT TÍNH NĂNG. Nó không gắn ảnh vào
+// người nào, không sửa gia phả, không đụng `state.tree` một chữ. Xong bước 28
+// thì gỡ nó đi — để lại là để một cái nút "tải ảnh chẳng vào đâu" nằm giữa màn
+// hình Cài đặt.
+//
+// Nó tồn tại để trả lời BA CÂU HỎI mà không ai trả lời được bằng suy luận:
+//
+//   1. Chuỗi base64 dài bao nhiêu thì `google.script.run` còn chịu được?
+//      → đo bằng chính ảnh thật của chủ dự án, không đoán theo tài liệu.
+//   2. Trình duyệt có HIỆN được ảnh nằm trên Drive không, khi file KHÔNG mở
+//      công khai và app chạy trong khung iframe của Apps Script?
+//      → thử cả ba đường một lúc, cùng một tấm ảnh, cùng một khoảnh khắc.
+//   3. Ô sơ đồ phải nở ra bao nhiêu khi có ảnh?
+//      → câu này KHÔNG đo ở đây. Nó phải nhìn bằng mắt trên sơ đồ thật.
+//
+// ⚠ Ba đường hiện ảnh, và chúng KHÔNG tương đương nhau:
+//
+//   A. `drive.google.com/thumbnail?id=…`  rẻ nhất, nhưng cần trình duyệt gửi
+//      kèm cookie Google sang một tên miền khác — thứ Chrome đang siết dần.
+//   B. `lh3.googleusercontent.com/d/…`    cùng họ với A, máy chủ khác.
+//   C. `layAnhBase64()` qua máy chủ       chắc chắn chạy, nhưng mỗi tấm ảnh
+//      tốn một lần gọi máy chủ. Với sơ đồ 60 ô thì đó là 60 lần gọi.
+//
+// Nếu A hoặc B chạy: ô sơ đồ dùng nó, C để dành làm đường lui.
+// Nếu cả hai hỏng khi file còn riêng tư: phải chọn giữa **mở công khai thư mục
+// Anh** (ảnh người trong họ ai có link cũng xem được) và **đi đường C**. Đó là
+// một quyết định của chủ dự án, không phải của mã.
+
+let thuAnh = trangThaiThuAnhRong();
+
+function trangThaiThuAnhRong() {
+  return {
+    dangChay: false,
+    dong: [],          // các dòng chữ tường thuật
+    loi: null,
+    fileId: null,
+    nenXong: null,     // kết quả compressImage
+    quyen: null,       // chuỗi mô tả quyền chia sẻ hiện tại
+    daMoCongKhai: false,
+    ketQua: {},        // { thumb:'cho'|'dat'|'hong', lh3:…, mayChu:… }
+    base64MayChu: null,
+  };
+}
+
+function veKhoiThuAnh(vao) {
+  khoiThuAnh = document.createElement('div');
+  khoiThuAnh.style.cssText = 'margin-top:20px';
+  vao.append(khoiThuAnh);
+  veLaiKhoiThuAnh();
+  return khoiThuAnh;
+}
+
+function veLaiKhoiThuAnh() {
+  const khoi = khoiThuAnh;
+  if (!khoi) return;
+  khoi.innerHTML = '';
+
+  khoi.append(veNhanKhoi('Phép thử ảnh (bước 28)'));
+
+  const coNoi   = coMayChu();
+  const taiDuoc = coNoi && suaDuoc();
+
+  const giaiThich = document.createElement('div');
+  giaiThich.style.cssText = 'font-size:13px;line-height:1.55;color:#8a8078;margin-bottom:10px';
+  giaiThich.textContent =
+    'Chọn một tấm ảnh bất kỳ. App sẽ nén nó, tải lên thư mục Anh trên Drive, ' +
+    'rồi thử HIỆN nó lại bằng ba đường khác nhau. Việc này KHÔNG sửa gia phả, ' +
+    'không gắn ảnh vào ai — chỉ để biết đường nào chạy được.';
+  khoi.append(giaiThich);
+
+  // Ô chọn file. Bọc trong nhãn để bấm đâu cũng mở được — ô `input type=file`
+  // trần trên điện thoại là một vệt chữ nhỏ khó trúng ngón tay.
+  const nhan = document.createElement('label');
+  nhan.style.cssText =
+    'display:block;width:100%;min-height:42px;padding:10px 14px;box-sizing:border-box;' +
+    'font-size:14px;text-align:center;border-radius:9px;border:1px solid #e6e0d8;' +
+    'background:#faf8f5;cursor:' + (taiDuoc ? 'pointer' : 'not-allowed') + ';' +
+    'opacity:' + (taiDuoc ? '1' : '0.45');
+  nhan.textContent = thuAnh.dangChay ? 'Đang chạy…' : 'Chọn ảnh rồi thử';
+
+  const o = document.createElement('input');
+  o.type = 'file';
+  o.accept = 'image/*';
+  o.disabled = !taiDuoc || thuAnh.dangChay;
+  o.style.cssText = 'display:none';
+  o.addEventListener('change', () => {
+    const f = o.files && o.files[0];
+    if (f) chayThuAnh(f);
+  });
+  nhan.append(o);
+  khoi.append(nhan);
+
+  if (coNoi && !suaDuoc()) {
+    khoi.append(veLoiNhan(
+      'Bạn chỉ có quyền xem gia phả nên chưa tải ảnh lên được. ' +
+      'Quyền do danh sách chia sẻ trên Google Drive quyết định.', false));
+  }
+  if (!coNoi) {
+    khoi.append(veLoiNhan(
+      'Trang này đang mở thẳng từ GitHub Pages, không qua web app của Apps ' +
+      'Script, nên không có máy chủ để tải ảnh lên.', false));
+  }
+
+  for (const d of thuAnh.dong) khoi.append(veDongThuAnh(d));
+  if (thuAnh.loi) khoi.append(veLoiNhan(thuAnh.loi, true));
+
+  if (thuAnh.fileId) {
+    khoi.append(veBaKhungAnh());
+
+    khoi.append(nut(
+      thuAnh.daMoCongKhai
+        ? 'Đã mở công khai — bấm để thử hiện lại'
+        : 'Mở công khai tấm ảnh thử này rồi thử lại',
+      false, !thuAnh.dangChay, () => moCongKhaiRoiThuLai()));
+
+    khoi.append(veLoiNhan(
+      '⚠ Nút trên đặt quyền "bất kỳ ai có đường liên kết đều xem được" cho ' +
+      'ĐÚNG tấm ảnh thử này. Bấm nó chỉ để biết hai đường đầu có chạy khi ảnh ' +
+      'công khai hay không. Nó KHÔNG đổi quyền của thư mục Anh, và ảnh thử sẽ ' +
+      'được dọn bằng nút dưới cùng.', false));
+
+    khoi.append(nut('Dọn tấm ảnh thử này khỏi Drive', false, !thuAnh.dangChay,
+      () => donAnhThu()));
+  }
+}
+
+/** Một dòng tường thuật của phép thử. */
+function veDongThuAnh(d) {
+  const h = document.createElement('div');
+  h.style.cssText =
+    'display:flex;gap:8px;align-items:baseline;padding:5px 0;' +
+    'border-top:1px solid #f0ebe4;font-size:13px;line-height:1.5';
+
+  const nhan = document.createElement('div');
+  nhan.textContent = d.nhan;
+  nhan.style.cssText = 'flex:0 0 116px;font-size:12px;color:#8a8078';
+
+  const gt = document.createElement('div');
+  gt.textContent = d.giaTri;
+  gt.style.cssText = 'flex:1 1 auto;word-break:break-word';
+
+  h.append(nhan, gt);
+  return h;
+}
+
+/**
+ * Ba khung ảnh cạnh nhau, cùng một tấm ảnh, ba đường khác nhau.
+ *
+ * ⚠ Phải xếp CẠNH NHAU chứ không lần lượt: đọc ba kết quả ở ba thời điểm khác
+ * nhau thì không loại trừ được khả năng Drive vừa mới xong việc dựng thumbnail
+ * giữa hai lần thử.
+ */
+function veBaKhungAnh() {
+  const hang_ = document.createElement('div');
+  hang_.style.cssText = 'display:flex;gap:8px;margin-top:12px';
+
+  hang_.append(motKhungAnh('A · thumbnail', 'thumb'));
+  hang_.append(motKhungAnh('B · lh3', 'lh3'));
+  hang_.append(motKhungAnh('C · máy chủ', 'mayChu'));
+
+  return hang_;
+}
+
+function motKhungAnh(ten, khoa) {
+  const o = document.createElement('div');
+  o.style.cssText = 'flex:1 1 0;min-width:0;text-align:center';
+
+  const khung = document.createElement('div');
+  khung.style.cssText =
+    'width:100%;aspect-ratio:1;border-radius:8px;border:1px solid #e6e0d8;' +
+    'background:#faf8f5;overflow:hidden;display:flex;align-items:center;' +
+    'justify-content:center';
+
+  const ma = thuAnh.ketQua[khoa];
+  if (ma === 'dat') {
+    const im = document.createElement('img');
+    im.src = duongCuaKhoa(khoa);
+    im.alt = ten;
+    im.style.cssText = 'width:100%;height:100%;object-fit:cover';
+    khung.append(im);
+  } else {
+    const c = document.createElement('div');
+    c.textContent = ma === 'hong' ? '✕' : ma === 'cho' ? '…' : '';
+    c.style.cssText = 'font-size:20px;color:#8a8078';
+    khung.append(c);
+  }
+  o.append(khung);
+
+  const nhan = document.createElement('div');
+  nhan.textContent = ten;
+  nhan.style.cssText = 'font-size:11px;color:#8a8078;margin-top:4px;line-height:1.3';
+  o.append(nhan);
+
+  const kq = document.createElement('div');
+  kq.textContent = ma === 'dat' ? 'hiện được' : ma === 'hong' ? 'KHÔNG hiện' : 'đang thử';
+  kq.style.cssText =
+    'font-size:11px;margin-top:1px;font-weight:600;line-height:1.3;color:' +
+    (ma === 'dat' ? '#3f6b8a' : ma === 'hong' ? '#8a3a2a' : '#8a8078');
+  o.append(kq);
+
+  return o;
+}
+
+function duongCuaKhoa(khoa) {
+  if (khoa === 'thumb')  return driveThumbUrl(thuAnh.fileId, 400);
+  if (khoa === 'lh3')    return driveLh3Url(thuAnh.fileId, 400);
+  return dataUri(thuAnh.base64MayChu || '');
+}
+
+/**
+ * Chạy một vòng thử đầy đủ: nén → tải lên → thử hiện ba đường.
+ *
+ * Đo THỜI GIAN từng chặng. Con số ấy quyết định được một việc mà con số dung
+ * lượng không quyết định được: tải một tấm ảnh mất 2 giây thì gắn ảnh cho 60
+ * người là hai phút ngồi chờ, và lúc đó cách làm phải khác.
+ */
+async function chayThuAnh(file) {
+  thuAnh = trangThaiThuAnhRong();
+  thuAnh.dangChay = true;
+  thuAnh.dong.push({ nhan: 'Ảnh gốc', giaTri: file.name + '  ·  ' + moTaCo(file.size) });
+  veLaiKhoiThuAnh();
+
+  try {
+    const t0 = Date.now();
+    const nen = await compressImage(file);
+    const tNen = Date.now() - t0;
+
+    thuAnh.nenXong = nen;
+    thuAnh.dong.push({
+      nhan: 'Sau khi nén',
+      giaTri: nen.rong + '×' + nen.cao + ' px  ·  ' + moTaCo(nen.byteNen) +
+              '  ·  nén hết ' + tNen + ' ms',
+    });
+    thuAnh.dong.push({
+      nhan: 'Chuỗi gửi lên',
+      giaTri: nen.daiBase64.toLocaleString('vi-VN') + ' ký tự base64  ·  ' +
+              moTaCo(nen.daiBase64),
+    });
+    veLaiKhoiThuAnh();
+
+    const t1 = Date.now();
+    const kq = await taiAnh(nen.base64, 'thu-buoc-28_' + stampTen() + '.jpg');
+    const tTai = Date.now() - t1;
+
+    if (!kq || !kq.ok) {
+      thuAnh.loi = (kq && kq.loi) || 'Máy chủ không nhận ảnh mà không nói vì sao.';
+      thuAnh.dangChay = false;
+      veLaiKhoiThuAnh();
+      return;
+    }
+
+    thuAnh.fileId = kq.fileId;
+    thuAnh.dong.push({
+      nhan: 'Đã lên Drive',
+      giaTri: kq.ten + '  ·  ' + moTaCo(kq.coByte) + '  ·  gửi hết ' + tTai + ' ms',
+    });
+    thuAnh.dong.push({ nhan: 'Mã file', giaTri: kq.fileId });
+
+    const q = await trangThaiQuyenAnh(kq.fileId).catch(() => null);
+    if (q) {
+      thuAnh.quyen = q.ok ? (q.chiaSe + ' / ' + q.vaiTro) : 'không đọc được quyền';
+      thuAnh.dong.push({ nhan: 'Quyền chia sẻ', giaTri: thuAnh.quyen });
+    }
+
+    await thuBaDuong();
+  } catch (e) {
+    thuAnh.loi = e && e.message ? e.message : String(e);
+  }
+
+  thuAnh.dangChay = false;
+  veLaiKhoiThuAnh();
+}
+
+/** Thử cả ba đường hiện ảnh, song song, trên cùng một tấm. */
+async function thuBaDuong() {
+  thuAnh.ketQua = { thumb: 'cho', lh3: 'cho', mayChu: 'cho' };
+  veLaiKhoiThuAnh();
+
+  const c = await layAnhBase64(thuAnh.fileId).catch(() => null);
+  if (c && c.ok) {
+    thuAnh.base64MayChu = c.base64;
+    thuAnh.dong.push({
+      nhan: 'Đường C · máy chủ',
+      giaTri: 'đọc được ' + moTaCo(c.coByte) + ' từ ' + c.nguon,
+    });
+  } else {
+    thuAnh.dong.push({
+      nhan: 'Đường C · máy chủ',
+      giaTri: (c && c.loi) || 'không đọc được',
+    });
+  }
+
+  const [a, b, cc] = await Promise.all([
+    hienDuoc(driveThumbUrl(thuAnh.fileId, 400)),
+    hienDuoc(driveLh3Url(thuAnh.fileId, 400)),
+    thuAnh.base64MayChu ? hienDuoc(dataUri(thuAnh.base64MayChu)) : Promise.resolve(false),
+  ]);
+
+  thuAnh.ketQua = {
+    thumb:  a  ? 'dat' : 'hong',
+    lh3:    b  ? 'dat' : 'hong',
+    mayChu: cc ? 'dat' : 'hong',
+  };
+  veLaiKhoiThuAnh();
+}
+
+/**
+ * Một đường dẫn có hiện ra ảnh thật hay không.
+ *
+ * ⚠ `onerror` KHÔNG PHẢI cách duy nhất hỏng. Google trả về một trang HTML báo
+ * lỗi kèm mã 200 thì `<img>` vẫn báo `onload`, chỉ là kích thước bằng 0. Nên
+ * phải xét cả `naturalWidth`. Và phải có hạn giờ: có ca không cái nào chạy cả,
+ * để mãi thì phép thử treo mà không nói gì.
+ */
+function hienDuoc(duong, hanGiay = 12) {
+  return new Promise((xong) => {
+    if (!duong) { xong(false); return; }
+    let daTraLoi = false;
+    const tra = (v) => { if (!daTraLoi) { daTraLoi = true; xong(v); } };
+
+    const im = new Image();
+    im.onload  = () => tra(im.naturalWidth > 0 && im.naturalHeight > 0);
+    im.onerror = () => tra(false);
+    im.src = duong;
+    setTimeout(() => tra(false), hanGiay * 1000);
+  });
+}
+
+async function moCongKhaiRoiThuLai() {
+  if (!thuAnh.fileId) return;
+  thuAnh.dangChay = true;
+  veLaiKhoiThuAnh();
+
+  try {
+    const kq = await moQuyenXemAnh(thuAnh.fileId);
+    if (kq && kq.ok) {
+      thuAnh.daMoCongKhai = true;
+      thuAnh.dong.push({ nhan: 'Đã mở công khai', giaTri: kq.chiaSe });
+      // Drive cần một nhịp để quyền mới có hiệu lực ở tầng phục vụ ảnh.
+      await nghi(1500);
+      await thuBaDuong();
+    } else {
+      thuAnh.loi = (kq && kq.loi) || 'Không mở được quyền công khai.';
+    }
+  } catch (e) {
+    thuAnh.loi = e && e.message ? e.message : String(e);
+  }
+
+  thuAnh.dangChay = false;
+  veLaiKhoiThuAnh();
+}
+
+async function donAnhThu() {
+  if (!thuAnh.fileId) return;
+  thuAnh.dangChay = true;
+  veLaiKhoiThuAnh();
+
+  let chu = '';
+  try {
+    const kq = await xoaAnhThu(thuAnh.fileId);
+    chu = kq && kq.ok
+      ? 'Đã cho tấm ảnh thử vào thùng rác Drive.'
+      : 'Chưa dọn được: ' + ((kq && kq.loi) || 'máy chủ không nói vì sao');
+  } catch (e) {
+    chu = 'Chưa dọn được: ' + (e && e.message ? e.message : String(e));
+  }
+
+  thuAnh = trangThaiThuAnhRong();
+  thuAnh.dong.push({ nhan: 'Dọn', giaTri: chu });
+  veLaiKhoiThuAnh();
+}
+
+function nghi(ms) {
+  return new Promise((xong) => setTimeout(xong, ms));
+}
+
+/** Dấu thời gian gọn để đặt tên file ảnh thử: `20-08-2026_1151`. */
+function stampTen() {
+  return stampNow().replace(/[\/\s:]/g, (k) => (k === '/' ? '-' : k === ' ' ? '_' : ''));
 }
 
 // ============================================================
