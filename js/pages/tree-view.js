@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render,union}, utils/text,
 //            pages/{person-detail,person-edit,person-list,settings}
-// Phiên bản: 1.15.0 · Cập nhật: 20/08/2026 21:10
+// Phiên bản: 1.16.0 · Cập nhật: 20/08/2026 23:10
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -29,9 +29,8 @@
 //
 // Cả ba cụm nút neo vào `vungSoDo`, KHÔNG vào `khungCuon`: `donKhung()` dọn
 // sạch ruột khung cuộn mỗi lần vẽ lại, và mọi thứ trong đó còn trôi theo khi
-// người dùng kéo sơ đồ. Neo vào `vungSoDo` chứ không vào `containerEl` để khỏi
-// phải đo chiều cao `thanhTren` — thanh trên cao bao nhiêu là do nội dung nó
-// quyết định, mà đo DOM đúng lúc là chỗ chat 1.5 đã sai một lần.
+// người dùng kéo sơ đồ. Neo vào `vungSoDo` chứ không vào `containerEl` vì cụm
+// nút phải phủ đúng vùng vẽ, không phủ cả màn hình.
 //
 // ============================================================
 // ZOOM VÀ KÉO (chat 1.5) — LUẬT QUAN TRỌNG NHẤT CỦA FILE NÀY
@@ -78,7 +77,6 @@ import { openSettings, closeSettings } from './settings.js';
 let khungCuon = null;   // div cuộn được, bọc quanh SVG
 let vungSoDo  = null;   // bọc khungCuon + ba cụm nút nổi; mốc neo của các nút
 let svgEl     = null;
-let thanhTren = null;
 let nhanTyLe  = null;   // ô chữ "100%" cạnh hai nút phóng to / thu nhỏ
 let layoutHT  = null;   // kết quả computeLayout gần nhất, để centerOnFocus dùng
 
@@ -110,11 +108,6 @@ export function mountTreeView(containerEl) {
     'position:absolute;inset:0;display:flex;flex-direction:column;' +
     'background:#faf8f5;font-family:system-ui,sans-serif;color:#2a2622';
 
-  thanhTren = document.createElement('div');
-  thanhTren.style.cssText =
-    'flex:0 0 auto;padding:10px 16px;border-bottom:1px solid #e6e0d8;' +
-    'background:#fffdf9;font-size:14px;line-height:1.4';
-
   khungCuon = document.createElement('div');
   // box-sizing: border-box — `padding` căn giữa được đặt lại mỗi lần zoom, mà
   // với content-box thì padding cộng thêm vào bề rộng và làm khung tràn ra
@@ -138,7 +131,7 @@ export function mountTreeView(containerEl) {
   // Nút nằm ngoài khungCuon: donKhung() dọn sạch ruột khung cuộn mỗi lần vẽ
   // lại, để nút bên trong đó là mỗi lần bấm nốt cụt lại mất hết nút.
   vungSoDo.append(khungCuon, veCotToTien(), veCotHauDue(), veHopNutTrenPhai(), veHopNut());
-  containerEl.append(thanhTren, vungSoDo);
+  containerEl.append(vungSoDo);
   ganCuChi();
   refresh();
 }
@@ -197,15 +190,16 @@ export function refresh() {
     onChonNotCut: (stub) => moNotCut(stub, visible),
   }, hienGio);
 
-  // BA VIỆC NÀY PHẢI ĐÚNG THỨ TỰ NÀY, đã sai một lần ở chat 1.5:
+  // HAI VIỆC NÀY PHẢI ĐÚNG THỨ TỰ NÀY:
   //
-  //   1. veThanhTren  — thanh trên cao bao nhiêu thì khung cuộn thấp bấy
-  //      nhiêu. Vẽ nó SAU khi đo khung thì mọi con số đo được đều lệch đúng
-  //      bằng chiều cao thanh, và người trung tâm rơi lệch xuống dưới.
-  //   2. apDungTyLe   — renderTree() vừa đặt lại width/height của <svg> về cỡ
+  //   1. apDungTyLe   — renderTree() vừa đặt lại width/height của <svg> về cỡ
   //      thật 100%, phải áp lại tỷ lệ đang dùng và tính lại lề căn giữa.
-  //   3. centerOnFocus — tính theo `tyLe` và `padX/padY` mà bước 2 vừa sinh.
-  veThanhTren(index, focus, visible, layout);
+  //   2. centerOnFocus — tính theo `tyLe` và `padX/padY` mà bước 1 vừa sinh.
+  //
+  // ⚠ Trước bước 30 đây là BA việc, và việc thứ nhất là `veThanhTren()`. Thanh
+  // trên đã gỡ hẳn (xem `mountTreeView`), nên cái bẫy *"đo khung trước khi vẽ
+  // thanh"* của chat 1.5 nay **không còn chỗ để tái diễn**: không còn phần tử
+  // nào ngoài `vungSoDo` chia chiều cao với khung cuộn.
   apDungTyLe();
   centerOnFocus();
 }
@@ -603,12 +597,27 @@ function pinch() {
 }
 
 /**
- * Lăn chuột. Chỉ nhận khi giữ Ctrl (hoặc cử chỉ chụm trên bàn di của máy tính
- * xách tay, trình duyệt gửi đúng `ctrlKey`). Lăn không giữ Ctrl vẫn là cuộn
- * bình thường — đừng cướp thao tác quen tay của người dùng máy tính.
+ * Lăn chuột = PHÓNG TO THU NHỎ, không cần giữ phím nào.
+ *
+ * ⚠ Đổi ở bước 30, và lý do đáng ghi lại. Bản bước 13 viết
+ * `if (!e.ctrlKey) return;` với lý lẽ *"đừng cướp thao tác cuộn quen tay của
+ * người dùng máy tính"* — nghe hợp lý, và **sai trong đúng bối cảnh này**:
+ *
+ *   · Sơ đồ chiếm TRỌN khung và có thanh cuộn RIÊNG của nó. Lăn trong đó không
+ *     cuộn trang nào cả — trang không dài hơn màn hình để mà cuộn.
+ *   · Nên "thao tác quen tay" mà bản cũ bảo vệ là **một thao tác không làm gì**.
+ *     Người dùng lăn chuột, không có gì xảy ra, và kết luận app chưa làm.
+ *   · Đó đúng là điều chủ dự án báo lại ngày 20/08/2026: *"cần có tính năng lăn
+ *     chuột để phóng to thu nhỏ"* — trong khi hàm này đã nằm đây từ bước 13.
+ *
+ * Mọi phần mềm bản đồ và sơ đồ đều lấy lăn trần làm zoom (Google Maps, Figma,
+ * QFT). Giữ Ctrl vẫn chạy — trình duyệt gửi `ctrlKey` cho cử chỉ chụm trên bàn
+ * di máy tính xách tay, và nhánh ấy nay đi chung một đường.
+ *
+ * `preventDefault()` là bắt buộc: không có nó thì Chrome vừa zoom sơ đồ vừa
+ * zoom cả trang khi người dùng lỡ giữ Ctrl.
  */
 function lanChuot(e) {
-  if (!e.ctrlKey) return;
   e.preventDefault();
   const r = khungCuon.getBoundingClientRect();
   datTyLe(tyLe * Math.pow(0.995, e.deltaY), e.clientX - r.left, e.clientY - r.top);
@@ -702,7 +711,7 @@ function veHopNutTrenPhai() {
     'position:absolute;right:12px;top:12px;z-index:10;' +
     'display:flex;flex-direction:column;align-items:stretch;gap:8px';
   hop.append(
-    nutTron('⚙', 'Cài đặt', () => openSettings()),
+    nutTron('⚙', 'Cài đặt', () => openSettings({ onDoiHienThi: () => refresh() })),
     nutTron('🔍', 'Tìm người trong gia phả', () => moDanhSachNguoi()),
   );
   return hop;
@@ -956,43 +965,6 @@ function nutTron(chu, nhan, chay) {
   nut.addEventListener('click', chay);
   return nut;
 }
-
-/**
- * Thanh trên: người trung tâm là ai, sơ đồ đang có bao nhiêu ô.
- *
- * Con số này không phải để trang trí — nó là cách đọc nhanh xem thuật toán có
- * chạy đúng không. Bài kiểm tra hồi quy của chat 1.2 đếm đúng con số này.
- */
-function veThanhTren(index, focus, visible, layout) {
-  const p   = index.personById.get(focus);
-  const doi = p ? doiSongNguoi(p) : '';
-
-  let soBien = 0;
-  for (const kieu of visible.values()) if (kieu === 'edge') soBien++;
-
-  thanhTren.innerHTML = '';
-
-  const ten = document.createElement('div');
-  ten.textContent = 'Sơ đồ quanh: ' + (p ? fullName(p) : focus) + (doi ? '  ·  ' + doi : '');
-  ten.style.cssText = 'font-size:15px;font-weight:600';
-
-  const so = document.createElement('div');
-  so.textContent =
-    visible.size + ' người' +
-    (soBien ? ' (' + soBien + ' là dâu/rể)' : '') +
-    '  ·  ' + (layout.stubs || []).length + ' nốt cụt' +
-    (state.daLocNguoiConSong ? '  ·  đã ẩn chi tiết người còn sống' : '');
-  so.style.cssText = 'font-size:12px;color:#8a8078;margin-top:2px';
-
-  const nhac = document.createElement('div');
-  nhac.textContent = 'Bấm vào một ô để đưa người đó ra giữa. ' +
-                     'Bấm nốt tròn màu cam để mở nhánh đang bị cắt. ' +
-                     'Kéo để di, chụm hai ngón để phóng to thu nhỏ.';
-  nhac.style.cssText = 'font-size:12px;color:#8a8078;margin-top:2px';
-
-  thanhTren.append(ten, so, nhac);
-}
-
 /**
  * Trả khung cuộn về đúng một phần tử SVG rỗng.
  *
@@ -1015,7 +987,6 @@ function hienLoiNhan(tieuDe, giaiThich) {
   padX = 0;
   padY = 0;
   if (khungCuon) khungCuon.style.padding = '0';
-  if (thanhTren) thanhTren.innerHTML = '';
 
   const hop = document.createElement('div');
   hop.style.cssText = 'max-width:420px;margin:48px auto;padding:0 24px;line-height:1.6';
@@ -1133,7 +1104,6 @@ const TOI_DA_DOI = 30;
 let nutToTien = [];
 let nutHauDue = [];
 let nutDauRe  = null;
-let nutNgayGio = null;
 let oNhapToTien = null;
 let oNhapHauDue = null;
 
@@ -1178,8 +1148,6 @@ function veCotHauDue() {
   nutDauRe = nutChu('Dâu/rể', '', () => datDauRe(state.showInLaws === false));
   thanHauDue.append(nutDauRe);
 
-  nutNgayGio = nutChu('Ngày giỗ', '', () => datNgayGio(state.hienNgayGio !== true));
-  thanHauDue.append(nutNgayGio);
   tomTatHauDue = nutTomTat(() => datXo('duoi', !xoHauDue));
   // Nút tóm tắt ở DƯỚI, các nấc mọc NGƯỢC LÊN — cột này neo mép dưới, để nút
   // tóm tắt đứng yên một chỗ khi xổ ra và thu lại.
@@ -1249,25 +1217,6 @@ function datPhamViHauDueSo(soDoi) {
   refresh();
 }
 
-/**
- * Bật/tắt hàng NGÀY GIỖ dưới mỗi ô.
- *
- * ⚠ Công tắc này đổi CHIỀU CAO Ô, không chỉ đổi thứ được vẽ: mọi ô cao thêm
- * một hàng chữ để chừa chỗ, kể cả ô của người còn sống và người chưa ai điền
- * ngày giỗ. Đó là cái giá của luật "ô cao bằng nhau" — để ô co theo nội dung
- * thì các ô cùng một đời so le và sơ đồ nhìn gãy. Vì thế nó mặc định TẮT.
- *
- * `computeLayout` CHỪA CHỖ, `renderTree` VẼ, và `refresh()` truyền CÙNG MỘT
- * object cho cả hai — chừa chỗ một đằng vẽ một nẻo thì hàng giỗ tràn ra khỏi
- * ô, hoặc để lại một khoảng trống không ai giải thích được.
- */
-function datNgayGio(bat) {
-  if ((state.hienNgayGio === true) === bat) return;
-  state.hienNgayGio = bat;
-  notify();
-  refresh();
-}
-
 function datDauRe(bat) {
   if (state.showInLaws === bat) return;
   state.showInLaws = bat;
@@ -1308,15 +1257,6 @@ function capNhatNutPhamVi() {
       ? 'Đang vẽ dâu/rể. Bấm để ẩn họ đi.'
       : 'Đang ẩn dâu/rể. Bấm để vẽ họ trở lại.';
     datVeChon(nutDauRe, hienDauRe);
-  }
-
-  if (nutNgayGio) {
-    const hienGio = state.hienNgayGio === true;
-    nutNgayGio.textContent = (hienGio ? '☑' : '☐') + ' Ngày giỗ';
-    nutNgayGio.title = hienGio
-      ? 'Đang hiện ngày giỗ dưới mỗi ô. Bấm để ẩn và thu gọn sơ đồ lại.'
-      : 'Bấm để hiện ngày giỗ dưới mỗi ô. Mọi ô sẽ cao thêm một hàng chữ.';
-    datVeChon(nutNgayGio, hienGio);
   }
 
   // Nút tóm tắt phải nói được nấc đang chọn, nếu không thì thu gọn xong là

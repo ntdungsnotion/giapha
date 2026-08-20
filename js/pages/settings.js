@@ -1,9 +1,9 @@
 // ============================================================
 // giapha · js/pages/settings.js
-// Vai trò  : Màn hình Cài đặt — người trung tâm mặc định, tự kiểm ghi và rà soát
+// Vai trò  : Màn hình Cài đặt — người trung tâm mặc định, hiển thị, rà soát
 // Lớp      : pages — được phép gọi mọi lớp dưới
-// Phụ thuộc: state, services/{gas,repo}, domains/validate, utils/{text,date}
-// Phiên bản: 1.4.0 · Cập nhật: 20/08/2026 14:25
+// Phụ thuộc: state, services/gas, domains/validate, utils/text
+// Phiên bản: 1.5.0 · Cập nhật: 20/08/2026 23:10
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
@@ -24,15 +24,13 @@
 // --- Không có máy chủ thì sao -------------------------------------------
 //
 // Mở thẳng từ GitHub Pages (không qua web app của Apps Script) thì
-// `gas.coMayChu()` trả false. Lúc đó màn hình vẫn mở, vẫn đọc được, nhưng hai
-// nút ghi phải MỜ VÀ NÓI RÕ VÌ SAO — nút bấm vào không xảy ra gì là thứ làm
-// người dùng nghĩ app hỏng.
+// `gas.coMayChu()` trả false. Lúc đó màn hình vẫn mở, vẫn đọc được, nhưng NÚT GHI
+// — nút đặt/bỏ người trung tâm mặc định — phải MỜ VÀ NÓI RÕ VÌ SAO; nút bấm vào
+// không xảy ra gì là thứ làm người dùng nghĩ app hỏng.
 
 import { state, notify } from '../state.js';
 import { coMayChu, datNguoiTrungTamMacDinh, xoaNguoiTrungTamMacDinh } from '../services/gas.js';
-import { luuCay, suaDuoc } from '../services/repo.js';
 import { fullName, coGiaTri, doiSongNguoi } from '../utils/text.js';
-import { stampNow } from '../utils/date.js';
 import { validateAll } from '../domains/validate.js';
 
 let lopPhu = null;
@@ -46,16 +44,17 @@ let xuLyNgoai = {};   // { onDoiMacDinh } — nơi gọi truyền vào
 // mà không có lỗi nào ném ra cả. Cùng một họ với lỗi của chat 1.5: hàm đúng,
 // gọi sai thời điểm.
 let khoiMacDinh = null;
-let khoiThuGhi  = null;
 let khoiRaSoat  = null;
 
 /**
  * Mở màn hình Cài đặt.
  *
- * @param {{onDoiMacDinh?:function}} [xuLy]
+ * @param {{onDoiMacDinh?:function, onDoiHienThi?:function}} [xuLy]
  *        chạy sau khi đặt hoặc bỏ mặc định thành công. Dùng callback thay vì
  *        `import` ngược `tree-view.js` — hai file cùng lớp `pages`, import
  *        vòng tròn thì một trong hai sẽ thấy hàm của file kia là `undefined`.
+ *        `onDoiHienThi` chạy sau khi đổi một công tắc trong khối Hiển thị —
+ *        nơi gọi phải VẼ LẠI sơ đồ, vì công tắc ngày giỗ đổi cả chiều cao ô.
  */
 export function openSettings(xuLy = {}) {
   closeSettings();
@@ -80,7 +79,7 @@ export function openSettings(xuLy = {}) {
   hop.append(tieuDe);
 
   veKhoiMacDinh(hop);
-  veKhoiThuGhi(hop);
+  veKhoiHienThi(hop);
   veKhoiRaSoat(hop);
   veKhoiPhien(hop);
 
@@ -103,7 +102,6 @@ export function closeSettings() {
   if (lopPhu) lopPhu.remove();
   lopPhu = null;
   khoiMacDinh = null;
-  khoiThuGhi  = null;
   khoiRaSoat  = null;
 }
 
@@ -178,7 +176,7 @@ function veLaiKhoiMacDinh(loi) {
   if (!coNoi) {
     khoi.append(veLoiNhan(
       'Trang này đang mở thẳng từ GitHub Pages nên không nối được máy chủ. ' +
-      'Mở app qua địa chỉ web app của Apps Script thì hai nút trên mới bấm được.',
+      'Mở app qua địa chỉ web app của Apps Script thì nút trên mới bấm được.',
       false));
   }
   if (loi) khoi.append(veLoiNhan(loi, true));
@@ -209,130 +207,69 @@ async function chay(lenh, giaTriMoi) {
 }
 
 // ============================================================
-// Khối "Kiểm tra ghi dữ liệu" — chat 2.1
+// Khối "Hiển thị" — bước 30
 // ============================================================
 //
-// Vì sao có khối này. `luuCay()` là nút cổ chai của cả giai đoạn 2: form nhập
-// liệu, thêm người, menu 7 mục, ảnh — tất cả đều chờ nó. Nhưng form nhập liệu
-// mãi chat 2.3 mới có, nên nếu không có chỗ nào bấm được thì đường ghi dữ liệu
-// nằm đó không ai kiểm được, và lỗi sẽ lộ ra muộn hơn nhiều.
+// --- Vì sao công tắc NGÀY GIỖ chuyển về đây ------------------------------
 //
-// Đây cũng đúng nếp đã ghi trong tài liệu: *chỗ nào cần tự kiểm thì phải có
-// một cái nút ngay cạnh*, không bắt ai mở bảng điều khiển của trình duyệt gõ
-// lệnh.
+// Bước 28 đặt nó trong cột *"Đời dưới"* ở góc dưới trái sơ đồ, ngay dưới công
+// tắc dâu/rể. Chỗ ấy sai hai lần, và chủ dự án tìm ra bằng cách **đi tìm mà
+// không thấy** (20/08/2026):
 //
-// Nút này sửa ghi chú của người trung tâm ĐANG XEM — nó THAY dấu cũ chứ không
-// nối thêm, nên bấm bao nhiêu lần ghi chú cũng không phình ra.
+// 1. Cột ấy **mặc định thu lại**, phải bấm nút tóm tắt xổ ra mới thấy — tức
+//    một tuỳ chọn nằm sau một cú bấm mà không có gì báo là nó nằm ở đó.
+// 2. Cột ấy là **bộ lọc phạm vi đời** — *vẽ tới đời thứ mấy*. Ngày giỗ không
+//    phải phạm vi, nó là **thứ hiện trên mỗi ô**. Đứng lẫn giữa các nấc lọc là
+//    sai loại, và sai loại thì người dùng không đoán ra được nó ở đâu.
+//
+// Công tắc dâu/rể thì Ở LẠI cột kia, có chủ ý: nó đổi **AI được vẽ**, đúng
+// nghĩa một bộ lọc phạm vi. Hai công tắc trông giống nhau mà thuộc hai loại
+// khác nhau — đó chính là chỗ đã làm lẫn.
+//
+// ⚠ Bài học loại này khác mọi lần *"nhìn ảnh mới thấy"* trước đó: chức năng
+// **chạy đúng, có phép kiểm xanh**. Thứ hỏng là **chỗ đứng**. Bộ kiểm không có
+// cách nào bắt được, chỉ người dùng thật mới bắt được.
 
-const DAU_THU = /\s*\[thử ghi lúc [^\]]*\]/g;
+function veKhoiHienThi(vao) {
+  const khoi = document.createElement('div');
+  khoi.style.cssText = 'margin-top:20px';
+  khoi.append(veNhanKhoi('Hiển thị'));
 
-function veKhoiThuGhi(vao) {
-  khoiThuGhi = document.createElement('div');
-  khoiThuGhi.style.cssText = 'margin-top:20px';
-  vao.append(khoiThuGhi);
-  veLaiKhoiThuGhi();
-  return khoiThuGhi;
-}
+  const nhan = document.createElement('label');
+  nhan.style.cssText =
+    'display:flex;align-items:center;gap:9px;margin-top:6px;padding:9px 11px;' +
+    'border:1px solid #e6e0d8;border-radius:9px;background:#faf8f5;' +
+    'font-size:14px;cursor:pointer;touch-action:manipulation';
 
-/** @param {{chu:string, laLoi:boolean}} [ketQua] */
-function veLaiKhoiThuGhi(ketQua) {
-  const khoi = khoiThuGhi;
-  if (!khoi) return;
-  khoi.innerHTML = '';
+  const hopChon = document.createElement('input');
+  hopChon.type = 'checkbox';
+  hopChon.id = 'giapha-ct-ngay-gio';
+  hopChon.checked = state.hienNgayGio === true;
+  hopChon.style.cssText = 'width:18px;height:18px;accent-color:#2a2622';
+  hopChon.addEventListener('change', () => {
+    state.hienNgayGio = hopChon.checked;
+    notify();
+    if (xuLyNgoai.onDoiHienThi) xuLyNgoai.onDoiHienThi();
+  });
 
-  khoi.append(veNhanKhoi('Kiểm tra ghi dữ liệu'));
+  const chu = document.createElement('span');
+  chu.textContent = 'Hiện hàng ngày giỗ dưới mỗi ô';
 
-  const dangXem = state.index && state.focusPersonId
-    ? state.index.personById.get(state.focusPersonId) : null;
-  const coNoi   = coMayChu();
-  const ghiDuoc = coNoi && suaDuoc() && !!dangXem && !state.daLocNguoiConSong;
+  nhan.append(hopChon, chu);
+  khoi.append(nhan);
 
-  const giaiThich = document.createElement('div');
-  giaiThich.style.cssText = 'font-size:13px;line-height:1.55;color:#8a8078;margin-bottom:10px';
-  giaiThich.textContent = dangXem
-    ? 'Bấm nút dưới đây để thử ghi thật xuống Google Drive: app sẽ đánh một dấu ' +
-      'thời gian vào ghi chú của ' + fullName(dangXem) + '. Đóng app mở lại, ' +
-      'xem thẻ thông tin của người đó mà dấu vẫn còn thì đường lưu đã chạy đúng.'
-    : 'Chưa chọn được người trung tâm nào nên chưa thử ghi được.';
-  khoi.append(giaiThich);
+  // Công tắc này đổi CHIỀU CAO Ô, không chỉ đổi chữ — phải nói ra, vì bật lên
+  // là cả sơ đồ cao thêm một hàng, kể cả ô của người còn sống và người chưa ai
+  // điền ngày giỗ (luật "ô cao bằng nhau" không cho ô co theo nội dung).
+  const nhac = document.createElement('div');
+  nhac.textContent =
+    'Bật lên thì MỌI ô cao thêm một hàng, kể cả ô của người chưa ai điền ngày ' +
+    'giỗ — sơ đồ dài thêm khoảng một phần tám. Vì thế mặc định tắt.';
+  nhac.style.cssText = 'font-size:12px;line-height:1.5;color:#8a8078;margin-top:6px';
+  khoi.append(nhac);
 
-  khoi.append(nut('Thử ghi vào gia phả', false, ghiDuoc, () => thuGhi(dangXem)));
-
-  if (coNoi && !suaDuoc()) {
-    khoi.append(veLoiNhan(
-      'Bạn chỉ có quyền xem gia phả nên nút này không bấm được. ' +
-      'Quyền do danh sách chia sẻ trên Google Drive quyết định.', false));
-  }
-  if (state.daLocNguoiConSong) {
-    khoi.append(veLoiNhan(
-      'Bản gia phả trong máy đang bị ẩn bớt chi tiết người còn sống, ' +
-      'nên app không được phép lưu đè lên bản gốc.', false));
-  }
-  if (ketQua) khoi.append(veLoiNhan(ketQua.chu, ketQua.laLoi));
-}
-
-/**
- * Chạy đúng một lần ghi thật.
- *
- * Hàm sửa chạy trên BẢN SAO của cây do `repo.luuCay()` dựng — nó không đụng
- * vào `state.tree`. Máy chủ gật thì repo mới thay cây và gọi `notify()`.
- */
-async function thuGhi(nguoi) {
-  const khoi = khoiThuGhi;
-  if (!nguoi) return;
-  if (khoi) khoi.style.opacity = '0.5';
-
-  const dau = '[thử ghi lúc ' + stampNow() + ']';
-
-  let kq;
-  try {
-    kq = await luuCay(
-      (cay) => {
-        const p = (cay.persons || []).find((x) => x && x.id === nguoi.id);
-        if (!p) return;
-        const cu = typeof p.note === 'string' ? p.note : '';
-        p.note = (cu.replace(DAU_THU, '').trim() + ' ' + dau).trim();
-      },
-      {
-        action: 'update',
-        target: nguoi.id,
-        note:   'Nút "Thử ghi vào gia phả" trong màn hình Cài đặt (chat 2.1).',
-        diff:   { 'note.dauThu': ['', dau] },
-      }
-    );
-  } catch (e) {
-    kq = { ok: false, loi: e && e.message ? e.message : String(e) };
-  }
-
-  if (khoi) khoi.style.opacity = '1';
-
-  if (kq && kq.ok) {
-    veLaiKhoiThuGhi({
-      laLoi: false,
-      chu: 'Đã ghi xong xuống Google Drive. Bản gia phả nay là phiên bản ' +
-           kq.revision + ', dấu vừa đánh là ' + dau + '. ' +
-           moTaSaoLuu(kq.saoLuu) +
-           ' Giờ đóng app mở lại, xem thẻ thông tin của ' + fullName(nguoi) +
-           ' — dấu này phải vẫn còn.',
-    });
-  } else {
-    veLaiKhoiThuGhi({
-      laLoi: true,
-      chu: (kq && kq.loi) || 'Chưa lưu được, mà máy chủ không nói rõ vì sao.',
-    });
-  }
-}
-
-/** Dịch mã trạng thái sao lưu của máy chủ ra câu người thường đọc được. */
-function moTaSaoLuu(ma) {
-  if (ma === 'da-luu')         return 'Đã cất thêm một bản phòng hờ vào thư mục Sao_luu.';
-  if (ma === 'chua-den-han')   return 'Chưa cất bản phòng hờ mới vì bản gần nhất còn chưa quá 24 giờ.';
-  if (ma === 'tat')            return 'Sao lưu tự động đang tắt trong Config.gs.';
-  if (ma === 'khong-cau-hinh') return 'Chưa điền THU_MUC_SAO_LUU_ID trong Config.gs nên chưa cất bản phòng hờ nào.';
-  // 'loi' — thường là do thư mục Sao_luu chỉ chia sẻ cho chủ dự án.
-  if (ma === 'loi')            return 'Ghi được gia phả, nhưng KHÔNG cất được bản phòng hờ ' +
-                                      '(thư mục Sao_luu chỉ chủ dự án mới ghi được).';
-  return '';
+  vao.append(khoi);
+  return khoi;
 }
 
 // ============================================================
@@ -497,6 +434,16 @@ function veKhoiPhien(vao) {
     'không sửa được trong app. Cần đổi thì nhờ người quản lý.';
   nhac.style.cssText = 'margin-top:8px;font-size:12px;line-height:1.5;color:#8a8078';
   khoi.append(nhac);
+
+  // "Bị ẩn" KHÔNG phải "còn thiếu" — câu này chuyển về đây ở bước 30, khi khối
+  // "Thử ghi vào gia phả" bị gỡ. Nó phải sống ở đâu đó: `CLAUDE.md` mục 11 xếp
+  // nó vào loại điều PHẢI NÓI THẲNG, KHÔNG ĐƯỢC CHE.
+  if (state.daLocNguoiConSong) {
+    khoi.append(veLoiNhan(
+      "Máy chủ đang lược bớt chi tiết người còn sống trước khi gửi bản gia phả " +
+      "về máy này, nên app KHÔNG được phép lưu đè lên bản gốc. Đây không phải " +
+      "gia phả thiếu thông tin.", false));
+  }
 
   vao.append(khoi);
 }
