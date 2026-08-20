@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate}, services/repo,
 //            utils/{graph,text,date}
-// Phiên bản: 1.5.0 · Cập nhật: 20/08/2026 09:30
+// Phiên bản: 1.6.0 · Cập nhật: 20/08/2026 14:10
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -284,10 +284,10 @@ function laCheDoThem() {
 function tieuDeForm() {
   if (cheDo === 'themCon')    return 'Thêm người con';
   if (cheDo === 'themBanDoi') return 'Thêm vợ / chồng';
-  if (cheDo === 'themChaMe') {
-    const g = noiVao && noiVao.gioi;
-    return g === 'M' ? 'Thêm cha' : (g === 'F' ? 'Thêm mẹ' : 'Thêm cha / mẹ');
-  }
+  // Không còn "Thêm cha" / "Thêm mẹ" riêng: từ 20/08/2026 chính ô GIỚI TÍNH
+  // trong form là chỗ nói ra điều đó, và tiêu đề không được nói trước một thứ
+  // người dùng chưa chọn.
+  if (cheDo === 'themChaMe') return 'Thêm cha / mẹ';
   return 'Sửa hồ sơ';
 }
 
@@ -330,16 +330,9 @@ function moTaChoNoi() {
   }
 
   if (cheDo === 'themBanDoi') {
-    if (!noiVao.unionId) {
-      return 'Vợ / chồng của ' + tenNguoi(noiVao.banDoiId) +
-             ' — app sẽ tạo thêm một cặp mới cho hai người.';
-    }
-    const u = index.unionById.get(noiVao.unionId);
-    const soCon = (Array.isArray(u && u.children) ? u.children : []).length;
-    return 'Vợ / chồng của ' + tenNguoi(noiVao.banDoiId) + '  ·  ' + noiVao.unionId +
-           (soCon > 0
-             ? ' — người này sẽ thành cha/mẹ của ' + soCon + ' người con của cặp ấy.'
-             : '');
+    return 'Vợ / chồng của ' + tenNguoi(noiVao.banDoiId) +
+           ' — app tạo một cặp mới cho hai người. Người này KHÔNG tự thành ' +
+           'cha/mẹ của con sẵn có của ' + tenNguoi(noiVao.banDoiId) + '.';
   }
 
   if (noiVao.chaMeId) {
@@ -398,7 +391,12 @@ function veCacO(nguoi) {
   ra.push(hangTen);
 
   ra.push(veNhan('Giới tính'));
-  ra.push(veChonGioi(nguoi.sex));
+  // Thêm vợ/chồng: giới tính suy ra được từ người kia, nên điền sẵn và KHOÁ.
+  // Thêm cha/mẹ: KHÔNG khoá — từ bước 27 chính ô này là chỗ nói đây là cha hay
+  // là mẹ, nên khoá nó là bịt mất câu hỏi duy nhất của cả cái form.
+  const khoaGioi = cheDo === 'themBanDoi' && !!(noiVao && noiVao.gioiNguoc);
+  ra.push(veChonGioi(nguoi.sex, khoaGioi));
+  if (khoaGioi) ra.push(veDongGioi(noiVao.gioiMoc, noiVao.gioiNguoc, tenNguoi(noiVao.banDoiId)));
 
   ra.push(veNhan('Sinh'));
   ra.push(oNgay('birth', nguoi.birth));
@@ -514,19 +512,34 @@ function mayDocDuocGi(chu) {
   return 'Máy đoán là ' + dep + ', nhưng không chắc. Chữ bạn gõ vẫn giữ nguyên.';
 }
 
-function veChonGioi(sexHienTai) {
+/**
+ * Ba nút giới tính. `biKhoa` = bày ra nhưng không bấm được.
+ *
+ * Khoá dùng ở đúng MỘT chỗ: thêm vợ/chồng cho người đã biết giới tính. Lúc ấy
+ * giới tính của người mới **suy ra được** — và một ô mà app đã biết câu trả lời
+ * thì để mở là mời gõ vào một mâu thuẫn. Nhưng khoá cứng thì hôn nhân đồng giới
+ * hết đường ghi, nên bên cạnh luôn có công tắc mở khoá (`veDongGioi`).
+ *
+ * ⚠ Khoá là **bày ra rồi làm mờ**, KHÔNG phải giấu đi. Giấu thì người dùng
+ * không biết app đã tự quyết một trường của bản ghi họ sắp lưu.
+ */
+function veChonGioi(sexHienTai, biKhoa) {
   const hang = document.createElement('div');
   hang.style.cssText = 'display:flex;gap:6px';
 
   let dangChon = GIOI.some((g) => g.ma === sexHienTai) ? sexHienTai : 'U';
+  let khoa = !!biKhoa;
   const cacNut = [];
 
   const veLai = () => {
     for (const { ma, nut } of cacNut) {
       const chon = ma === dangChon;
-      nut.style.cssText = KIEU_NUT_CHON + (chon
-        ? 'background:#2a2622;color:#fffdf9;border:1px solid #2a2622;font-weight:600'
-        : 'background:#faf8f5;color:#2a2622;border:1px solid #e6e0d8');
+      nut.disabled = khoa;
+      nut.style.cssText = KIEU_NUT_CHON +
+        (khoa ? 'cursor:not-allowed;opacity:.5;' : '') +
+        (chon
+          ? 'background:#2a2622;color:#fffdf9;border:1px solid #2a2622;font-weight:600'
+          : 'background:#faf8f5;color:#2a2622;border:1px solid #e6e0d8');
     }
   };
 
@@ -534,7 +547,7 @@ function veChonGioi(sexHienTai) {
     const nut = document.createElement('button');
     nut.type = 'button';
     nut.textContent = g.chu;
-    nut.addEventListener('click', () => { dangChon = g.ma; veLai(); });
+    nut.addEventListener('click', () => { if (!khoa) { dangChon = g.ma; veLai(); } });
     cacNut.push({ ma: g.ma, nut });
     hang.append(nut);
   }
@@ -543,8 +556,50 @@ function veChonGioi(sexHienTai) {
   // Đọc bằng hàm chứ không bằng `.value`: giới tính ở đây là ba cái nút, không
   // phải một ô nhập, nên `docO()` không lấy được. Giữ chung một lối đọc cho cả
   // form thì `gomThayDoi()` không phải biết ô nào là loại gì.
-  o.sex = { value: '', doc: () => dangChon };
+  o.sex = {
+    value: '',
+    doc: () => dangChon,
+    datKhoa: (dong, ma) => { khoa = !!dong; if (ma) dangChon = ma; veLai(); },
+  };
   return hang;
+}
+
+/**
+ * Công tắc HÔN NHÂN ĐỒNG GIỚI. Chỉ có ở chế độ thêm vợ/chồng, và chỉ khi biết
+ * giới tính của người kia.
+ *
+ * Không phải một trường dữ liệu — gia phả **không lưu** cờ "đồng giới" ở đâu
+ * cả. Nó chỉ mở khoá ba cái nút giới tính, vì `partners` vốn là MẢNG hai chiều
+ * bình đẳng và hôn nhân đồng giới ghi được từ đầu (HIEN-PHAP mục dữ liệu). Cái
+ * duy nhất cần bỏ là **giả định mặc định**, và giả định thì bỏ bằng một cú chạm.
+ *
+ * Tích vào thì giới tính nhảy sang **cùng giới** với người kia — đó là ý của
+ * chữ "đồng giới", và người dùng vẫn đổi lại được. Bỏ tích thì khoá lại và trả
+ * về giới tính ngược.
+ */
+function veDongGioi(gioiMoc, gioiNguoc, tenMoc) {
+  const nhan = document.createElement('label');
+  nhan.style.cssText =
+    'display:flex;align-items:center;gap:9px;margin-top:6px;padding:9px 11px;' +
+    'border:1px solid #e6e0d8;border-radius:9px;background:#faf8f5;' +
+    'font-size:14px;cursor:pointer;touch-action:manipulation';
+
+  const hop = document.createElement('input');
+  hop.type = 'checkbox';
+  hop.checked = false;
+  hop.style.cssText = 'width:18px;height:18px;accent-color:#2a2622';
+  hop.addEventListener('change', () => {
+    if (o.sex && typeof o.sex.datKhoa === 'function') {
+      o.sex.datKhoa(!hop.checked, hop.checked ? gioiMoc : gioiNguoc);
+    }
+  });
+  o.dongGioi = hop;
+
+  const chu = document.createElement('span');
+  chu.textContent = 'Hôn nhân đồng giới — cùng giới với ' + tenMoc;
+
+  nhan.append(hop, chu);
+  return nhan;
 }
 
 function veConSong(dangSong) {
@@ -1830,41 +1885,64 @@ function chonCap(vaiTro, mocId, xuLy, tiep) {
  * Thêm một người cha hoặc mẹ mới cho `childId`.
  *
  * @param {string} childId
- * @param {'M'|'F'|'U'} sex  giới tính điền sẵn — người dùng vừa bấm đúng nút
- *        *"Thêm cha"* hoặc *"Thêm mẹ"*, nên bắt họ chọn lại lần nữa trong form
- *        là hỏi một câu đã có câu trả lời. Ô giới tính vẫn sửa được.
  * @param {{onDaLuu?:function(string)}} [xuLy]
  *
- * ⚠ Chữ ký khung 15/08 ghi `quickAddParent(childId, sex)`, thiếu `xuLy`. Cùng
- * loại đính chính với `updatePerson` (bước 18) và `searchPersons` (bước 24):
- * khung viết trước khi biết màn hình cần gì, nên khung là điểm khởi hành chứ
- * không phải hợp đồng. Không có `xuLy` thì lưu xong sơ đồ không vẽ lại.
+ * ⚠ **KHÔNG hỏi "thêm cha hay thêm mẹ" nữa** (chủ dự án chốt 20/08/2026, ngay
+ * sau bước 26). Câu ấy hỏi đúng một thứ mà form ngay sau đó lại hỏi lần thứ
+ * hai: **ô giới tính**. Chọn "Nam" trong form *là* nói "đây là cha" — không có
+ * cách nào chọn "Nam" mà lại ra người mẹ. Hỏi trước rồi hỏi lại là bắt người ta
+ * trả lời hai lần cho một câu, và tệ hơn: hai câu trả lời có thể lệch nhau, lúc
+ * ấy app phải chọn tin cái nào.
+ *
+ * ⚠ Chữ ký khung 15/08 ghi `quickAddParent(childId, sex)`. Nay **không còn
+ * `sex`** — và cũng chưa bao giờ có `xuLy` như khung ghi. Cùng loại đính chính
+ * với `updatePerson` (bước 18) và `searchPersons` (bước 24): khung là điểm khởi
+ * hành, không phải hợp đồng.
  */
-export function quickAddParent(childId, sex, xuLy = {}) {
+export function quickAddParent(childId, xuLy = {}) {
   const index = state.index;
   if (!index || !index.personById.has(childId)) return;
-  const gioi = (sex === 'M' || sex === 'F') ? sex : 'U';
 
   chonCap('chaMe', childId, xuLy, (unionId) => {
-    moForm('themChaMe', Object.assign({}, NGUOI_TRONG, { sex: gioi }),
-           { childId, unionId, gioi }, xuLy);
+    moForm('themChaMe', NGUOI_TRONG, { childId, unionId }, xuLy);
   });
 }
+
+/** Giới tính còn lại của một cặp nam–nữ. Trả rỗng khi không suy ra được. */
+const GIOI_NGUOC = { M: 'F', F: 'M' };
 
 /**
  * Thêm một người vợ / chồng mới cho `personId`.
  *
- * Không nhận `sex`: khác với *"Thêm cha"* / *"Thêm mẹ"*, menu chỉ có MỘT nút
- * cho việc này, nên app không biết trước. Đoán ngược giới tính của người kia là
- * làm hôn nhân đồng giới gãy ngay ở cửa vào — điều `partners` sinh ra để tránh.
+ * ⚠ **KHÔNG hỏi "nối vào cặp nào" nữa, và LUÔN tạo một cặp mới** (chủ dự án
+ * chốt 20/08/2026). Cú chạm giữ đã chỉ đúng một người, nên hai người ấy là một
+ * cặp — không còn gì để hỏi.
+ *
+ * Và câu hỏi bị bỏ đi ấy hoá ra còn **nguy hiểm**: lối duy nhất nó mở ra là
+ * *"cho người mới vào cặp một người đang có con"*, mà làm thế là **lặng lẽ
+ * khẳng định người mới là cha/mẹ của mấy người con đó** — đúng thứ luật 9 cấm.
+ * Bỏ câu hỏi vừa gọn tay vừa đóng luôn cái cửa ấy.
+ *
+ * ⚠ Ca *"bà mẹ nay đã nhớ ra tên chồng"* — cặp một người có con — vẫn làm được,
+ * chỉ là **đi từ phía người con**: mở thẻ người con → *Thêm cha / mẹ* → cặp ấy
+ * còn một chỗ trống nên vào thẳng. Đó mới là lối đúng, vì ở đó người dùng đang
+ * nhìn chính đứa con mà mình sắp gán thêm một người cha.
+ *
+ * **Giới tính người mới điền sẵn NGƯỢC với người kia, và ô ấy bị khoá** — mở
+ * lại bằng công tắc *"hôn nhân đồng giới"*. Người kia mang `sex: 'U'` thì không
+ * suy ra được gì: để ô mở, không khoá, không bày công tắc.
  */
 export function quickAddSpouse(personId, xuLy = {}) {
   const index = state.index;
-  if (!index || !index.personById.has(personId)) return;
+  const moc = index && index.personById.get(personId);
+  if (!moc) return;
 
-  chonCap('banDoi', personId, xuLy, (unionId) => {
-    moForm('themBanDoi', NGUOI_TRONG, { banDoiId: personId, unionId }, xuLy);
-  });
+  const gioiNguoc = GIOI_NGUOC[moc.sex] || '';
+
+  moForm('themBanDoi',
+         Object.assign({}, NGUOI_TRONG, { sex: gioiNguoc || 'U' }),
+         { banDoiId: personId, unionId: '', gioiMoc: moc.sex, gioiNguoc },
+         xuLy);
 }
 
 /**

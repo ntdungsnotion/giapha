@@ -1,10 +1,34 @@
 // ============================================================
 // giapha · js/pages/person-detail.js
-// Vai trò  : Thẻ thông tin hiện ra khi chạm giữ vào một người
+// Vai trò  : MENU vòng tròn (cửa mặc định) + THẺ thông tin của một người
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union}, services/repo, utils/{text,date}
-// Phiên bản: 1.4.0 · Cập nhật: 20/08/2026 09:30
+// Phiên bản: 1.5.0 · Cập nhật: 20/08/2026 14:10
 // ============================================================
+//
+// --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
+//
+// File này xuất ra HAI cửa, và chúng trả lời hai câu khác nhau:
+//
+//   openPersonMenu()   — *"tôi muốn LÀM GÌ với người này?"*  ⟵ cửa MẶC ĐỊNH
+//                        của cú chạm giữ và cú bấm chuột phải. Tám việc quanh
+//                        một vòng tròn, tên người ở giữa.
+//   openPersonDetail() — *"người này LÀ AI?"*  ngày tháng, tên khác, ba nhóm
+//                        quan hệ. Mở từ mục ⓘ trong vòng tròn.
+//
+// **Trước 20/08 hai thứ này nằm chung một thẻ, và đó là thừa.** Chạm giữ vào
+// một ô là hiện ra cả tiểu sử lẫn tám cái nút — mà chín lần trên mười người ta
+// chạm giữ vì muốn LÀM một việc, còn đọc tiểu sử thì đã đọc ngay trên sơ đồ.
+// Cái thẻ dài ấy bắt cuộn qua ba nhóm quan hệ mới tới được chỗ bấm.
+//
+// Tách ra thì mỗi màn hình ngắn lại, và đường đi giữa chúng là hai chiều: ⓘ
+// trong vòng tròn dẫn sang thẻ, nút *"Sửa gia phả"* dưới thẻ dẫn ngược về
+// vòng tròn. Cả hai dùng CHUNG `lopPhu`, nên không bao giờ chồng lên nhau.
+//
+// ⚠ Hai cửa, MỘT bộ hàm xử lý. Nơi gọi truyền đúng một `xuLy` và nó đi xuyên
+// qua cả hai màn hình — thẻ mở menu thì chuyền tiếp, menu mở thẻ cũng vậy. Hai
+// bộ khác nhau là thứ đẻ ra cảnh cùng một nút mà lúc chạy lúc không, tuỳ người
+// dùng đã đi qua màn hình nào.
 //
 // Trường trống thì ẨN CẢ HÀNG: không nhãn, không giá trị, không "Không rõ".
 // Dùng utils/text.coGiaTri(), đừng tự kiểm theo kiểu riêng.
@@ -39,8 +63,39 @@ let lopPhu = null;   // lớp phủ đang mở, hoặc null
 
 const GIOI = { M: 'Nam', F: 'Nữ' };   // 'U' cố ý KHÔNG có mặt — xem veHang()
 
+// Lớp phủ và hộp trắng: MỘT chỗ định nghĩa cho cả file, dùng chung cho THẺ và
+// cho MENU. Chép ra hai bản thì bản đầu tiên trôi lệch bao giờ cũng là
+// `z-index`, và hai màn hình của cùng file này chồng lên nhau thì người dùng
+// bấm vào cái phía dưới mà không hiểu vì sao không ăn.
+//
+// ⚠ `box-sizing:border-box` không phải chi tiết trang trí. Thiếu nó thì
+// `width:100%` tính trên phần RUỘT, còn 18px đệm mỗi bên cộng thêm ra ngoài —
+// trên điện thoại 400px cái hộp thành 396px trong một khung chỉ còn 360px, và
+// lớp phủ căn giữa làm nó thò ra 18px MỖI BÊN. Lỗi có từ bước 14, ẩn suốt vì
+// hộp cũ toàn chữ chạy sát lề trái nên không ai thấy gì mất.
+//
+// ⚠ Và một đính chính về CÁCH TÌM RA nó: bước 26 lúc đầu ghi *"ảnh chụp bắt
+// được"*. **Sai.** Cái ảnh ấy bị cắt vì Chrome không mở nổi cửa sổ hẹp hơn
+// ~500px (đã ghi ở `DOC-TRUOC.md` từ bước 24), nên hộp nằm giữa khung 500px còn
+// ảnh thì cắt ở 400px — trông y hệt một lỗi tràn lề. Thứ chứng minh lỗi có thật
+// là **phép tính** (396 > 360) và bài kiểm ép bề ngang bằng CSS, không phải bức
+// ảnh. Đọc một artefact của công cụ thành một lỗi của mã là chuyện đã xảy ra
+// hai lần ở đây: cùng họ với `--window-size` không ăn ở chế độ `--dump-dom`.
+const KIEU_LOP_PHU =
+  'position:fixed;inset:0;background:rgba(42,38,34,.35);z-index:30;' +
+  'display:flex;align-items:center;justify-content:center;padding:20px;' +
+  'font-family:system-ui,sans-serif;color:#2a2622';
+
+const KIEU_HOP =
+  'background:#fffdf9;border-radius:14px;padding:18px;box-sizing:border-box;' +
+  'width:100%;max-width:360px;max-height:82vh;overflow:auto;' +
+  'box-shadow:0 8px 32px rgba(42,38,34,.28);-webkit-overflow-scrolling:touch;'
+
 /**
- * Mở thẻ thông tin của một người.
+ * Mở THẺ THÔNG TIN của một người — trả lời câu *"người này là ai?"*.
+ *
+ * Không còn là cửa mặc định của cú chạm giữ (đổi 20/08/2026); nay mở từ mục ⓘ
+ * trong vòng tròn, hoặc từ một dòng trong màn hình Danh sách người.
  *
  * @param {string} personId
  * @param {{onChonNguoi?:function(string), onSuaNguoi?:function(string),
@@ -50,15 +105,16 @@ const GIOI = { M: 'Nam', F: 'Nữ' };   // 'U' cố ý KHÔNG có mặt — xem 
  *          onXoaNguoi?:function(string)}} [xuLy]
  *        `onChonNguoi`  bấm một người trong phần quan hệ, hoặc nút "Đưa ra giữa
  *                       sơ đồ". Thẻ tự đóng trước khi gọi.
- *        `onSuaNguoi`   nút GIỮA vòng tròn.
- *        `onThemChaMe`  kèm giới tính `'M'|'F'|'U'` đã hỏi xong ngay trong thẻ.
+ *        `onSuaNguoi`   mục ✏ của vòng tròn.
+ *        `onThemChaMe`  **chỉ có mã người**. Cha hay mẹ thì ô giới tính trong
+ *                       form nói ra, menu không hỏi trước (đổi 20/08/2026).
  *        `onThemBanDoi` chỗ chọn cặp nằm ở `person-edit.js`, không nằm đây.
  *        `onThemCon`    kèm CHỖ NỐI đã chọn xong.
  *        `onKetNoi`     nơi gọi mở màn hình Danh sách người để chọn người kia.
  *        `onGoNoi`      nơi gọi mở danh sách mối nối hiện có.
  *        `onXoaNguoi`   thẻ KHÔNG hỏi lại gì.
  *
- * ⚠ BẢY MỤC CỦA VÒNG TRÒN ĐỀU LÀ CỬA, KHÔNG PHẢI VIỆC. Mọi hộp xác nhận, mọi
+ * ⚠ TÁM MỤC CỦA VÒNG TRÒN ĐỀU LÀ CỬA, KHÔNG PHẢI VIỆC. Mọi hộp xác nhận, mọi
  * phép rà, mọi đường ghi và mọi đường hoàn tác nằm ở `person-edit.js` — nơi có
  * sẵn đường tới máy chủ. Thẻ này chỉ báo ra ngoài *"người dùng vừa muốn làm
  * gì"*; mục nào nơi gọi không nhận thì mục ấy mờ đi.
@@ -71,26 +127,11 @@ export function openPersonDetail(personId, xuLy = {}) {
   if (!p) return;
 
   lopPhu = document.createElement('div');
-  lopPhu.style.cssText =
-    'position:fixed;inset:0;background:rgba(42,38,34,.35);z-index:30;' +
-    'display:flex;align-items:center;justify-content:center;padding:20px;' +
-    'font-family:system-ui,sans-serif;color:#2a2622';
+  lopPhu.style.cssText = KIEU_LOP_PHU;
 
-  // ⚠ `box-sizing:border-box` KHÔNG phải chi tiết trang trí. Thiếu nó thì
-  // `width:100%` tính trên phần RUỘT, còn 18px đệm mỗi bên cộng thêm ra ngoài —
-  // nên trên màn hình 400px cái thẻ rộng 396px trong một khung chỉ còn 360px, và
-  // lớp phủ căn giữa làm nó thò ra 18px MỖI BÊN, cắt cụt cả hai mép. Lỗi có từ
-  // bước 14, ẩn suốt vì thẻ cũ toàn chữ chạy sát lề trái nên không ai thấy gì
-  // mất; vòng tròn có nút nằm sát hai mép mới làm nó lộ ra — và lộ ra trong ẢNH
-  // CHỤP, không phải trong phép kiểm. Bài kiểm bố cục đo theo mép THẺ, mà chính
-  // cái thẻ mới là thứ tràn.
   const the = document.createElement('div');
   the.id = 'giapha-the-nguoi';   // mốc cho bài kiểm đo bố cục, xem kiem-vong-tron.mjs
-  the.style.cssText =
-    'background:#fffdf9;border-radius:14px;padding:18px;box-sizing:border-box;' +
-    'width:100%;max-width:360px;' +
-    'max-height:82vh;overflow:auto;box-shadow:0 8px 32px rgba(42,38,34,.28);' +
-    '-webkit-overflow-scrolling:touch';
+  the.style.cssText = KIEU_HOP;
 
   the.append(...veDauThe(p), ...veHangThongTin(p), ...veQuanHe(index, p, xuLy));
   the.append(veChanThe(p, xuLy));
@@ -374,37 +415,20 @@ function veNhom(tieuDe, danhSach, xuLy) {
 }
 
 /**
- * Chân thẻ: MENU VÒNG TRÒN (bảy việc sửa dữ liệu) + hai nút đi lại.
+ * Chân THẺ THÔNG TIN: chỉ ba nút đi lại. Vòng tròn KHÔNG nằm ở đây.
  *
- * --- Vì sao hai nhóm nút, và vì sao chúng KHÔNG đứng chung hàng ----------
- *
- * "Đưa ra giữa sơ đồ" và "Đóng" chỉ ĐI LẠI: bấm nhầm thì bấm lại là xong. Bảy
- * việc trong vòng tròn thì ĐỔI DỮ LIỆU, và mỗi cái đều mở tiếp một hộp xác
- * nhận. Trộn hai nhóm vào một hàng nút giống hệt nhau là thứ mời một cú chạm
- * nhầm — đúng lý do mà từ bước 21 nút Xoá đã phải đứng riêng ra.
- *
- * ⚠ Vòng tròn nằm ở CUỐI thẻ, không nằm trên đầu. Điểm dừng của chat 1.6 là
- * *"xem xong một người là biết đủ, không phải cuộn tìm"*; nhét 300px nút lên
- * đầu thẻ là đẩy toàn bộ ngày tháng và ba nhóm quan hệ xuống dưới màn hình, tức
- * phá đúng cái điểm dừng ấy để lấy chỗ cho mấy cái nút.
+ * Từ 20/08/2026 thẻ thông tin và menu vòng tròn là HAI màn hình, không phải một
+ * — xem ghi chú *"Hai màn hình, hai câu hỏi"* ở đầu file. Nút *"Sửa gia phả"*
+ * là đường đi từ thẻ sang menu; nó gọi thẳng `openPersonMenu` vì cả hai sống
+ * trong cùng file này, không phải một lớp khác.
  */
 function veChanThe(p, xuLy) {
   const boc = document.createElement('div');
 
-  // Chỗ hiện các bảng chọn phụ: "thêm con vào cặp nào", "thêm cha hay thêm mẹ".
-  //
-  // Nằm DƯỚI vòng tròn, không nằm trên: câu hỏi phụ phải hiện ra ngay cạnh cái
-  // nút vừa bấm. Đặt lên trên thì người dùng bấm một nút ở giữa thẻ rồi thấy
-  // một câu hỏi mọc ra phía trên đầu mình, và trên màn hình hẹp nó còn đẩy cả
-  // vòng tròn trôi xuống ngay dưới ngón tay đang chạm.
-  const khoiChon = document.createElement('div');
-
-  boc.append(renderActionMenu(p, xuLy, khoiChon));
-  boc.append(khoiChon);
-
   const chan = document.createElement('div');
-  chan.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:14px';
+  chan.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:18px';
   chan.append(
+    nutChan('Sửa gia phả', false, () => openPersonMenu(p.id, xuLy)),
     nutChan('Đưa ra giữa sơ đồ', true, () => {
       closePersonDetail();
       if (xuLy.onChonNguoi) xuLy.onChonNguoi(p.id);
@@ -417,101 +441,147 @@ function veChanThe(p, xuLy) {
 }
 
 // ============================================================
-// MENU VÒNG TRÒN — bảy việc
+// MENU VÒNG TRÒN — tám việc
 // ============================================================
 //
-// Bắt chước Quick Family Tree: một việc ở GIỮA, sáu việc quanh vành. Hai điều
-// nhớ được mà không phải học, và đó là toàn bộ lý do chọn hình tròn thay vì một
+// Bắt chước Quick Family Tree: người ở GIỮA, tám việc quanh vành. Hai điều nhớ
+// được mà không phải học, và đó là toàn bộ lý do chọn hình tròn thay vì một
 // danh sách dọc:
 //
 //   · TRÊN là cha mẹ, DƯỚI là con — đúng chiều của chính cái sơ đồ đằng sau;
-//   · PHẢI là THÊM / NỐI, TRÁI là BỚT / GỠ. Hai việc bỏ đi nằm gọn một bên,
-//     tô đỏ, không lẫn vào bên kia.
+//   · NỬA PHẢI là xem và nối thêm, NỬA TRÁI là sửa và bỏ đi. Hai việc bỏ đi
+//     (Gỡ nối · Xoá) nằm gọn một bên và tô đỏ.
 //
-// ⚠ Đánh đổi phải nói ra: một danh sách dọc sáu dòng thì DỄ ĐỌC hơn vòng tròn,
+// ⚠ **TÂM VÒNG TRÒN LÀ TÊN NGƯỜI, KHÔNG PHẢI MỘT CÁI NÚT.** Cố ý, và có hai lý
+// do. Thứ nhất: menu này nay mở ra một mình, không còn thẻ thông tin bọc quanh,
+// nên nếu không có gì nói *"đang thao tác lên ai"* thì người dùng bấm mù — mà
+// chỗ nói điều đó rõ nhất là ngay giữa vòng tròn, chứ không phải một dòng chữ
+// trên đầu. Thứ hai: **tám mục phải cách đều nhau 45°** thì hai mnemonic ở trên
+// mới đứng được; nhét việc thứ chín vào tâm là được, nhưng lúc ấy tâm thành một
+// đích chạm nằm sát tám đích khác, và nó là đích DỄ TRÚNG NHẤT.
+//
+// ⚠ Chỗ này dành sẵn cho **ẢNH NGƯỜI** ở bước 27. Ảnh vào đúng giữa vòng tròn
+// là thứ Quick Family Tree làm, và nó trả lời câu *"đúng người chưa?"* nhanh
+// hơn mọi dòng chữ.
+//
+// ⚠ Đánh đổi phải nói ra: một danh sách dọc tám dòng thì DỄ ĐỌC hơn vòng tròn,
 // nhất là với chữ Việt có dấu ở cỡ 11px. Đổi lại, vòng tròn cho mỗi việc một
 // CHỖ ĐỨNG cố định, và người dùng hằng ngày bấm theo trí nhớ vị trí chứ không
-// đọc lại nhãn. Vì thế mọi đích chạm ở đây rộng 76px — vượt xa mức 44px tối
-// thiểu — và nhãn nằm NGOÀI vòng tròn chứ không nhét vào trong.
+// đọc lại nhãn. Vì thế mọi đích chạm ở đây rộng 68px — vượt mức 44px tối thiểu
+// — và nhãn nằm NGOÀI vòng tròn chứ không nhét vào trong.
 //
-// ⚠ `left` đặt bằng PHẦN TRĂM còn `top` bằng px, cố ý: màn hình hẹp 320px thì
-// thẻ chỉ còn khoảng 244px bề ngang, và một vòng tròn 280px sẽ tràn ra ngoài.
-// Cho bề ngang co lại theo thẻ thì vòng tròn hoá bầu dục — xấu hơn một chút,
-// nhưng không có nút nào bị cắt mất, và đó mới là thứ đếm được.
+// ⚠ `left` và `top` đều đặt bằng PHẦN TRĂM, cộng `aspect-ratio` giữ chiều cao
+// co theo bề ngang. Thẻ rộng 324px trên màn hình 360px nhưng chỉ còn 244px trên
+// màn hình 320px; đo theo phần trăm thì hình học GIỐNG NHAU ở mọi bề ngang, nên
+// không chồng nhau ở khổ rộng nghĩa là không chồng nhau ở mọi khổ.
 
-// --- HÌNH HỌC CỦA VÒNG TRÒN --------------------------------------------
-//
-// MỌI kích thước ở đây là PHẦN TRĂM bề ngang của khung, không có một con số px
-// nào ngoài cỡ chữ. Lý do đo được: thẻ rộng 324px trên màn hình 360px nhưng chỉ
-// còn 244px trên màn hình 320px, và một vòng tròn dựng bằng px thì ở khổ hẹp có
-// hai nhãn chui vào dưới nút giữa — chuyện đã xảy ra thật ở bản đầu của bước
-// 26, và bài kiểm hành vi KHÔNG bắt được vì hai hình chữ nhật vẫn chưa chạm
-// nhau. Chỉ ảnh chụp mới thấy.
-//
-// Đo theo phần trăm thì hình học GIỐNG NHAU ở mọi bề ngang: không chồng nhau ở
-// khổ rộng nghĩa là không chồng nhau ở mọi khổ. `aspect-ratio` giữ chiều cao
-// co theo bề ngang, nếu không thì thu bề ngang lại sẽ làm vòng tròn dẹt xuống
-// thành bầu dục.
-//
-// Khung chuẩn 280 × 336px. Bán kính 118px, nút vành rộng 70px (vòng tròn 52px),
-// nút giữa 76px. Ở thẻ 244px — màn hình 320px — vòng tròn 52px co còn 45px, vẫn
-// trên mức 44px tối thiểu cho ngón tay.
-//
-// ⚠ Chiều cao khung là 336 chứ không phải 320, và 16px dôi ra ấy có lý do đo
-// được: NHÃN CHỮ KHÔNG CO THEO. Vòng tròn và khoảng cách đều tính bằng phần
-// trăm nên co đều, còn nhãn thì luôn 11px — nên bề ngang càng hẹp, khối nút
-// dưới cùng càng chiếm phần trăm chiều cao lớn hơn, và ở thẻ 244px cái nhãn
-// "Thêm con" thò xuống dưới đáy khung 3px. Bài kiểm hành vi bắt được đúng ca
-// ấy; 16px dôi ra là chỗ cho phần không co.
-
-const TY_LE_KHUNG   = '280 / 336';
-const RONG_MUC      = 25;      // % — 70/280
-const RONG_TRON     = 18.57;   // % — 52/280
-const RONG_GIUA     = 27.14;   // % — 76/280
-const TREN_GIUA     = 31.55;   // % — 106/336
+const TY_LE_KHUNG = '280 / 308';   // khung chuẩn 280 × 308px
+const RONG_MUC    = 24.29;   // % — 68/280
+const RONG_TRON   = 18.57;   // % — 52/280
+const RONG_GIUA   = 23;      // % — 64/280. Nhỏ hơn nút vành một chút: tám
+                             // nhãn chụm quanh tâm nên phần giữa cần thoáng.
+const TREN_GIUA   = 31.82;   // % — 98/308 (tâm vẫn ở đúng giữa vòng)
 
 /**
- * Sáu việc quanh vành. `x` là % bề ngang, `top` là % chiều cao — cả hai tính
- * sẵn từ góc để khỏi phải chạy lượng giác trong lúc vẽ.
+ * Tám việc quanh vành, cách đều 45°, bán kính 104px. `x` là % bề ngang, `top`
+ * là % chiều cao — tính sẵn từ góc để khỏi phải chạy lượng giác trong lúc vẽ.
  *
- *   trên (-90°) cha mẹ · trên phải (-30°) vợ chồng · dưới phải (30°) kết nối
- *   dưới (90°) con     · dưới trái (150°) gỡ nối   · trên trái (-150°) xoá
+ *        -90 Thêm cha / mẹ
+ *   -135 Sửa hồ sơ    -45 Thêm vợ / chồng
+ *    180 Xoá             0 Kết nối
+ *   +135 Gỡ nối        +45 Thông tin
+ *        +90 Thêm con
  */
+// ⚠ NHÃN CHỈ ĐƯỢC MỘT DÒNG, và đó là ràng buộc HÌNH HỌC chứ không phải thẩm mỹ.
+// Với sáu mục cách nhau 60° thì nhãn hai dòng còn vừa; với TÁM mục cách nhau 45°
+// thì khối nút cao 83px làm ba cặp kề nhau chồng lên nhau — nhãn của mục này đè
+// lên vòng tròn của mục kế. Một dòng hạ khối xuống 68px và ba cặp ấy rời ra.
+// Bài kiểm hành vi bắt được đúng ba cặp: `banDoi×ketNoi`, `goNoi×xoa`, `xoa×sua`.
+//
+// Hệ quả: nhãn phải NGẮN. Dấu `+` thay chữ "Thêm" cho ba mục thêm người — vừa
+// gọn vừa nói đúng một việc, và `⬆`/`⬇` đã mang sẵn nghĩa trên/dưới.
 const VANH = [
-  { x: 50,   top: 0,     bieuTuong: '⬆', chu: 'Thêm\ncha / mẹ',   viec: 'chaMe'  },
-  { x: 86.5, top: 17.56, bieuTuong: '💍', chu: 'Thêm\nvợ / chồng', viec: 'banDoi' },
-  { x: 86.5, top: 52.68, bieuTuong: '🔗', chu: 'Kết nối',           viec: 'ketNoi' },
-  { x: 50,   top: 70.24, bieuTuong: '⬇', chu: 'Thêm\ncon',        viec: 'con'    },
-  { x: 13.5, top: 52.68, bieuTuong: '✂', chu: 'Gỡ nối',            viec: 'goNoi', do: true },
-  { x: 13.5, top: 17.56, bieuTuong: '🗑', chu: 'Xoá khỏi\ngia phả', viec: 'xoa',  do: true },
+  { x: 50,    top: 0,     bieuTuong: '⬆', chu: '+ Cha mẹ',   viec: 'chaMe'    },
+  { x: 76.25, top: 9.90,  bieuTuong: '💍', chu: '+ Vợ chồng', viec: 'banDoi'   },
+  { x: 87.14, top: 33.77, bieuTuong: '🔗', chu: 'Kết nối',    viec: 'ketNoi'   },
+  { x: 76.25, top: 57.63, bieuTuong: 'ⓘ', chu: 'Thông tin',  viec: 'thongTin' },
+  { x: 50,    top: 67.53, bieuTuong: '⬇', chu: '+ Con',      viec: 'con'      },
+  { x: 23.75, top: 57.63, bieuTuong: '✂', chu: 'Gỡ nối',     viec: 'goNoi', do: true },
+  { x: 12.86, top: 33.77, bieuTuong: '🗑', chu: 'Xoá',       viec: 'xoa',   do: true },
+  { x: 23.75, top: 9.90,  bieuTuong: '📝', chu: 'Sửa hồ sơ',  viec: 'sua'      },
 ];
 
 /**
+ * Mở MENU của một người — cửa mặc định của cú chạm giữ và cú bấm chuột phải.
+ *
+ * @param {string} personId
+ * @param {object} [xuLy] cùng bộ hàm xử lý với `openPersonDetail`
+ *
+ * ⚠ Dùng chung `lopPhu` và `closePersonDetail()` với thẻ thông tin, nên hai
+ * màn hình **không bao giờ chồng lên nhau**: mở cái này là cái kia đóng.
+ */
+export function openPersonMenu(personId, xuLy = {}) {
+  closePersonDetail();
+
+  const index = state.index;
+  const p = index && index.personById.get(personId);
+  if (!p) return;
+
+  lopPhu = document.createElement('div');
+  lopPhu.style.cssText = KIEU_LOP_PHU;
+
+  const hop = document.createElement('div');
+  hop.id = 'giapha-menu-nguoi';
+  hop.style.cssText = KIEU_HOP + 'max-width:340px;';
+
+  hop.append(...veDauThe(p));
+
+  // Chỗ hiện bảng chọn phụ ("thêm con vào cặp nào"). Nằm DƯỚI vòng tròn: câu
+  // hỏi phụ phải mọc ra ngay cạnh cái nút vừa bấm, không mọc trên đầu.
+  const khoiChon = document.createElement('div');
+  hop.append(renderActionMenu(p, xuLy, khoiChon));
+  hop.append(khoiChon);
+
+  const chan = document.createElement('div');
+  chan.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:14px';
+  chan.append(
+    nutChan('Đưa ra giữa sơ đồ', true, () => {
+      closePersonDetail();
+      if (xuLy.onChonNguoi) xuLy.onChonNguoi(p.id);
+    }),
+    nutChan('Đóng', false, () => closePersonDetail()),
+  );
+  hop.append(chan);
+
+  lopPhu.addEventListener('click', (e) => { if (e.target === lopPhu) closePersonDetail(); });
+  lopPhu.append(hop);
+  document.body.append(lopPhu);
+}
+
+/**
  * Vẽ menu vòng tròn. Trả về một khối luôn vẽ được — không có nhánh nào trả về
- * chuỗi rỗng, vì một cái thẻ mất hẳn phần hành động thì người dùng tưởng app
+ * chuỗi rỗng, vì một cái menu mất hẳn phần hành động thì người dùng tưởng app
  * hỏng chứ không đọc ra "bạn không có quyền".
  *
  * ⚠ Mục nào mà nơi gọi KHÔNG đưa hàm xử lý thì mục ấy mờ đi và không bấm được,
- * chứ không biến mất. Sáu chỗ đứng phải cố định thì trí nhớ vị trí mới dùng
- * được; một vành lúc sáu nút lúc bốn nút là một vành khác nhau mỗi lần mở.
+ * chứ không biến mất. Tám chỗ đứng phải cố định thì trí nhớ vị trí mới dùng
+ * được; một vành lúc tám nút lúc sáu nút là một vành khác nhau mỗi lần mở.
+ *
+ * ⚠ *Thông tin* là ngoại lệ duy nhất — nó **luôn bấm được**, kể cả khi chỉ có
+ * quyền xem, vì nó không sửa gì cả. Bảy mục kia đều ghi dữ liệu.
  */
 function renderActionMenu(p, xuLy, khoiChon) {
   const boc = document.createElement('div');
-  boc.style.cssText = 'margin-top:16px';
+  boc.style.cssText = 'margin-top:14px';
 
   const coQuyen = suaDuoc();
-
-  const nhan = document.createElement('div');
-  nhan.textContent = 'Sửa gia phả';
-  nhan.style.cssText =
-    'margin-bottom:2px;font-size:12px;font-weight:600;letter-spacing:.04em;color:#8a8078';
-  boc.append(nhan);
 
   if (!coQuyen) {
     const nhac = document.createElement('div');
     nhac.textContent =
-      'Bạn chỉ có quyền xem gia phả, nên bảy việc dưới đây chưa dùng được. ' +
-      'Cần sửa thật thì nhờ người quản lý đổi quyền trên Google Drive.';
+      'Bạn chỉ có quyền xem gia phả, nên bảy việc sửa dưới đây chưa dùng được — ' +
+      'chỉ còn "Thông tin". Cần sửa thật thì nhờ người quản lý đổi quyền trên ' +
+      'Google Drive.';
     nhac.style.cssText =
       'margin-bottom:6px;padding:8px 10px;font-size:12px;line-height:1.5;' +
       'color:#8a8078;background:#faf8f5;border-radius:8px';
@@ -526,51 +596,52 @@ function renderActionMenu(p, xuLy, khoiChon) {
     'position:relative;width:100%;max-width:280px;margin:0 auto;' +
     'aspect-ratio:' + TY_LE_KHUNG + ';';
 
-  // GIỮA: sửa hồ sơ. Việc làm nhiều nhất thì đứng chỗ ngón tay tìm thấy trước.
-  vong.append(nutGiua(p, xuLy, coQuyen));
-
-  for (const m of VANH) {
-    vong.append(nutVanh(m, p, xuLy, khoiChon, coQuyen));
-  }
+  vong.append(veTamVong(p));
+  for (const m of VANH) vong.append(nutVanh(m, p, xuLy, khoiChon, coQuyen));
 
   boc.append(vong);
   return boc;
 }
 
-function nutGiua(p, xuLy, coQuyen) {
-  const bat = coQuyen && !!xuLy.onSuaNguoi;
-
-  const nut = document.createElement('button');
-  nut.type = 'button';
-  nut.disabled = !bat;
-  nut.dataset.viec = 'sua';
-  nut.style.cssText =
+/**
+ * TÂM vòng tròn: tên gọi của người đang được thao tác. KHÔNG phải nút.
+ *
+ * Lấy **tên gọi** chứ không lấy cả họ tên: 76px ở cỡ chữ 11px chỉ chứa nổi một
+ * hai chữ, mà cái phân biệt được người này với người kia trong một gia phả toàn
+ * người cùng họ chính là chữ cuối. Họ tên đầy đủ đã nằm ngay trên đầu hộp.
+ */
+function veTamVong(p) {
+  const tron = document.createElement('div');
+  tron.style.cssText =
     'position:absolute;left:50%;top:' + TREN_GIUA + '%;transform:translateX(-50%);' +
-    'width:' + RONG_GIUA + '%;aspect-ratio:1;border-radius:50%;padding:0;' +
-    'font-family:inherit;box-sizing:border-box;' +
-    'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;' +
+    'width:' + RONG_GIUA + '%;aspect-ratio:1;border-radius:50%;box-sizing:border-box;' +
+    'display:flex;align-items:center;justify-content:center;padding:6px;' +
     'background:#2a2622;color:#fffdf9;border:1px solid #2a2622;' +
-    'touch-action:manipulation;' +
-    'cursor:' + (bat ? 'pointer' : 'not-allowed') + ';opacity:' + (bat ? '1' : '.4') + ';';
+    'font-size:12px;line-height:1.25;text-align:center;word-break:break-word';
 
-  const bt = document.createElement('div');
-  bt.textContent = '✏';
-  bt.style.cssText = 'font-size:19px;line-height:1';
+  const day = (fullName(p) || '').trim();
+  tron.textContent = tenGoi(p) || p.id;
+  if (day) tron.title = day;
+  return tron;
+}
 
-  const chu = document.createElement('div');
-  chu.textContent = 'Sửa\nhồ sơ';
-  chu.style.cssText = 'font-size:11px;line-height:1.25;white-space:pre-line;text-align:center';
+/** Chữ cuối của họ tên — thứ người trong họ gọi nhau hằng ngày. */
+function tenGoi(p) {
+  const ds = (Array.isArray(p.names) ? p.names : []);
+  const muc = ds.find((n) => n && n.type === 'chinh') || ds[0];
+  const goi = muc && typeof muc.given === 'string' ? muc.given.trim() : '';
+  if (goi) return goi;
 
-  nut.append(bt, chu);
-  if (bat) {
-    nut.addEventListener('click', () => { closePersonDetail(); xuLy.onSuaNguoi(p.id); });
-  }
-  return nut;
+  const day = (fullName(p) || '').trim();
+  if (!day) return '';
+  const phan = day.split(/\s+/);
+  return phan[phan.length - 1];
 }
 
 function nutVanh(m, p, xuLy, khoiChon, coQuyen) {
   const chay = viecCuaVanh(m.viec, p, xuLy, khoiChon);
-  const bat  = coQuyen && !!chay;
+  // "Thông tin" không sửa gì nên không cần quyền sửa.
+  const bat = !!chay && (coQuyen || m.viec === 'thongTin');
 
   const nut = document.createElement('button');
   nut.type = 'button';
@@ -596,7 +667,7 @@ function nutVanh(m, p, xuLy, khoiChon, coQuyen) {
   const chu = document.createElement('div');
   chu.textContent = m.chu;
   chu.style.cssText =
-    'font-size:11px;line-height:1.25;white-space:pre-line;text-align:center;' +
+    'font-size:11px;line-height:1.2;white-space:nowrap;text-align:center;' +
     'color:' + (m.do ? '#8a3a2a' : '#5c554e');
 
   nut.append(tron, chu);
@@ -608,15 +679,29 @@ function nutVanh(m, p, xuLy, khoiChon, coQuyen) {
  * Việc thật đằng sau mỗi mục. Trả về `null` khi nơi gọi không đưa hàm xử lý —
  * lúc ấy `nutVanh` cho mục ấy mờ đi.
  *
- * ⚠ Thẻ này KHÔNG tự mở form, không tự mở danh sách người, không tự ghi gì.
+ * ⚠ Menu này KHÔNG tự mở form, không tự mở danh sách người, không tự ghi gì.
  * `person-edit.js` và `person-list.js` cũng thuộc lớp `pages`, mà hai file
  * `pages` không import lẫn nhau (chốt 17/08/2026, chat 1.6): import vòng tròn
  * thì một trong hai thấy hàm của file kia là `undefined` tuỳ thứ tự nạp, và lỗi
  * ấy chỉ hiện trên GitHub Pages chứ không hiện lúc chạy thử.
+ *
+ * *Thông tin* là ngoại lệ, và **không phải ngoại lệ của luật ấy**: thẻ thông
+ * tin sống trong CHÍNH file này, nên gọi thẳng không đi qua lớp nào cả.
  */
 function viecCuaVanh(viec, p, xuLy, khoiChon) {
+  if (viec === 'thongTin') {
+    return () => openPersonDetail(p.id, xuLy);
+  }
+  if (viec === 'sua') {
+    return xuLy.onSuaNguoi
+      ? () => { closePersonDetail(); xuLy.onSuaNguoi(p.id); } : null;
+  }
   if (viec === 'chaMe') {
-    return xuLy.onThemChaMe ? () => moChonChaMe(p, xuLy, khoiChon) : null;
+    // KHÔNG hỏi "thêm cha hay thêm mẹ" nữa: ô giới tính trong form đã là chỗ
+    // nói ra điều đó, và hỏi hai lần cho một câu thì hai câu trả lời có thể
+    // lệch nhau — lúc ấy app phải chọn tin cái nào.
+    return xuLy.onThemChaMe
+      ? () => { closePersonDetail(); xuLy.onThemChaMe(p.id); } : null;
   }
   if (viec === 'banDoi') {
     return xuLy.onThemBanDoi
@@ -635,49 +720,6 @@ function viecCuaVanh(viec, p, xuLy, khoiChon) {
     return xuLy.onXoaNguoi ? () => { closePersonDetail(); xuLy.onXoaNguoi(p.id); } : null;
   }
   return null;
-}
-
-/**
- * "Thêm cha / mẹ" phải hỏi thêm một câu: cha hay mẹ.
- *
- * Hỏi ở ĐÂY chứ không để form tự hỏi, vì giới tính quyết định chỗ đứng
- * trái/phải trên sơ đồ (QUY-TAC-VE §2) — người dùng đang nghĩ về hình, và câu
- * hỏi nên rơi vào lúc họ còn đang nhìn hình. Ô giới tính trong form vẫn sửa
- * được, nên trả lời nhầm ở đây không phải vết vĩnh viễn.
- *
- * Có nút thứ ba *"chưa rõ"*: gia phả cũ có những bản ghi chỉ còn nhớ là "có một
- * người ở đây". Chặn ở cửa vào là buộc người ta bịa ra một giới tính.
- */
-function moChonChaMe(p, xuLy, khoiChon) {
-  khoiChon.innerHTML = '';
-
-  const nhan = document.createElement('div');
-  nhan.textContent = 'Thêm cha hay thêm mẹ?';
-  nhan.style.cssText =
-    'margin-top:16px;margin-bottom:6px;font-size:12px;font-weight:600;' +
-    'letter-spacing:.04em;color:#8a8078';
-  khoiChon.append(nhan);
-
-  const hang = document.createElement('div');
-  hang.style.cssText = 'display:flex;gap:6px';
-
-  for (const [ma, chu] of [['M', 'Thêm cha'], ['F', 'Thêm mẹ'], ['U', 'Chưa rõ']]) {
-    const nut = document.createElement('button');
-    nut.type = 'button';
-    nut.textContent = chu;
-    nut.style.cssText =
-      'flex:1 1 0;min-height:44px;padding:0 8px;font-size:14px;font-family:inherit;' +
-      'color:#2a2622;border:1px solid #e6e0d8;border-radius:9px;background:#fff;' +
-      'cursor:pointer;touch-action:manipulation';
-    nut.addEventListener('click', () => {
-      closePersonDetail();
-      xuLy.onThemChaMe(p.id, ma);
-    });
-    hang.append(nut);
-  }
-
-  khoiChon.append(hang);
-  khoiChon.scrollIntoView({ block: 'nearest' });
 }
 
 /**

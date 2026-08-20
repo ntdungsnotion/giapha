@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render,union}, utils/text,
 //            pages/{person-detail,person-edit,person-list,settings}
-// Phiên bản: 1.12.0 · Cập nhật: 20/08/2026 09:30
+// Phiên bản: 1.13.0 · Cập nhật: 20/08/2026 14:10
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -67,7 +67,8 @@ import { computeLayout } from '../domains/layout.js';
 import { renderTree } from '../domains/render.js';
 import { getSpouses, getParents, getChildren, getSiblings } from '../domains/union.js';
 import { fullName, doiSongNguoi } from '../utils/text.js';
-import { openPersonDetail, closePersonDetail } from './person-detail.js';
+import { openPersonMenu, openPersonDetail,
+         closePersonDetail } from './person-detail.js';
 import { openPersonForm, closePersonForm, quickAddChild, quickAddParent,
          quickAddSpouse, linkExisting, goNoiNguoi, xoaNguoi } from './person-edit.js';
 import { openPersonList, closePersonList } from './person-list.js';
@@ -470,7 +471,7 @@ function chuotPhai(e) {
 
   daKeo = true;                // nuốt cú click sắp bắn ra, như chạm giữ
   keo = null;
-  openPersonDetail(personId, xuLyThe());
+  openPersonMenu(personId, xuLyThe());
 }
 
 function chamXuong(e) {
@@ -509,7 +510,7 @@ function henChamGiu(e) {
     daKeo = true;                               // nuốt cú click sắp bắn ra
     keo = null;
     daMoTheLanNay = true;                       // để `contextmenu` khỏi mở lại
-    openPersonDetail(personId, xuLyThe());
+    openPersonMenu(personId, xuLyThe());
   }, CHO_CHAM_GIU);
 }
 
@@ -721,13 +722,17 @@ function moDanhSachNguoi() {
 
   // Bọc CẢ TÁM, không bọc bốn rồi để bốn cái mới đi thẳng: bốn việc của bước 26
   // cũng mở hộp riêng của chúng, và cái danh sách còn nằm đè lên trên vẫn che
-  // mất đúng kết quả người dùng vừa gây ra. `onThemChaMe` nhận hai tham số nên
-  // phải bọc riêng — `dongTruoc` chỉ chuyền được một.
+  // mất đúng kết quả người dùng vừa gây ra.
+  //
+  // ⚠ Ở đây vẫn mở THẺ THÔNG TIN chứ không mở menu: người ta gõ tên để XEM
+  // trước đã (quyết định 5 của bước 24). Muốn làm gì thì thẻ có nút *"Sửa gia
+  // phả"* dẫn sang vòng tròn, và vòng tròn ấy nhận đúng bộ hàm xử lý bọc sẵn
+  // dưới đây — nên đường nào cũng đóng danh sách trước khi đi tiếp.
   openPersonList({
     onXemHoSo: (id) => openPersonDetail(id, {
       onChonNguoi:  dongTruoc(goc.onChonNguoi),
       onSuaNguoi:   dongTruoc(goc.onSuaNguoi),
-      onThemChaMe:  (pid, gioi) => { closePersonList(); goc.onThemChaMe(pid, gioi); },
+      onThemChaMe:  dongTruoc(goc.onThemChaMe),
       onThemBanDoi: dongTruoc(goc.onThemBanDoi),
       onThemCon:    dongTruoc(goc.onThemCon),
       onKetNoi:     dongTruoc(goc.onKetNoi),
@@ -737,9 +742,17 @@ function moDanhSachNguoi() {
   });
 }
 
+/**
+ * Nút ⓘ ở cụm trên phải: mở MENU của người đang đứng giữa, không mở thẳng thẻ
+ * thông tin.
+ *
+ * Cùng một cử chỉ phải ra cùng một màn hình. Chạm giữ ra menu mà nút ⓘ ra thẻ
+ * thì app có hai cửa cho cùng một người, và người dùng phải nhớ cửa nào có việc
+ * mình cần. Thẻ thông tin nằm cách đó đúng một cú chạm, ở mục ⓘ trong vòng tròn.
+ */
 function moTheNguoiTrungTam() {
   if (!state.focusPersonId) return;
-  openPersonDetail(state.focusPersonId, xuLyThe());
+  openPersonMenu(state.focusPersonId, xuLyThe());
 }
 
 /**
@@ -787,15 +800,16 @@ function moFormThemCon(noiVao) {
 }
 
 /**
- * Thêm một người cha hoặc mẹ. `gioi` do thẻ thông tin hỏi xong rồi mới báo ra.
+ * Thêm một người cha hoặc mẹ. **Không kèm giới tính** — ô giới tính trong form
+ * là chỗ nói ra đây là cha hay là mẹ (đổi 20/08/2026).
  *
  * `refresh()` chứ không `setFocusPerson(idNguoiMoi)`: cha mẹ vừa thêm đứng ngay
  * phía trên người dùng đang xem, tức đã có mặt trong sơ đồ đang mở — trừ khi
  * người ta đang lọc 0 đời tổ tiên, và lúc ấy kéo cả sơ đồ đi là làm mất chỗ họ
  * đang đứng để đổi lấy một thứ họ tự bấm hai lần là thấy.
  */
-function moFormThemChaMe(personId, gioi) {
-  quickAddParent(personId, gioi, { onDaLuu: () => refresh() });
+function moFormThemChaMe(personId) {
+  quickAddParent(personId, { onDaLuu: () => refresh() });
 }
 
 function moFormThemBanDoi(personId) {
