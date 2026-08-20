@@ -25,8 +25,8 @@
 //    *Thử phép chặn: năm mất trước năm sinh*. Cái thứ hai rõ ràng là phép thử.
 //    Cái thứ nhất là chức năng thật, nhưng nó **chỉ KỂ TÊN lỗi mà không có
 //    đường sửa** — người dùng đọc xong một danh sách rồi đứng đó. Chỗ đúng của
-//    nó là màn hình *Người mồ côi · Dọn rác* ở **bước 33**, nơi mỗi dòng lỗi
-//    dẫn thẳng tới một việc làm được.
+//    nó là màn hình *Người mồ côi · Dọn rác* — **việc 6 của giai đoạn 3** — nơi
+//    mỗi dòng lỗi dẫn thẳng tới một việc làm được ngay tại đó.
 //
 // ⚠ **Gỡ nút KHÔNG gỡ phép rà.** Chín luật của `domains/validate.js` vẫn chạy
 // **tự động mỗi lần lưu** từ bước 18 — `person-edit.handleSave()` gọi
