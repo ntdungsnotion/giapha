@@ -5,7 +5,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate,media,render},
 //            services/{repo,gas}, utils/{graph,text,date,image}
-// Phiên bản: 1.11.0 · Cập nhật: 21/08/2026 11:20
+// Phiên bản: 1.11.1 · Cập nhật: 21/08/2026 12:30
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -3780,7 +3780,12 @@ function moManSap(unionId, mocId, laCon, xuLy) {
 
   const hangPhu = document.createElement('div');
   hangPhu.style.cssText = 'margin-top:14px';
-  hangPhu.append(nutChon('Xếp thử theo tuổi', false, sapTheoTuoi));
+  // Nhãn là "Xếp theo tuổi", KHÔNG phải "Xếp thử theo tuổi" (chủ dự án chốt
+  // 21/08/2026). Bản đầu nhét chữ *thử* lên mặt nút để nói trước rằng nó không
+  // ghi ngay; chữ ấy làm nhãn dài ra mà việc cảnh báo thì đã có hai thứ khác
+  // gánh, cả hai đều rõ hơn: nút *Xong* nằm ngay dưới, và câu nhắc hiện ra
+  // NGAY SAU cú bấm nói thẳng "bấm Xong mới ghi".
+  hangPhu.append(nutChon('Xếp theo tuổi', false, sapTheoTuoi));
   hop.append(hangPhu);
 
   const canTro = canTroLuu();
@@ -3964,7 +3969,8 @@ function dichCho(i, buoc) {
 }
 
 /**
- * Xếp thử theo tuổi. KHÔNG ghi gì — chỉ đổi chỗ các thẻ trong hộp.
+ * Xếp lại các thẻ theo tuổi. KHÔNG ghi gì — chỉ đổi chỗ các thẻ trong hộp,
+ * phải bấm *Xong* mới xuống Drive.
  *
  * ⚠ `thuTuConTheoTuoi()` đọc thứ tự ĐANG LƯU trong `state.tree`, không đọc dãy
  * thẻ đang bày ra. Nên bấm nút này sau khi đã kéo tay là **bỏ hết những gì vừa
