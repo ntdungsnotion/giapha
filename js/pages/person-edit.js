@@ -1,10 +1,10 @@
 // ============================================================
 // giapha · js/pages/person-edit.js
-// Vai trò  : Form thêm/sửa người, và các thao tác thêm quan hệ
+// Vai trò  : Form thêm/sửa người, ảnh đại diện, và các thao tác thêm quan hệ
 // Lớp      : pages — được phép gọi mọi lớp dưới
-// Phụ thuộc: state, domains/{person,union,validate}, services/repo,
-//            utils/{graph,text,date}
-// Phiên bản: 1.6.0 · Cập nhật: 20/08/2026 14:10
+// Phụ thuộc: state, domains/{person,union,validate,media,render},
+//            services/{repo,gas}, utils/{graph,text,date,image}
+// Phiên bản: 1.7.0 · Cập nhật: 20/08/2026 14:25
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -110,10 +110,15 @@ import { createUnion, addChild, addPartner, removeChild, removePartner,
          softDeleteUnion, conLyDoTonTai, reorderChildren, thuTuConTheoTuoi,
          getParentUnions, getPartnerUnions, getSpouses, getChildren } from '../domains/union.js';
 import { validateAll, checkOrphanNode } from '../domains/validate.js';
+import { datAnhDaiDien, clearPortrait } from '../domains/media.js';
+import { mauVien } from '../domains/render.js';
 import { luuCay, suaDuoc } from '../services/repo.js';
+import { taiAnh } from '../services/gas.js';
 import { buildIndex } from '../utils/graph.js';
 import { fullName, coGiaTri } from '../utils/text.js';
 import { formatDate, parseLooseDate, stampNow } from '../utils/date.js';
+import { compressImage, driveThumbUrl, anhMacDinhUri, dataUri, moTaCo }
+  from '../utils/image.js';
 
 let lopPhu     = null;   // lớp phủ đang mở, hoặc null
 let o          = {};     // các ô nhập, tra theo tên trường
@@ -133,6 +138,23 @@ let sapXepLai  = false;  // câu trả lời ấy có phải "sắp xếp lại 
 let xoaHT      = null;   // chế độ xoa: kết quả doHauQuaXoa() của lần mở này
 let noiCtx     = null;   // chế độ noi: { personId, targetId, loai, unionId }
 let goHT       = null;   // chế độ go : kết quả doHauQuaGoNoi() của lần mở này
+
+// --- ẢNH ĐẠI DIỆN (bước 28) ---------------------------------------------
+//
+// ⚠ **Ảnh lên Drive NGAY khi chọn, còn hồ sơ chỉ đổi khi bấm Lưu.** Hai việc
+// ấy KHÔNG gộp được: tải ảnh là một lần gọi máy chủ riêng, không đi qua
+// `luuCay()`. Hệ quả phải nói ra, và app nói thẳng bằng chữ ngay dưới nút:
+//
+//   Chọn ảnh rồi ĐÓNG FORM mà không lưu → tấm ảnh vẫn nằm lại trên Drive,
+//   chỉ là không ai trỏ tới nó. Vài chục KB, không hỏng gì.
+//
+// Đường ngược lại — lưu hồ sơ trước rồi mới tải ảnh — tệ hơn nhiều: máy chủ
+// nhận hồ sơ xong mà ảnh hỏng giữa chừng thì `photoFileId` trỏ vào một file
+// không tồn tại, và ô sơ đồ mang một khoảng trống không ai giải thích được.
+let khoiAnh = null;   // tham chiếu tới khối, để vẽ lại một mình nó
+let anhChon = null;   // { fileId, xemTruoc, ten, co } — vừa tải lên xong
+let anhBo   = false;  // người dùng đã bấm "Bỏ ảnh"
+let anhDangTai = false;
 
 /**
  * Bản ghi rỗng để form thêm người có cái mà vẽ ra các ô trống.
@@ -245,6 +267,10 @@ export function closePersonForm() {
   xoaHT        = null;
   noiCtx       = null;
   goHT         = null;
+  khoiAnh      = null;
+  anhChon      = null;
+  anhBo        = false;
+  anhDangTai   = false;
 }
 
 /**
@@ -375,6 +401,15 @@ function veCacO(nguoi) {
     ra.push(veConNuoi('Là cha / mẹ NUÔI (không phải cha mẹ đẻ)'));
   }
 
+  // Ảnh chỉ hiện ở chế độ SỬA hồ sơ, cố ý. Ở các chế độ thêm người, bản ghi
+  // chưa tồn tại nên chưa có mã để gắn ảnh vào, mà dựng đường gắn ảnh cho một
+  // người chưa có mã là mở thêm một nhánh nữa trong một hàm lưu vốn đã nhiều
+  // nhánh. Thêm người xong, mở lại hồ sơ rồi gắn ảnh — thêm đúng một cú chạm.
+  if (cheDo === 'sua') {
+    ra.push(veNhan('Ảnh đại diện'));
+    ra.push(veKhoiAnh(nguoi));
+  }
+
   ra.push(veNhan('Tên'));
   const hangTen = document.createElement('div');
   hangTen.style.cssText = 'display:flex;gap:6px';
@@ -422,6 +457,217 @@ function veNhan(chu) {
     'margin-top:16px;margin-bottom:6px;font-size:12px;font-weight:600;' +
     'letter-spacing:.04em;color:#8a8078';
   return d;
+}
+
+// ============================================================
+// Khối ẢNH ĐẠI DIỆN — bước 28
+// ============================================================
+
+function veKhoiAnh(nguoi) {
+  khoiAnh = document.createElement('div');
+  veLaiKhoiAnh(nguoi);
+  return khoiAnh;
+}
+
+/**
+ * Vẽ lại một mình khối ảnh, không đụng tới các ô khác.
+ *
+ * ⚠ **Không dựng lại cả form.** Người dùng có thể đã gõ dở tên, ngày tháng,
+ * ghi chú; dựng lại cả form là xoá sạch những thứ ấy. Đây đúng là cái bẫy mà
+ * `settings.js` đã tránh bằng cách giữ tham chiếu tới từng khối.
+ */
+function veLaiKhoiAnh(nguoi) {
+  const khoi = khoiAnh;
+  if (!khoi) return;
+  khoi.innerHTML = '';
+
+  const hang = document.createElement('div');
+  hang.style.cssText = 'display:flex;gap:12px;align-items:center';
+
+  hang.append(veXemTruocAnh(nguoi));
+
+  const cot = document.createElement('div');
+  cot.style.cssText = 'flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:6px';
+
+  cot.append(nutChonAnh(nguoi));
+  if (coAnhSauKhiLuu(nguoi)) cot.append(nutBoAnh(nguoi));
+
+  hang.append(cot);
+  khoi.append(hang);
+
+  const loi = document.createElement('div');
+  loi.style.cssText = 'font-size:12px;line-height:1.5;color:#8a8078;margin-top:8px';
+  loi.textContent = moTaTrangThaiAnh(nguoi);
+  khoi.append(loi);
+}
+
+/** Ảnh đang xem trước: ảnh vừa chọn > ảnh cũ > bóng người. */
+function veXemTruocAnh(nguoi) {
+  const co = 72;
+  const boc = document.createElement('div');
+  boc.style.cssText =
+    'flex:0 0 auto;width:' + co + 'px;height:' + co + 'px;border-radius:50%;' +
+    'overflow:hidden;box-shadow:0 0 0 1.5px #fff, 0 0 0 3px ' + mauVien(nguoi) + '55;' +
+    'opacity:' + (anhDangTai ? '0.5' : '1');
+
+  const im = document.createElement('img');
+  im.alt = '';
+  im.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
+  im.src = anhMacDinhUri(nguoi && nguoi.sex, mauVien(nguoi));
+  boc.append(im);
+
+  if (anhChon) {
+    // Xem trước bằng chính chuỗi vừa nén ở máy này — không đợi Drive dựng
+    // thumbnail, và không tốn một lần tải nào.
+    im.src = dataUri(anhChon.xemTruoc);
+  } else if (!anhBo) {
+    const cu = nguoi && typeof nguoi.photoFileId === 'string' ? nguoi.photoFileId.trim() : '';
+    if (cu) {
+      const duong = driveThumbUrl(cu, co * 2);
+      const thu = new Image();
+      thu.onload = () => {
+        if (thu.naturalWidth > 0 && thu.naturalHeight > 0) im.src = duong;
+      };
+      thu.src = duong;
+    }
+  }
+
+  return boc;
+}
+
+function nutChonAnh(nguoi) {
+  const batDuoc = suaDuoc() && !anhDangTai && !dangLuu;
+
+  const nhan = document.createElement('label');
+  nhan.style.cssText =
+    'display:block;min-height:40px;padding:10px 12px;box-sizing:border-box;' +
+    'font-size:14px;text-align:center;border-radius:9px;border:1px solid #e6e0d8;' +
+    'background:#faf8f5;line-height:1.3;' +
+    'cursor:' + (batDuoc ? 'pointer' : 'not-allowed') + ';' +
+    'opacity:' + (batDuoc ? '1' : '0.45');
+  nhan.textContent = anhDangTai ? 'Đang tải lên…' : (anhChon ? 'Chọn ảnh khác' : 'Chọn ảnh');
+
+  const oFile = document.createElement('input');
+  oFile.type = 'file';
+  oFile.accept = 'image/*';
+  oFile.disabled = !batDuoc;
+  oFile.style.cssText = 'display:none';
+  oFile.addEventListener('change', () => {
+    const f = oFile.files && oFile.files[0];
+    if (f) chonVaTaiAnh(f, nguoi);
+  });
+
+  nhan.append(oFile);
+  return nhan;
+}
+
+function nutBoAnh(nguoi) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = 'Bỏ ảnh';
+  b.disabled = anhDangTai || dangLuu;
+  b.style.cssText =
+    'min-height:36px;padding:7px 12px;font-size:13px;font-family:inherit;' +
+    'border-radius:9px;border:1px solid #e6e0d8;background:#fffdf9;color:#8a3a2a;' +
+    'cursor:pointer;touch-action:manipulation';
+  b.addEventListener('click', () => {
+    anhChon = null;
+    anhBo   = true;
+    veLaiKhoiAnh(nguoi);
+  });
+  return b;
+}
+
+/** Sau khi bấm Lưu thì người này còn ảnh hay không. */
+function coAnhSauKhiLuu(nguoi) {
+  if (anhChon) return true;
+  if (anhBo) return false;
+  return !!(nguoi && typeof nguoi.photoFileId === 'string' && nguoi.photoFileId.trim());
+}
+
+/**
+ * Câu tường thuật dưới khối ảnh.
+ *
+ * Nói ra điều KHÔNG hiển nhiên: ảnh đã nằm trên Drive rồi, nhưng hồ sơ thì
+ * chưa đổi. Không nói thì người dùng đóng form và đinh ninh là xong.
+ */
+function moTaTrangThaiAnh(nguoi) {
+  if (anhDangTai) return 'Đang nén và tải ảnh lên Google Drive…';
+  if (anhChon) {
+    return 'Ảnh đã lên Drive (' + moTaCo(anhChon.co) + '). ' +
+           'Bấm "Lưu" ở cuối form thì nó mới thành ảnh đại diện của ' +
+           fullName(nguoi) + '.';
+  }
+  if (anhBo) {
+    return 'Bấm "Lưu" thì ô sơ đồ của ' + fullName(nguoi) + ' quay về bóng người. ' +
+           'Tấm ảnh cũ vẫn nằm nguyên trên Drive và trong kho ảnh của gia phả — ' +
+           'app không xoá ảnh bao giờ.';
+  }
+  const cu = nguoi && typeof nguoi.photoFileId === 'string' ? nguoi.photoFileId.trim() : '';
+  if (cu) return 'Đang dùng một ảnh có sẵn. Chọn ảnh khác để thay.';
+  return 'Chưa có ảnh. Sơ đồ đang vẽ bóng người theo giới tính. ' +
+         'Ảnh được nén nhỏ lại trước khi gửi đi, không tải nguyên file gốc.';
+}
+
+/**
+ * Nén rồi tải một tấm ảnh lên Drive.
+ *
+ * ⚠ Hàm này **không** đụng tới `state.tree`, không gọi `luuCay()`. Nó chỉ đổi
+ * `anhChon`. Cả cây chỉ đổi ở đúng một chỗ: `handleSave()`.
+ */
+async function chonVaTaiAnh(file, nguoi) {
+  anhDangTai = true;
+  veLaiKhoiAnh(nguoi);
+
+  try {
+    const nen = await compressImage(file);
+    const ten = 'anh_' + nguoi.id + '_' + stampNow().replace(/[^0-9]/g, '') + '.jpg';
+    const kq  = await taiAnh(nen.base64, ten);
+
+    if (!kq || !kq.ok) {
+      throw new Error((kq && kq.loi) ||
+        'Máy chủ không nhận ảnh mà không nói rõ vì sao.');
+    }
+
+    anhChon = {
+      fileId:   kq.fileId,
+      xemTruoc: nen.base64,
+      ten:      kq.ten,
+      co:       kq.coByte,
+    };
+    anhBo = false;
+    anhDangTai = false;
+    veLaiKhoiAnh(nguoi);
+    // Dọn lời nhắn cũ, KHÔNG gọi `hienNhan('')` — hàm ấy dựng ra một cái hộp
+    // xám rỗng, trông như app vừa định nói gì đó rồi thôi.
+    if (khoiKetQua) khoiKetQua.innerHTML = '';
+  } catch (e) {
+    anhDangTai = false;
+    veLaiKhoiAnh(nguoi);
+    hienNhan('Chưa tải được ảnh lên: ' + (e && e.message ? e.message : String(e)), true);
+  }
+}
+
+/**
+ * Áp thay đổi ảnh lên một cây ĐÃ SỬA XONG phần hồ sơ.
+ *
+ * Chạy SAU `updatePerson` và trên chính cây nó trả về, vì `attachMedia` sinh mã
+ * `M….` từ cây — sinh trên cây cũ rồi ghép vào cây mới là đúng cái bẫy mà
+ * `utils/id.js` đã dặn ở đầu file.
+ *
+ * @returns {{tree, person, media, diff}|null} null khi lần lưu này không đụng ảnh
+ */
+function apThayDoiAnh(cay, personId, ghiNhan) {
+  if (anhChon) {
+    const kq = datAnhDaiDien(cay, personId, anhChon.fileId, '', ghiNhan);
+    return kq ? { tree: kq.tree, person: kq.person, media: kq.media, diff: kq.diff } : null;
+  }
+  if (anhBo) {
+    const kq = clearPortrait(cay, personId, ghiNhan);
+    if (!kq || Object.keys(kq.diff).length === 0) return null;
+    return { tree: kq.tree, person: kq.person, media: null, diff: kq.diff };
+  }
+  return null;
 }
 
 /** Một ô nhập một dòng. `phan` là tỷ lệ bề rộng khi nằm cùng hàng với ô khác. */
@@ -707,15 +953,25 @@ async function handleSave(nguoi) {
   const kq = updatePerson(state.tree, nguoi.id, gomThayDoi(), { boi, luc });
   if (!kq) { hienNhan('Không tìm thấy bản ghi của người này nữa. Tải lại trang rồi thử lại.', true); return; }
 
-  if (!kq.thayDoi) {
+  // Ảnh áp SAU hồ sơ, trên chính cây mà `updatePerson` vừa trả về — xem
+  // `apThayDoiAnh()`. Từ đây trở xuống chỉ dùng bốn biến `…Cuoi`.
+  const anh       = apThayDoiAnh(kq.tree, nguoi.id, { boi, luc });
+  const cayCuoi   = anh ? anh.tree   : kq.tree;
+  const nguoiCuoi = anh ? anh.person : kq.person;
+  const diffCuoi  = anh ? Object.assign({}, kq.diff, anh.diff) : kq.diff;
+
+  // ⚠ Đổi MỖI ảnh cũng là một thay đổi. Xét `kq.thayDoi` một mình thì bấm Lưu
+  // sau khi chọn ảnh sẽ nghe câu "chưa có gì thay đổi" — mà ảnh thì đã nằm
+  // trên Drive rồi, nên người dùng có mọi lý do để tin là mình vừa mất nó.
+  if (!kq.thayDoi && !anh) {
     hienNhan('Chưa có gì thay đổi so với bản đang lưu, nên không cần lưu lại.', false);
     return;
   }
 
   // Luật 2: rà trên cây MỚI với chỉ mục MỚI. Đưa bản đang gõ dở vào bằng
   // `{ person }` thì các phép soi quan hệ vẫn đọc năm sinh cũ trong `index`.
-  const indexMoi = buildIndex(kq.tree);
-  const raSoat = validateAll(kq.tree, indexMoi, 'person', { personId: nguoi.id });
+  const indexMoi = buildIndex(cayCuoi);
+  const raSoat = validateAll(cayCuoi, indexMoi, 'person', { personId: nguoi.id });
 
   if (!raSoat.canSave) {
     hienNhan('Chưa lưu được — có chỗ không thể đúng được:', true,
@@ -738,9 +994,14 @@ async function handleSave(nguoi) {
   hienNhan('Đang lưu…', false);
 
   // Luật 3: `repo.luuCay()` nhận HÀM SỬA và chạy nó trên bản sao của cây. Bản
-  // ghi thay vào là `kq.person` — đúng bản vừa được rà, không phải một bản
+  // ghi thay vào là `nguoiCuoi` — đúng bản vừa được rà, không phải một bản
   // tính lại lần nữa.
-  const nguoiMoi = kq.person;
+  //
+  // Luật 4: MỘT lần lưu duy nhất, mang cả bản ghi người lẫn bản ghi ảnh. Lưu
+  // hai lần thì lần thứ hai hỏng sẽ để lại `photoFileId` trỏ vào một tấm ảnh
+  // không có trong kho.
+  const nguoiMoi = nguoiCuoi;
+  const anhMoi   = anh && anh.media ? anh.media : null;
   let ketQua;
   try {
     ketQua = await luuCay(
@@ -748,12 +1009,26 @@ async function handleSave(nguoi) {
         const ds = Array.isArray(cay.persons) ? cay.persons : [];
         const i = ds.findIndex((p) => p && p.id === nguoi.id);
         if (i >= 0) ds[i] = JSON.parse(JSON.stringify(nguoiMoi));
+
+        if (anhMoi) {
+          if (!Array.isArray(cay.media)) cay.media = [];
+          // Chốt chặn cuối, cùng lý lẽ với mã người ở `handleAddChild`: mã ảnh
+          // sinh từ cây lúc bấm Lưu, còn hàm này chạy trên bản sao của cây LÚC
+          // GỬI. Hai cây lệch nhau thì thà hỏng lần lưu còn hơn ghi hai bản ghi
+          // ảnh trùng mã.
+          if (cay.media.some((m) => m && m.id === anhMoi.id)) {
+            throw new Error('Mã ảnh ' + anhMoi.id + ' vừa được dùng cho một tấm khác. ' +
+                            'Tải lại trang rồi gắn ảnh lại.');
+          }
+          cay.media.push(JSON.parse(JSON.stringify(anhMoi)));
+        }
       },
       {
         action: 'update',
         target: nguoi.id,
-        note:   'Sửa hồ sơ ' + fullName(nguoiMoi) + ' bằng form nhập liệu.',
-        diff:   kq.diff,
+        note:   'Sửa hồ sơ ' + fullName(nguoiMoi) + ' bằng form nhập liệu.' +
+                (anhChon ? ' Đổi ảnh đại diện.' : (anhBo ? ' Bỏ ảnh đại diện.' : '')),
+        diff:   diffCuoi,
       }
     );
   } catch (e) {

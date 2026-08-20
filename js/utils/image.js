@@ -1,9 +1,9 @@
 // ============================================================
 // giapha · js/utils/image.js
-// Vai trò  : Nén ảnh phía trình duyệt trước khi tải lên Drive
+// Vai trò  : Nén ảnh phía trình duyệt, đường dẫn Drive, bóng người mặc định
 // Lớp      : utils — được gọi bởi: pages · được phép gọi: config
 // Phụ thuộc: config (PHOTO)
-// Phiên bản: 1.0.0 · Cập nhật: 20/08/2026 11:51
+// Phiên bản: 1.1.0 · Cập nhật: 20/08/2026 12:40
 // ============================================================
 //
 // BA LUẬT CỦA FILE NÀY
@@ -121,6 +121,84 @@ export function driveLh3Url(fileId, size = PHOTO.thumbSize) {
 export function dataUri(base64, mime = 'image/jpeg') {
   if (!base64) return '';
   return 'data:' + mime + ';base64,' + base64;
+}
+
+// ============================================================
+// BÓNG NGƯỜI — ảnh mặc định khi chưa ai gắn ảnh thật
+// ============================================================
+//
+// Ba hình: nam, nữ, và không rõ. Cùng một khuôn với Quick Family Tree — nền
+// tròn màu đặc, bóng người màu trắng — vì chủ dự án đã quen mắt với nó và đã
+// chỉ đúng vào ảnh `anh-qft/ket hon trong gia toc.png` khi chốt (20/08/2026).
+//
+// ⚠ **MÀU do nơi gọi đưa vào, file này không tự chọn.** Ba màu ấy sống ở bảng
+// `VE` trong `domains/render.js` (`vienNam` · `vienNu` · `vienKhongRo`) — cùng
+// một màu đang dùng cho viền ô. Chép chúng vào đây là dựng ra một bản thứ hai,
+// và một hôm nào đó đổi màu viền xong sẽ thấy bóng người vẫn màu cũ.
+//
+// ⚠ Và **`sex: "U"` phải có hình riêng, không được lẫn vào nam.** Dữ liệu có
+// hai người mang giá trị này (P0040, P0052). Vẽ họ y hệt nam là khai một điều
+// gia phả không biết.
+//
+// Vì sao là SVG chứ không phải file PNG trong repo: không phải tải thêm file
+// nào, không hỏng khi mạng chậm, và phóng to bao nhiêu cũng nét — ô sơ đồ vẽ
+// 40px nhưng vòng tròn thông tin vẽ tới 76px.
+
+/** Ba bộ khuôn, vẽ trong khung 60×60. `dau` là vòng tròn đầu, `than` là vai. */
+const BONG = {
+  M: {
+    dau: { cx: 30, cy: 22, r: 11 },
+    than: 'M 8 58 C 8 44 17 38 30 38 C 43 38 52 44 52 58 Z',
+    toc: '',
+  },
+  F: {
+    dau: { cx: 30, cy: 24, r: 10 },
+    than: 'M 11 58 C 11 46 19 40.5 30 40.5 C 41 40.5 49 46 49 58 Z',
+    // Tóc dài xoà xuống hai bên mặt: một khối ĐẶC hình quả chuông, rộng dần
+    // xuống dưới. Đây là dấu hiệu duy nhất phân biệt với hình nam ở cỡ 40px —
+    // thử bằng khuôn mặt thon hơn hay vai hẹp hơn thì ở cỡ ấy hai hình trông
+    // giống hệt nhau.
+    //
+    // ⚠ **Đặc, KHÔNG phải một vành tóc quanh mặt.** Bản đầu vẽ vành tóc rỗng
+    // giữa, để lộ nền màu giữa tóc và đầu — ở 200px nó thành một cái khăn trùm,
+    // ở 40px nó thành một vệt nhoè. Cả hai đều không đọc ra "tóc dài".
+    toc: 'M 30 8 C 20.5 8 16.5 15.5 17 24.5 C 17.4 32 19 38.5 18.5 43.5 ' +
+         'C 21 44.5 25 45 30 45 C 35 45 39 44.5 41.5 43.5 ' +
+         'C 41 38.5 42.6 32 43 24.5 C 43.5 15.5 39.5 8 30 8 Z',
+  },
+  U: {
+    // Không rõ giới: đầu tròn, thân là một khối thang — cố ý KHÔNG có đường
+    // vai cong của hình nam, để ở cỡ nhỏ vẫn nhận ra là hình thứ ba.
+    dau: { cx: 30, cy: 23, r: 10.5 },
+    than: 'M 12 58 C 12.5 48 15 41.5 17.5 40 L 42.5 40 C 45 41.5 47.5 48 48 58 Z',
+    toc: '',
+  },
+};
+
+/**
+ * Bóng người mặc định, trả về một `data:` URI dùng được cho `<img src>` lẫn
+ * `<image href>` trong SVG.
+ *
+ * @param {string} sex   'M' · 'F' · bất kỳ thứ gì khác coi là 'U'
+ * @param {string} mauNen  màu nền vòng tròn — lấy từ `VE` của render.js
+ */
+export function anhMacDinhUri(sex, mauNen) {
+  const k = BONG[sex] ? sex : 'U';
+  const b = BONG[k];
+  const nen = mauNen || '#8a8078';
+
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60">' +
+    '<rect width="60" height="60" fill="' + nen + '"/>' +
+    (b.toc ? '<path d="' + b.toc + '" fill="#ffffff"/>' : '') +
+    '<circle cx="' + b.dau.cx + '" cy="' + b.dau.cy + '" r="' + b.dau.r + '" fill="#ffffff"/>' +
+    '<path d="' + b.than + '" fill="#ffffff"/>' +
+    '</svg>';
+
+  // encodeURIComponent chứ không phải base64: chuỗi ngắn hơn, đọc được khi soi
+  // bằng công cụ của trình duyệt, và không cần btoa (btoa nghẹn với ký tự
+  // ngoài Latin-1 — ở đây chưa có, nhưng đừng dựng sẵn một cái bẫy).
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 }
 
 /** Số byte thành chữ người thường đọc được: `142 KB`, `3,4 MB`. */

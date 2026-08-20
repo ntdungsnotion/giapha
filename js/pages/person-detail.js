@@ -2,8 +2,9 @@
 // giapha · js/pages/person-detail.js
 // Vai trò  : MENU vòng tròn (cửa mặc định) + THẺ thông tin của một người
 // Lớp      : pages — được phép gọi mọi lớp dưới
-// Phụ thuộc: state, domains/{person,union}, services/repo, utils/{text,date}
-// Phiên bản: 1.6.0 · Cập nhật: 20/08/2026 16:30
+// Phụ thuộc: state, domains/{person,union,render}, services/repo,
+//            utils/{text,date,image}
+// Phiên bản: 1.7.0 · Cập nhật: 20/08/2026 14:10
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -61,8 +62,10 @@ import { state } from '../state.js';
 import { suaDuoc } from '../services/repo.js';
 import { getAlternateNames } from '../domains/person.js';
 import { getPartnerUnions } from '../domains/union.js';
+import { mauVien } from '../domains/render.js';
 import { fullName, coGiaTri, doiSongNguoi } from '../utils/text.js';
 import { formatDate, calcAge } from '../utils/date.js';
+import { driveThumbUrl, anhMacDinhUri } from '../utils/image.js';
 
 let lopPhu = null;   // lớp phủ đang mở, hoặc null
 
@@ -157,20 +160,38 @@ export function closePersonDetail() {
 // Các mảng của thẻ
 // ============================================================
 
-function veDauThe(p) {
+/**
+ * Đầu thẻ: ảnh, họ tên, đời sống, mã người.
+ *
+ * @param {object} p
+ * @param {boolean} [coAnh]  MENU truyền `false` — tâm vòng tròn của nó đã là
+ *        ảnh rồi, xem `openPersonMenu()`.
+ */
+function veDauThe(p, coAnh = true) {
   const ra = [];
+
+  // Ảnh bên trái, tên và ngày tháng bên phải — bước 28. Xếp ngang chứ không
+  // xếp dọc: thẻ này đọc trên điện thoại, mà một tấm ảnh chiếm trọn bề ngang
+  // ở đầu thẻ thì đẩy toàn bộ phần quan hệ xuống dưới màn hình.
+  const dau = document.createElement('div');
+  dau.style.cssText = 'display:flex;gap:12px;align-items:flex-start';
+
+  if (coAnh) dau.append(veAnhTron(p, 60));
+
+  const cot = document.createElement('div');
+  cot.style.cssText = 'flex:1 1 auto;min-width:0';
 
   const ten = document.createElement('div');
   ten.textContent = fullName(p);
   ten.style.cssText = 'font-size:19px;font-weight:600;line-height:1.3';
-  ra.push(ten);
+  cot.append(ten);
 
   const song = doiSongNguoi(p);
   if (coGiaTri(song)) {
     const d = document.createElement('div');
     d.textContent = song;
     d.style.cssText = 'font-size:14px;color:#8a8078;margin-top:2px';
-    ra.push(d);
+    cot.append(d);
   }
 
   // Mã người: nhỏ và mờ, nhưng phải có. Đây là thứ duy nhất phân biệt được hai
@@ -178,9 +199,52 @@ function veDauThe(p) {
   const ma = document.createElement('div');
   ma.textContent = p.id;
   ma.style.cssText = 'font-size:11px;color:#b3aaa0;margin-top:4px;letter-spacing:.05em';
-  ra.push(ma);
+  cot.append(ma);
+
+  dau.append(cot);
+  ra.push(dau);
 
   return ra;
+}
+
+/**
+ * VÒNG ẢNH tròn cho màn hình HTML — thẻ thông tin và tâm menu vòng tròn.
+ *
+ * Cùng một luật hai lớp với `render.js`, nhưng dựng bằng HTML: bóng người mặc
+ * định nằm sẵn trong `<img>`, ảnh thật chỉ THAY vào khi đã tải về được.
+ *
+ * ⚠ **Thử bằng một `Image()` rời, không gán thẳng rồi bắt `onerror`.** Gán
+ * thẳng thì trong khoảnh khắc ảnh chưa về (hoặc về hỏng) người dùng thấy một ô
+ * trống — và trên mạng chậm, khoảnh khắc ấy dài. Cách này thì bóng người hiện
+ * ngay từ đầu, ảnh thật thế chỗ khi nào nó thật sự sẵn sàng.
+ *
+ * @param {object} p   bản ghi người
+ * @param {number} co  đường kính, pixel. Xin Drive bản GẤP ĐÔI — màn hình
+ *                     điện thoại có tỷ lệ pixel gấp 2–3 lần.
+ */
+function veAnhTron(p, co) {
+  const boc = document.createElement('div');
+  boc.style.cssText =
+    'flex:0 0 auto;width:' + co + 'px;height:' + co + 'px;border-radius:50%;' +
+    'overflow:hidden;box-shadow:0 0 0 1.5px #ffffff, 0 0 0 3px ' + mauVien(p) + '55';
+
+  const im = document.createElement('img');
+  im.src = anhMacDinhUri(p && p.sex, mauVien(p));
+  im.alt = '';
+  im.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
+  boc.append(im);
+
+  const anhThat = p && typeof p.photoFileId === 'string' ? p.photoFileId.trim() : '';
+  if (anhThat) {
+    const duong = driveThumbUrl(anhThat, co * 2);
+    const thu = new Image();
+    thu.onload = () => {
+      if (thu.naturalWidth > 0 && thu.naturalHeight > 0) im.src = duong;
+    };
+    thu.src = duong;
+  }
+
+  return boc;
 }
 
 function veHangThongTin(p) {
@@ -550,7 +614,10 @@ export function openPersonMenu(personId, xuLy = {}) {
   hop.id = 'giapha-menu-nguoi';
   hop.style.cssText = KIEU_HOP + 'max-width:340px;';
 
-  hop.append(...veDauThe(p));
+  // KHÔNG vẽ ảnh ở đầu MENU — tâm vòng tròn ngay bên dưới đã là ảnh. Cùng một
+  // khuôn mặt hai lần trong một hộp rộng 340px thì cái ở trên chỉ làm loãng cái
+  // ở giữa, mà cái ở giữa mới là nút bấm được.
+  hop.append(...veDauThe(p, false));
 
   // Chỗ hiện bảng chọn phụ ("thêm con vào cặp nào"). Nằm DƯỚI vòng tròn: câu
   // hỏi phụ phải mọc ra ngay cạnh cái nút vừa bấm, không mọc trên đầu.
@@ -634,10 +701,13 @@ function renderActionMenu(p, xuLy, khoiChon) {
  * Chữ *"Thông tin"* nằm DƯỚI vòng tròn, cùng khuôn với sáu mục quanh vành: ảnh
  * không tự nói ra rằng nó bấm được, còn cái nhãn thì có.
  *
- * ⚠ Hiện chưa có ảnh nên vòng tròn hiện **tên gọi** — chữ cuối của họ tên, thứ
- * người trong họ gọi nhau hằng ngày và là thứ phân biệt được người này với
- * người kia trong một gia phả toàn người cùng họ. Bước 27 thay chỗ ấy bằng ảnh
- * thật; hình học không phải sửa gì.
+ * ⚠ **Bước 28 đã thay chỗ này bằng ẢNH THẬT** — đúng như bước 26 đã chừa sẵn,
+ * và hình học không phải sửa một dòng nào. Trước đó vòng tròn hiện **tên gọi**
+ * (chữ cuối của họ tên, hàm `tenGoi()` nay đã bỏ); nay chỗ dễ trúng nhất của
+ * cả vòng tròn mang đúng thứ nó đáng mang là khuôn mặt, còn HỌ TÊN ĐẦY ĐỦ nằm
+ * ở nhãn `title`.
+ *
+ * Người chưa có ảnh thì hiện **bóng người** theo giới tính, không hiện ô trống.
  *
  * ⚠ **Luôn bấm được, kể cả khi chỉ có quyền xem** — nó không sửa gì cả.
  */
@@ -651,13 +721,31 @@ function nutTam(p, xuLy) {
     'display:flex;flex-direction:column;align-items:center;gap:3px;' +
     'cursor:pointer;touch-action:manipulation';
 
+  // Vòng ảnh chiếm trọn bề ngang của nút và tự vuông theo `aspect-ratio`, nên
+  // KHÔNG dùng lại `veAnhTron()` được — hàm ấy nhận đường kính bằng pixel, mà
+  // ở đây bề ngang là phần trăm của cả hộp.
   const tron = document.createElement('div');
   tron.style.cssText =
-    'width:100%;aspect-ratio:1;border-radius:50%;box-sizing:border-box;' +
-    'display:flex;align-items:center;justify-content:center;padding:6px;' +
-    'background:#2a2622;color:#fffdf9;border:1px solid #2a2622;' +
-    'font-size:12px;line-height:1.25;text-align:center;word-break:break-word';
-  tron.textContent = tenGoi(p) || p.id;
+    'width:100%;aspect-ratio:1;border-radius:50%;overflow:hidden;' +
+    'box-shadow:0 0 0 2px #ffffff, 0 0 0 3.5px ' + mauVien(p) + '66';
+
+  const im = document.createElement('img');
+  im.src = anhMacDinhUri(p && p.sex, mauVien(p));
+  im.alt = '';
+  im.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
+  tron.append(im);
+
+  const anhThat = p && typeof p.photoFileId === 'string' ? p.photoFileId.trim() : '';
+  if (anhThat) {
+    // 240px: vòng tròn ở tâm rộng chừng 76px trên hộp 280px, nhân ba cho màn
+    // hình điện thoại.
+    const duong = driveThumbUrl(anhThat, 240);
+    const thu = new Image();
+    thu.onload = () => {
+      if (thu.naturalWidth > 0 && thu.naturalHeight > 0) im.src = duong;
+    };
+    thu.src = duong;
+  }
 
   const chu = document.createElement('div');
   chu.textContent = 'Thông tin';
@@ -670,19 +758,6 @@ function nutTam(p, xuLy) {
   nut.append(tron, chu);
   nut.addEventListener('click', () => openPersonDetail(p.id, xuLy));
   return nut;
-}
-
-/** Chữ cuối của họ tên — thứ người trong họ gọi nhau hằng ngày. */
-function tenGoi(p) {
-  const ds = (Array.isArray(p.names) ? p.names : []);
-  const muc = ds.find((n) => n && n.type === 'chinh') || ds[0];
-  const goi = muc && typeof muc.given === 'string' ? muc.given.trim() : '';
-  if (goi) return goi;
-
-  const day = (fullName(p) || '').trim();
-  if (!day) return '';
-  const phan = day.split(/\s+/);
-  return phan[phan.length - 1];
 }
 
 function nutVanh(m, p, xuLy, khoiChon, coQuyen) {

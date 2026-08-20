@@ -2,8 +2,8 @@
 // giapha · js/domains/render.js
 // Vai trò  : Vẽ SVG từ kết quả layout. Chỉ vẽ, không tính toạ độ sơ đồ.
 // Lớp      : domains — được gọi bởi: pages · được phép gọi: utils, config
-// Phụ thuộc: config (LAYOUT), utils/text
-// Phiên bản: 1.1.0 · Cập nhật: 17/08/2026 07:40
+// Phụ thuộc: config (LAYOUT, PHOTO), utils/text, utils/image
+// Phiên bản: 1.2.0 · Cập nhật: 20/08/2026 12:40
 // ============================================================
 //
 // Đây là file sẽ sửa nhiều nhất khi chỉnh giao diện. Giữ nó chỉ chứa việc vẽ,
@@ -51,8 +51,9 @@
 //    `if (p.birth.iso)` ở đây. Ca kiểm sống: P0005 Lê Thị Thái.
 //    Chiều cao ô vẫn CỐ ĐỊNH — ô co theo nội dung thì các ô cùng một đời so le.
 
-import { LAYOUT } from '../config.js';
+import { LAYOUT, PHOTO } from '../config.js';
 import { fullName, doiSongNguoi } from '../utils/text.js';
+import { driveThumbUrl, anhMacDinhUri } from '../utils/image.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -209,6 +210,9 @@ function renderPersonNode(node, person, kind) {
   const dauMat = renderDeceasedMark(node, person);
   if (dauMat) g.append(dauMat);
 
+  const dayAnh = renderAnhTrongO(node, person, laBien);
+  g.append(dayAnh);
+
   // --- Chữ trong ô ---------------------------------------------------------
   // CHỖ DUY NHẤT render.js được tự tính pixel, và chỉ tính BÊN TRONG ô.
   const ten   = fullName(person) || node.id;
@@ -218,11 +222,19 @@ function renderPersonNode(node, person, kind) {
   const coChu   = dong.length > 1 ? VE.chuTenNho : VE.chuTen;
   const tamX    = node.x + node.w / 2;
 
+  // Chữ nằm ở NỬA DƯỚI của ô, dưới vòng ảnh — bước 28 đổi ô từ 64 lên 104px.
+  // Vùng chữ bắt đầu ngay dưới vòng ảnh và kết thúc cách đáy 8px; chữ căn giữa
+  // vùng ấy, không căn giữa cả ô.
+  //
   // Trường trống thì KHÔNG VẼ HÀNG ĐÓ: không có năm nào thì bỏ hẳn dòng dưới
-  // và dồn tên vào giữa ô. Ô vẫn cao đúng LAYOUT.nodeHeight.
+  // và dồn tên vào giữa vùng chữ. Ô vẫn cao đúng LAYOUT.nodeHeight.
+  const dinhChu = node.y + PHOTO.leTrenO + 2 * PHOTO.banKinhTrenO + 6;
+  const dayChu  = node.y + node.h - 8;
+  const giuaChu = (dinhChu + dayChu) / 2;
+
   const soHang = dong.length + (doi ? 1 : 0);
   const buocY  = soHang >= 3 ? 16 : 18;
-  const dauY   = node.y + node.h / 2 - ((soHang - 1) * buocY) / 2 + coChu * 0.35;
+  const dauY   = giuaChu - ((soHang - 1) * buocY) / 2 + coChu * 0.35;
 
   dong.forEach((chuoi, i) => {
     g.append(chu(chuoi, tamX, dauY + i * buocY, coChu, VE.chuChinh, rongChu));
@@ -235,6 +247,86 @@ function renderPersonNode(node, person, kind) {
   nhan.textContent = ten + (doi ? ' (' + doi + ')' : '') +
                      (laBien ? ' — nhánh của người này không được vẽ tiếp' : '');
   g.append(nhan);
+
+  return g;
+}
+
+/**
+ * VÒNG ẢNH ở đầu ô — bước 28.
+ *
+ * ⚠ **Vẽ HAI LỚP CHỒNG LÊN NHAU, và đó là toàn bộ cách chống ảnh hỏng.**
+ *
+ *   lớp dưới : bóng người mặc định (nam · nữ · không rõ), luôn luôn vẽ
+ *   lớp trên : ảnh thật trên Drive, CHỈ gắn `href` khi đã tải về được
+ *
+ * ⚠ **Và đây là chỗ bản đầu đã sai, sai đúng vì đoán thay vì đo.** Bản đầu ghi
+ * *"`<image>` tải hỏng thì lặng lẽ không vẽ gì"* rồi gắn `href` thẳng. **Chrome
+ * làm ngược lại: nó vẽ BIỂU TƯỢNG ẢNH HỎNG** — một hình núi xám nhỏ — đè lên
+ * đúng giữa bóng người. Ảnh `kiem-thu/oa-1.png` bắt được ngay ở lần chụp đầu.
+ *
+ * Nên đường đi bây giờ là: **thử tải bằng một `Image()` rời trước**, tải xong
+ * và có kích thước thật rồi mới gắn `href` vào thẻ `<image>` của sơ đồ. Hỏng
+ * thì thẻ ấy suốt đời không có `href` và không vẽ gì cả — bóng người bên dưới
+ * còn nguyên. Không tốn thêm một lần tải nào: trình duyệt lấy lại từ bộ nhớ đệm.
+ *
+ * Xét cả `naturalWidth`, không chỉ `onload`: Google có lúc trả về một trang
+ * báo lỗi kèm mã 200, và với trang ấy `onload` vẫn nổ như thường.
+ *
+ * ⚠ **Xin Drive bản 200px tuy chỉ vẽ 40px.** Điện thoại có tỷ lệ pixel gấp
+ * 2–3 lần; xin đúng 40 thì ảnh rỗ trên đúng thiết bị người trong họ hay dùng.
+ *
+ * Không có `person` (ô của người đã bị lọc, hoặc mã lạc) thì vẫn vẽ bóng người
+ * "không rõ" — ô trống hoác giữa sơ đồ trông như lỗi vẽ.
+ */
+function renderAnhTrongO(node, person, laBien) {
+  const R  = PHOTO.banKinhTrenO;
+  const cx = node.x + node.w / 2;
+  const cy = node.y + PHOTO.leTrenO + R;
+
+  const g  = tao('g');
+  const ma = 'anh-' + String(node.id).replace(/[^A-Za-z0-9_-]/g, '');
+
+  const cat = tao('clipPath', { id: ma });
+  cat.append(tao('circle', { cx, cy, r: R }));
+  g.append(cat);
+
+  const oAnh = {
+    x: cx - R, y: cy - R, width: 2 * R, height: 2 * R,
+    'clip-path': 'url(#' + ma + ')',
+    preserveAspectRatio: 'xMidYMid slice',
+    opacity: laBien ? 0.7 : 1,
+  };
+
+  g.append(tao('image', Object.assign({
+    href: anhMacDinhUri(person && person.sex, mauVien(person)),
+  }, oAnh)));
+
+  const anhThat = person && typeof person.photoFileId === 'string'
+    ? person.photoFileId.trim() : '';
+  if (anhThat) {
+    const duong = driveThumbUrl(anhThat, PHOTO.thumbSize);
+    const oThat = tao('image', Object.assign({}, oAnh));   // CHƯA có href
+    g.append(oThat);
+
+    const thu = new Image();
+    thu.onload = () => {
+      if (thu.naturalWidth > 0 && thu.naturalHeight > 0) {
+        oThat.setAttribute('href', duong);
+      }
+    };
+    thu.src = duong;
+  }
+
+  // Vành trắng rồi vành màu: vành trắng tách ảnh khỏi nền ô, vành màu nhắc lại
+  // giới tính ngay cạnh khuôn mặt — ở cỡ 40px thì viền ô đã quá xa để mắt nối
+  // hai thứ ấy với nhau.
+  g.append(tao('circle', {
+    cx, cy, r: R, fill: 'none', stroke: '#ffffff', 'stroke-width': 2,
+  }));
+  g.append(tao('circle', {
+    cx, cy, r: R, fill: 'none', stroke: mauVien(person),
+    'stroke-width': 1.5, 'stroke-opacity': laBien ? 0.4 : 0.75,
+  }));
 
   return g;
 }
@@ -270,8 +362,15 @@ function renderDeceasedMark(node, person) {
   return g;
 }
 
-/** Viền ô theo giới tính. `sex: "U"` có màu riêng, không lẫn nam cũng không lẫn nữ. */
-function mauVien(person) {
+/**
+ * Viền ô theo giới tính. `sex: "U"` có màu riêng, không lẫn nam cũng không lẫn nữ.
+ *
+ * ⚠ **Export ra ngoài từ bước 28**, và chỉ vì một lý do: nền của BÓNG NGƯỜI
+ * mặc định phải đúng bằng màu này. Vòng tròn thông tin ở `person-detail.js` vẽ
+ * bằng HTML chứ không bằng SVG, nên nó không đi qua file này — mà chép ba mã
+ * màu sang bên ấy là dựng ra một bản thứ hai của bảng `VE`.
+ */
+export function mauVien(person) {
   const gt = (person && person.sex) || 'U';
   if (gt === 'M') return VE.vienNam;
   if (gt === 'F') return VE.vienNu;

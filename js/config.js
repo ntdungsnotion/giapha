@@ -3,7 +3,7 @@
 // Vai trò  : Hằng số hiển thị phía trình duyệt.
 // Lớp      : config — không gọi file nào khác
 // Phụ thuộc: (không)
-// Phiên bản: 0.5.0 · Cập nhật: 17/08/2026 05:54
+// Phiên bản: 0.6.0 · Cập nhật: 20/08/2026 12:40
 // ============================================================
 //
 // LƯU Ý: từ khi chuyển sang kiến trúc Apps Script, file này KHÔNG còn
@@ -17,15 +17,32 @@ export const PHOTO = {
   maxWidth:    800,   // nén ảnh xuống chiều rộng này trước khi gửi lên
   jpegQuality: 0.82,
   thumbSize:   200,
+
+  // Bán kính vòng ảnh trên ô sơ đồ. Ảnh vẽ ở đường kính 2×20 = 40px, nhưng
+  // XIN Drive bản 200px: màn hình điện thoại có tỷ lệ pixel gấp 2–3, xin đúng
+  // 40 thì ảnh rỗ.
+  banKinhTrenO: 20,
+  leTrenO:       6,   // cách từ mép trên ô xuống đỉnh vòng ảnh
 };
 
 // Kích thước sơ đồ (pixel)
 //
-// nodeHeight là chiều cao CỐ ĐỊNH của mọi ô, dù người đó có một dòng hay hai.
-// Để ô co lại theo nội dung thì các ô cùng một đời sẽ so le, sơ đồ nhìn gãy.
+// nodeHeight là chiều cao CỐ ĐỊNH của mọi ô, dù người đó có một dòng hay hai,
+// và dù người đó CÓ ẢNH HAY KHÔNG. Để ô co lại theo nội dung thì các ô cùng
+// một đời sẽ so le, sơ đồ nhìn gãy.
+//
+// ⚠ **64 → 104 ở bước 28** (20/08/2026), để chừa chỗ cho vòng ảnh 40px ở đầu
+// ô. Chủ dự án chọn phương án B sau khi xem bốn phương án vẽ đúng cỡ thật —
+// xem `kiem-thu/o-co-anh.html`. Cái giá đã đo trên 59 sơ đồ, không phải ước
+// lượng: **sơ đồ cao thêm 27%**, bản lớn nhất từ 1036 lên 1316px. Đổi lại,
+// bề ngang KHÔNG đổi — mà bề ngang mới là thứ điện thoại thiếu.
+//
+// Con số này là chỗ duy nhất quyết định chiều cao ô. `layout.js` chụp nó vào
+// biến riêng NGAY LÚC NẠP (`const CAO = LAYOUT.nodeHeight`), nên sửa lúc chạy
+// thì không ăn — xem `kiem-thu/do-o-co-anh.mjs`.
 export const LAYOUT = {
   nodeWidth:  120,
-  nodeHeight:  64,
+  nodeHeight: 104,
   hGap:        28,   // cách ngang giữa 2 người
   vGap:        90,   // cách dọc giữa 2 đời
   spouseGap:   16,
