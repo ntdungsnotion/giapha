@@ -3,7 +3,7 @@
 // Vai trò  : Tính TOẠ ĐỘ các ô người, đường nối và nốt cụt. Không vẽ gì cả.
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: config (LAYOUT, PHOTO)
-// Phiên bản: 1.7.0 · Cập nhật: 20/08/2026 16:40
+// Phiên bản: 1.8.0 · Cập nhật: 20/08/2026 17:20
 // ============================================================
 //
 // Tách khỏi render.js có chủ ý: chỉnh giao diện (màu, phông, bo góc) không
@@ -1363,7 +1363,22 @@ function viTriNotCut(ct, treoCua, sp, nut) {
     }
     if (mep !== null) x = mep + huong * (RONG / 2 + LAYOUT.hGap);
   }
-  const yDay = nut.y + CAO + LAYOUT.vGap / 2 + L;
+
+  // ⚠ **NỐT PHẢI NẰM GỌN TRONG KHE GIỮA HAI ĐỜI.** Công thức cũ là
+  // `CAO + vGap/2 + L` và nó đúng suốt từ chat 1.4 — nhưng chỉ đúng khi
+  // `vGap/2 + L <= vGap`, tức khi `L <= vGap/2`. Với bộ số cũ (vGap 90,
+  // L 34) thì thoả, nên không ai thấy gì.
+  //
+  // Bước 28b hạ vGap xuống 48 mà giữ L = 34: 24 + 34 = 58 > 48, và nốt thò
+  // **10px vào hàng dưới**. Đo được 6/538 nốt đè lên ô người khác — chỉ 6, nên
+  // nhìn ảnh chụp một sơ đồ thường không gặp; `kiem-thu/do-not-de-o.mjs` quét
+  // cả hai file dữ liệu × bốn nấc `ancestors` mới lôi ra được.
+  //
+  // Nay chặn thẳng bằng trần: mép DƯỚI của nốt tròn phải còn cách nóc ô hàng
+  // dưới ít nhất 2px. Chặn ở đây chứ không chặn bằng cách bắt người chỉnh
+  // config phải nhớ một bất đẳng thức — cái phải nhớ thì sớm muộn cũng quên.
+  const tranY = nut.y + CAO + LAYOUT.vGap - LAYOUT.stubRadius - 2;
+  const yDay  = Math.min(nut.y + CAO + LAYOUT.vGap / 2 + L, tranY);
   return { x, y: yDay, x1: x, y1, angle: 90 };
 }
 

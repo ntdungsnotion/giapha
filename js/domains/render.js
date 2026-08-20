@@ -3,7 +3,7 @@
 // Vai trò  : Vẽ SVG từ kết quả layout. Chỉ vẽ, không tính toạ độ sơ đồ.
 // Lớp      : domains — được gọi bởi: pages · được phép gọi: utils, config
 // Phụ thuộc: config (LAYOUT, PHOTO), utils/text, utils/image
-// Phiên bản: 1.4.0 · Cập nhật: 20/08/2026 16:40
+// Phiên bản: 1.5.0 · Cập nhật: 20/08/2026 17:20
 // ============================================================
 //
 // Đây là file sẽ sửa nhiều nhất khi chỉnh giao diện. Giữ nó chỉ chứa việc vẽ,
@@ -578,14 +578,23 @@ function renderStub(stub, onClick) {
 
   const dem = Number(stub.hiddenCount) || 0;
   if (dem > 1) {
-    // Số đếm đặt ra PHÍA NGOÀI nốt, theo hướng nốt mọc ra — trừ nốt nằm
-    // ngang: ngoài nốt ngang là ô người bên cạnh, viết số vào đó là số đè lên
-    // tên người. Nốt ngang thì đặt số lên TRÊN.
+    // Số đếm KHÔNG bao giờ đặt ra phía ngoài theo hướng nốt mọc ra, và cả hai
+    // hướng đều có lý do riêng:
+    //
+    //   nốt NGANG  → ngoài nó là ô người bên cạnh; viết số vào đó là số đè lên
+    //                tên người. Đặt lên TRÊN.
+    //   nốt DỌC    → ngoài nó là ô người ở hàng trên/hàng dưới. Đặt SANG BÊN,
+    //                vì ngang tầm nốt dọc là **khe giữa hai đời**, và khe ấy
+    //                không có ô nào cả.
+    //
+    // ⚠ Bước 28d mới đổi vế thứ hai. Trước đó số đếm của nốt dọc đặt ra ngoài
+    // theo hướng mọc, và với khe 90px thì vẫn lọt; khe rút còn 34px thì nó rơi
+    // đúng vào dòng năm sinh của ô hàng trên.
     const goc = Number(stub.angle) || 0;
     const d   = LAYOUT.stubRadius + 9;
     const ngang = goc === 0 || goc === 180;
-    const x = ngang ? stub.x : stub.x + Math.cos(goc * Math.PI / 180) * d;
-    const y = ngang ? stub.y - d : stub.y + Math.sin(goc * Math.PI / 180) * d;
+    const x = ngang ? stub.x : stub.x + d;
+    const y = ngang ? stub.y - d : stub.y;
 
     // CÓ NỀN, không phải chữ trần: chỗ này rơi trúng thanh ngang gom các con
     // là chuyện thường (luật 2 ở đầu file).

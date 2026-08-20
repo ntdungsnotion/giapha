@@ -3,7 +3,7 @@
 // Vai trò  : Hằng số hiển thị phía trình duyệt.
 // Lớp      : config — không gọi file nào khác
 // Phụ thuộc: (không)
-// Phiên bản: 0.8.0 · Cập nhật: 20/08/2026 16:40
+// Phiên bản: 0.9.0 · Cập nhật: 20/08/2026 17:20
 // ============================================================
 //
 // LƯU Ý: từ khi chuyển sang kiến trúc Apps Script, file này KHÔNG còn
@@ -82,41 +82,48 @@ export const LAYOUT = {
 
   hGap:        28,   // cách ngang giữa 2 người
 
-  // Cách dọc giữa 2 đời.
+  // Cách dọc giữa 2 đời — cũng chính là ĐỘ DÀI ĐOẠN KẺ DỌC nối hai đời.
   //
-  // ⚠ **90 → 48 ở bước 28**, cùng lúc với việc ô cao lên 104 và bỏ viền ô.
-  // Chủ dự án nhìn app thật rồi nói: *"khoảng cách giữa các hàng quá lớn,
-  // lãng phí không gian, nhất là điện thoại"*.
+  // ⚠ **90 → 48 → 34 trong cùng ngày 20/08/2026**, cả hai lần đều do chủ dự án
+  // nhìn app thật rồi chỉ ra: lần đầu *"khoảng cách giữa các hàng quá lớn,
+  // lãng phí không gian, nhất là điện thoại"*, lần sau *"có thể giảm 30% nữa ở
+  // chỗ giảm độ dài gạch nối theo chiều dọc"*.
   //
-  // Hai con số này phải đọc CÙNG NHAU, đừng đọc riêng: thứ mắt nhìn thấy là
-  // **bước hàng** = nodeHeight + vGap.
+  // Đọc CÙNG `nodeHeight`, đừng đọc riêng: thứ mắt nhìn thấy là **bước hàng**.
   //
   //     trước bước 28   64 + 90 = 154
-  //     giữa bước 28   104 + 90 = 194   ← chỗ chủ dự án kêu
-  //     nay             88 + 48 = 136
+  //     giữa bước 28   104 + 90 = 194   ← chỗ chủ dự án kêu lần đầu
+  //     nay             88 + 34 = 122   ← ngắn hơn 21% so với thời chưa có ảnh
   //
-  // Tức là ảnh to hơn hẳn mà bước hàng vẫn **ngắn hơn cả thời chưa có ảnh**.
-  // Chỗ 90px kia sinh ra khi ô mới cao 64 và có viền; bỏ viền rồi thì phần
-  // trống giữa hai hàng vốn đã rộng ra, cộng thêm 90 nữa là thừa hai lần.
+  // Tức là mỗi ô mang thêm một khuôn mặt 52px và một dòng tuổi, mà sơ đồ vẫn
+  // ngắn hơn hẳn. Chỗ 90px kia sinh ra khi ô mới cao 64 và CÓ VIỀN; bỏ viền
+  // rồi thì phần trống giữa hai hàng vốn đã rộng ra, cộng thêm 90 nữa là thừa
+  // hai lần.
   //
-  // ⚠ Sàn của con số này là `stubLength` (34) — nốt cụt mọc thẳng xuống phải
-  // còn chỗ. 48 còn dư 14px. Hạ nữa thì phải hạ `stubLength` trước.
-  vGap:        48,
+  // ⚠ **Sàn của con số này là `stubLength + stubRadius`** — nốt cụt mọc thẳng
+  // xuống phải nằm gọn trong khe giữa hai đời, không thì nốt tròn rơi vào ô
+  // người ở đời dưới. Nay 22 + 6 = 28 < 34, còn chừa 6px. Hạ `vGap` nữa thì
+  // PHẢI hạ `stubLength` trước, đừng hạ một mình.
+  vGap:        34,
   spouseGap:   16,
-  stubLength:  34,   // độ dài đường kẻ dẫn tới nốt cụt, hướng LÊN và XUỐNG
+
+  // Độ dài đường kẻ dẫn tới nốt cụt, hướng LÊN và XUỐNG.
+  // 34 → 22 ở bước 28d, để `vGap` xuống được 34. Xem ghi chú `vGap` ở trên.
+  stubLength:  22,
   stubRadius:   6,
 
   // Nốt cụt nằm NGANG phải ngắn hơn, và đây là lý do — đừng gộp lại làm một
   // con số (16/08/2026, chat 1.4).
   //
-  // Chiều dọc có vGap (nay 48px) để mọc ra, chiều ngang chỉ có hGap = 28px giữa
+  // Chiều dọc có vGap (nay 34px) để mọc ra, chiều ngang chỉ có hGap = 28px giữa
   // hai khối anh em. Dùng chung 34px thì nốt tròn rơi hẳn vào trong ô người
   // bên cạnh: đo trên bản 57 người, 14/120 nốt đè lên ô, và ĐÚNG BẰNG toàn bộ
   // số nốt nằm ngang — tức mọi nốt ngang đều hỏng. Sáu bất biến của chat 1.3
   // không bắt được vì chúng chỉ xét ô với ô; lỗi này chỉ lộ ra khi xem hình.
   //
   // 14 + stubRadius 6 = 20 < 28, còn chừa 8px hở. Đổi hGap thì phải đổi cả
-  // con số này.
+  // con số này. (Bản ngang KHÔNG hạ theo bản dọc ở bước 28d: nó bị hGap chặn,
+  // không bị vGap chặn.)
   stubLengthNgang: 14,
 
   // Nét vợ chồng chồng nấc khi một người có nhiều bạn đời — QUY-TAC-VE §3.
