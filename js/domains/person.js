@@ -2,8 +2,8 @@
 // giapha · js/domains/person.js
 // Vai trò  : Nghiệp vụ hồ sơ cá nhân — tạo, sửa, đọc thông tin một người
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
-// Phụ thuộc: utils/text.js, utils/date.js, utils/id.js
-// Phiên bản: 1.4.0 · Cập nhật: 19/08/2026 21:40
+// Phụ thuộc: utils/{text,date,id}
+// Phiên bản: 1.5.0 · Cập nhật: 20/08/2026 16:40
 // ============================================================
 import { fullName, coGiaTri, removeDiacritics, doiSongNguoi } from '../utils/text.js';
 import { parseLooseDate } from '../utils/date.js';
@@ -76,6 +76,7 @@ export function createPerson(tree, data, ghiNhan) {
  *          sex, living, burialPlace, note,
  *          birth: { raw, place, iso? },
  *          death: { raw, place, iso? },
+ *          gio,                                  // ngày giỗ ÂM LỊCH -> vn.gio
  *        }
  * @param {{boi?:string, luc?:string}} [ghiNhan]  người sửa và thời điểm, để ghi
  *        vào `meta`. Hàm này KHÔNG đọc đồng hồ máy — nơi gọi đưa vào, nhờ vậy
@@ -130,6 +131,7 @@ export function updatePerson(tree, personId, changes, ghiNhan) {
 
   datKhoiNgay(moi, 'birth', ch.birth, ghi);
   datKhoiNgay(moi, 'death', ch.death, ghi);
+  datNgayGio(moi, ch.gio, ghi);
 
   const thayDoi = Object.keys(diff).length > 0;
 
@@ -173,6 +175,30 @@ function datTenChinh(nguoi, ten, ghi) {
   }
   const sau = fullName(muc);
   if (truoc !== sau) ghi('names.chinh', truoc, sau);
+}
+
+/**
+ * NGÀY GIỖ — `vn.gio`, chữ tự do, ÂM LỊCH (bước 28).
+ *
+ * Nằm trong khối `vn` chứ không nằm phẳng cạnh `birth`/`death`, đúng như
+ * `CAU-TRUC-DU-LIEU` đã định: `vn.*` là nhóm trường RIÊNG CỦA GIA PHẢ VIỆT,
+ * và khi xuất GEDCOM chúng thành thẻ có gạch dưới (`_GIO`) mà phần mềm nước
+ * ngoài bỏ qua được. Để phẳng thì lúc xuất không phân biệt nổi trường nào là
+ * chuẩn GEDCOM, trường nào là của riêng ta.
+ *
+ * Dựng khối `vn` khi cần, chứ KHÔNG thêm sẵn `vn: {}` vào mọi bản ghi mới:
+ * 59 khối rỗng trong file dữ liệu không nói thêm được điều gì.
+ */
+function datNgayGio(nguoi, giaTri, ghi) {
+  if (giaTri === undefined) return;
+
+  const sau   = String(giaTri).trim();
+  const truoc = (nguoi.vn && typeof nguoi.vn.gio === 'string') ? nguoi.vn.gio : '';
+  if (truoc === sau) return;
+
+  if (!nguoi.vn || typeof nguoi.vn !== 'object') nguoi.vn = {};
+  nguoi.vn.gio = sau;
+  ghi('vn.gio', truoc, sau);
 }
 
 /** Một trường chuỗi phẳng. Cắt khoảng trắng thừa hai đầu, giữ nguyên phần giữa. */

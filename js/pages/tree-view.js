@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render,union}, utils/text,
 //            pages/{person-detail,person-edit,person-list,settings}
-// Phiên bản: 1.13.0 · Cập nhật: 20/08/2026 14:10
+// Phiên bản: 1.14.0 · Cập nhật: 20/08/2026 16:40
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -187,13 +187,14 @@ export function refresh() {
   }
 
   const stubs  = findStubPoints(index, visible, state.scope);
-  const layout = computeLayout(index, focus, visible, state.scope, stubs);
+  const hienGio = { hienNgayGio: state.hienNgayGio === true };
+  const layout = computeLayout(index, focus, visible, state.scope, stubs, hienGio);
   layoutHT = layout;
 
   renderTree(svgEl, layout, index, {
     onChonNguoi:  (personId) => setFocusPerson(personId),
     onChonNotCut: (stub) => moNotCut(stub, visible),
-  });
+  }, hienGio);
 
   // BA VIỆC NÀY PHẢI ĐÚNG THỨ TỰ NÀY, đã sai một lần ở chat 1.5:
   //
@@ -1101,6 +1102,7 @@ const TOI_DA_DOI = 30;
 let nutToTien = [];
 let nutHauDue = [];
 let nutDauRe  = null;
+let nutNgayGio = null;
 let oNhapToTien = null;
 let oNhapHauDue = null;
 
@@ -1144,6 +1146,9 @@ function veCotHauDue() {
 
   nutDauRe = nutChu('Dâu/rể', '', () => datDauRe(state.showInLaws === false));
   thanHauDue.append(nutDauRe);
+
+  nutNgayGio = nutChu('Ngày giỗ', '', () => datNgayGio(state.hienNgayGio !== true));
+  thanHauDue.append(nutNgayGio);
   tomTatHauDue = nutTomTat(() => datXo('duoi', !xoHauDue));
   // Nút tóm tắt ở DƯỚI, các nấc mọc NGƯỢC LÊN — cột này neo mép dưới, để nút
   // tóm tắt đứng yên một chỗ khi xổ ra và thu lại.
@@ -1213,6 +1218,25 @@ function datPhamViHauDueSo(soDoi) {
   refresh();
 }
 
+/**
+ * Bật/tắt hàng NGÀY GIỖ dưới mỗi ô.
+ *
+ * ⚠ Công tắc này đổi CHIỀU CAO Ô, không chỉ đổi thứ được vẽ: mọi ô cao thêm
+ * một hàng chữ để chừa chỗ, kể cả ô của người còn sống và người chưa ai điền
+ * ngày giỗ. Đó là cái giá của luật "ô cao bằng nhau" — để ô co theo nội dung
+ * thì các ô cùng một đời so le và sơ đồ nhìn gãy. Vì thế nó mặc định TẮT.
+ *
+ * `computeLayout` CHỪA CHỖ, `renderTree` VẼ, và `refresh()` truyền CÙNG MỘT
+ * object cho cả hai — chừa chỗ một đằng vẽ một nẻo thì hàng giỗ tràn ra khỏi
+ * ô, hoặc để lại một khoảng trống không ai giải thích được.
+ */
+function datNgayGio(bat) {
+  if ((state.hienNgayGio === true) === bat) return;
+  state.hienNgayGio = bat;
+  notify();
+  refresh();
+}
+
 function datDauRe(bat) {
   if (state.showInLaws === bat) return;
   state.showInLaws = bat;
@@ -1253,6 +1277,15 @@ function capNhatNutPhamVi() {
       ? 'Đang vẽ dâu/rể. Bấm để ẩn họ đi.'
       : 'Đang ẩn dâu/rể. Bấm để vẽ họ trở lại.';
     datVeChon(nutDauRe, hienDauRe);
+  }
+
+  if (nutNgayGio) {
+    const hienGio = state.hienNgayGio === true;
+    nutNgayGio.textContent = (hienGio ? '☑' : '☐') + ' Ngày giỗ';
+    nutNgayGio.title = hienGio
+      ? 'Đang hiện ngày giỗ dưới mỗi ô. Bấm để ẩn và thu gọn sơ đồ lại.'
+      : 'Bấm để hiện ngày giỗ dưới mỗi ô. Mọi ô sẽ cao thêm một hàng chữ.';
+    datVeChon(nutNgayGio, hienGio);
   }
 
   // Nút tóm tắt phải nói được nấc đang chọn, nếu không thì thu gọn xong là

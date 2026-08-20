@@ -3,11 +3,16 @@
 // Vai trò  : Xử lý chuỗi tiếng Việt — bỏ dấu, so khớp tìm kiếm,
 //            và quy tắc hiển thị trường thiếu dùng chung cho mọi màn hình
 // Lớp      : utils — được gọi bởi: domains, pages · được phép gọi: config
-// Phụ thuộc: (không)
-// Phiên bản: 1.0.0 · Cập nhật: 16/08/2026 23:45
+// Phụ thuộc: utils/date (calcAge)
+// Phiên bản: 1.1.0 · Cập nhật: 20/08/2026 16:20
 // ============================================================
 //
 // MỌI HÀM Ở ĐÂY LÀ HÀM THUẦN. Không chạm DOM, không đọc state.
+//
+// ⚠ Từ bước 28 file này `import` `utils/date.js`. Hai file CÙNG MỘT LỚP nên
+// đây không phải gọi ngược lên — luật phân lớp cấm `utils` gọi `services`,
+// `domains`, `pages`, chứ không cấm hai file `utils` dùng chung nhau. Không có
+// vòng tròn: `date.js` không import gì cả.
 //
 // --- Quy tắc hiển thị trường thiếu (chốt 14/08/2026) ---------
 //
@@ -21,6 +26,8 @@
 // Ca kiểm sống: P0005 Lê Thị Thái để trống cả năm sinh lẫn năm mất. Ô của bà
 // trên sơ đồ phải BỎ HẲN dòng thứ hai. Ai điền năm sinh vào bản ghi đó là giết
 // ca kiểm duy nhất của quy tắc này.
+
+import { calcAge } from './date.js';
 
 /**
  * Bỏ dấu tiếng Việt, chuyển chữ thường.
@@ -106,6 +113,49 @@ export function doiSongNguoi(person) {
   if (sinh)        return sinh;
   if (mat)         return '– ' + mat;
   return '';
+}
+
+/**
+ * Dòng năm sinh–năm mất KÈM TUỔI, đúng khuôn Quick Family Tree.
+ *
+ *   đã mất     -> "1927 – 2001 (ở tuổi 74)"
+ *   còn sống   -> "1962 (tuổi 64)"
+ *   không tính được tuổi -> chỉ còn phần năm, y như `doiSongNguoi()`
+ *
+ * Chốt 20/08/2026, sau khi chủ dự án xem app thật và chỉ sang cách QFT trình
+ * bày. Hai chữ khác nhau và KHÔNG được đổi chỗ: *"ở tuổi"* nói tuổi lúc mất,
+ * *"tuổi"* nói tuổi bây giờ.
+ *
+ * ⚠ **Cố ý BỎ chữ "khoảng"** dù phần lớn bản ghi chỉ có năm chứ không có ngày,
+ * tức con số tuổi lệch được một tuổi. Ô sơ đồ rộng 120px, thêm bốn chữ nữa là
+ * dòng này phải co lại đến mức không đọc nổi. Chỗ nói đủ sự dè dặt ấy là THẺ
+ * THÔNG TIN — ở đó `person-detail.js` vẫn ghi *"khoảng 74 tuổi"*, và ở đó có
+ * chỗ để ghi.
+ */
+export function doiSongTuoi(person) {
+  const doi = doiSongNguoi(person);
+  if (!doi) return '';
+  if (!person || typeof person !== 'object') return doi;
+
+  const t = calcAge(person.birth, person.death, person.living);
+  if (!t || !isFinite(t.tuoi)) return doi;
+
+  return doi + ' (' + (t.denHomNay ? 'tuổi ' : 'ở tuổi ') + t.tuoi + ')';
+}
+
+/**
+ * Ngày giỗ, dưới dạng người trong họ đọc được. Trống thì trả '' — nơi gọi BỎ
+ * HẲN hàng, đúng quy tắc chung ở đầu file.
+ *
+ * ⚠ **Giỗ là ngày ÂM LỊCH, và app KHÔNG tự suy ra nó từ ngày mất dương lịch.**
+ * Đổi dương sang âm cần bảng tra cả trăm năm, mà kể cả đổi đúng thì ngày giỗ
+ * trong nhiều gia đình vẫn được chốt theo lệ riêng chứ không theo phép đổi.
+ * Nên đây là một trường NGƯỜI TỰ ĐIỀN, chữ tự do: "12 tháng Chạp", "20/8 âm",
+ * "rằm tháng Bảy" đều nhận.
+ */
+export function ngayGio(person) {
+  const gio = person && person.vn && person.vn.gio;
+  return coGiaTri(gio) ? String(gio).trim() : '';
 }
 
 /**

@@ -3,7 +3,7 @@
 // Vai trò  : Tính TOẠ ĐỘ các ô người, đường nối và nốt cụt. Không vẽ gì cả.
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: config (LAYOUT, PHOTO)
-// Phiên bản: 1.6.0 · Cập nhật: 20/08/2026 15:10
+// Phiên bản: 1.7.0 · Cập nhật: 20/08/2026 16:40
 // ============================================================
 //
 // Tách khỏi render.js có chủ ý: chỉnh giao diện (màu, phông, bo góc) không
@@ -87,8 +87,25 @@
 import { LAYOUT, PHOTO } from '../config.js';
 
 const RONG = LAYOUT.nodeWidth;
-const CAO  = LAYOUT.nodeHeight;
 const DEM  = 24;                  // lề quanh sơ đồ khi tính bounds
+
+/**
+ * Chiều cao ô ĐANG DÙNG.
+ *
+ * ⚠ **`let`, không phải `const`, và `computeLayout()` gán lại nó ở dòng đầu
+ * tiên mỗi lần chạy.** Trước bước 28 đây là `const CAO = LAYOUT.nodeHeight`,
+ * chụp một lần lúc nạp module — và cái bẫy ấy đã sập thật: phép đo
+ * `kiem-thu/do-o-co-anh.mjs` đổi `LAYOUT.nodeHeight` rồi gọi lại
+ * `computeLayout`, nhận về **+0% cho cả bốn phương án**, một kết quả trông rất
+ * gọn gàng mà sai hoàn toàn.
+ *
+ * Từ bước 28 nó phải đọc lại thật, vì công tắc *"Ngày giỗ"* đổi chiều cao ô
+ * ngay lúc chạy: bật thì mọi ô cao thêm một hàng chữ.
+ *
+ * Mọi hàm phụ trong file này đều chạy BÊN TRONG `computeLayout()`, nên đến lúc
+ * chúng đọc `CAO` thì giá trị đã đúng.
+ */
+let CAO = LAYOUT.nodeHeight;
 
 /**
  * MỨC NÉT VỢ CHỒNG bên trong ô — đo từ nóc ô xuống.
@@ -135,10 +152,20 @@ const LE_ANH = RONG / 2 - PHOTO.banKinhTrenO;
  * @param {Map<string,'full'|'edge'>} visibleSet   từ computeVisibleSet
  * @param {object} [scope]                   chưa dùng — giữ cho khớp chữ ký
  * @param {Array<object>} [stubPoints]       từ findStubPoints
+ * @param {{hienNgayGio?:boolean}} [tuyChon]
+ *        `hienNgayGio` — CHỪA CHỖ cho hàng ngày giỗ, tức mọi ô cao thêm một
+ *        hàng chữ. Phải khớp với cờ cùng tên đưa vào `renderTree()`: chỗ này
+ *        chừa chỗ, chỗ kia vẽ. Lệch nhau thì hàng giỗ hoặc tràn ra khỏi ô,
+ *        hoặc để lại một khoảng trống không ai giải thích được.
  * @returns {{nodes:Array, unions:Array, links:Array, stubs:Array,
  *            bounds:{minX:number,minY:number,maxX:number,maxY:number}}}
  */
-export function computeLayout(index, focusPersonId, visibleSet, scope, stubPoints) { // eslint-disable-line no-unused-vars
+export function computeLayout(index, focusPersonId, visibleSet, scope, stubPoints, tuyChon) { // eslint-disable-line no-unused-vars
+  // Đọc lại chiều cao ô TRƯỚC MỌI THỨ KHÁC — xem ghi chú `CAO` ở đầu file.
+  CAO = (tuyChon && tuyChon.hienNgayGio)
+    ? LAYOUT.nodeHeightNgayGio
+    : LAYOUT.nodeHeight;
+
   const rong = {
     nodes: [], unions: [], links: [], stubs: [],
     bounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 },

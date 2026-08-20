@@ -144,33 +144,43 @@ export function dataUri(base64, mime = 'image/jpeg') {
 // nào, không hỏng khi mạng chậm, và phóng to bao nhiêu cũng nét — ô sơ đồ vẽ
 // 40px nhưng vòng tròn thông tin vẽ tới 76px.
 
-/** Ba bộ khuôn, vẽ trong khung 60×60. `dau` là vòng tròn đầu, `than` là vai. */
+/**
+ * Ba bộ khuôn, vẽ trong khung 60×60. `dau` là vòng tròn đầu, `than` là vai.
+ *
+ * ⚠ **VAI DỪNG Ở y ≈ 47, KHÔNG chạm đáy khung.** Bản đầu vẽ vai xuống tận
+ * y = 58, và trên sơ đồ nó hỏng ngay: bước 28b đặt BẢNG TÊN NỀN TRẮNG đè lên
+ * đáy vòng ảnh, mà vai cũng màu trắng — hai mảng trắng dính vào nhau thành một
+ * khối, và cả vòng ảnh đọc ra thành **hình vòng cung** chứ không ra hình
+ * người. Chừa một dải nền màu giữa vai và bảng tên là hết.
+ *
+ * Đổi `deLenAnh` trong `VE` thì phải xem lại con số 47 này.
+ */
 const BONG = {
   M: {
-    dau: { cx: 30, cy: 22, r: 11 },
-    than: 'M 8 58 C 8 44 17 38 30 38 C 43 38 52 44 52 58 Z',
+    dau: { cx: 30, cy: 20, r: 9.5 },
+    than: 'M 12 47 C 12 36 20 31 30 31 C 40 31 48 36 48 47 Z',
     toc: '',
   },
   F: {
-    dau: { cx: 30, cy: 24, r: 10 },
-    than: 'M 11 58 C 11 46 19 40.5 30 40.5 C 41 40.5 49 46 49 58 Z',
+    dau: { cx: 30, cy: 21.5, r: 9 },
+    than: 'M 14 47 C 14 37.5 21 33 30 33 C 39 33 46 37.5 46 47 Z',
     // Tóc dài xoà xuống hai bên mặt: một khối ĐẶC hình quả chuông, rộng dần
-    // xuống dưới. Đây là dấu hiệu duy nhất phân biệt với hình nam ở cỡ 40px —
+    // xuống dưới. Đây là dấu hiệu duy nhất phân biệt với hình nam ở cỡ nhỏ —
     // thử bằng khuôn mặt thon hơn hay vai hẹp hơn thì ở cỡ ấy hai hình trông
     // giống hệt nhau.
     //
     // ⚠ **Đặc, KHÔNG phải một vành tóc quanh mặt.** Bản đầu vẽ vành tóc rỗng
     // giữa, để lộ nền màu giữa tóc và đầu — ở 200px nó thành một cái khăn trùm,
     // ở 40px nó thành một vệt nhoè. Cả hai đều không đọc ra "tóc dài".
-    toc: 'M 30 8 C 20.5 8 16.5 15.5 17 24.5 C 17.4 32 19 38.5 18.5 43.5 ' +
-         'C 21 44.5 25 45 30 45 C 35 45 39 44.5 41.5 43.5 ' +
-         'C 41 38.5 42.6 32 43 24.5 C 43.5 15.5 39.5 8 30 8 Z',
+    toc: 'M 30 6 C 21.5 6 18 12.5 18.4 20.5 C 18.8 27 20.2 32.5 19.8 37 ' +
+         'C 22 38 25.6 38.4 30 38.4 C 34.4 38.4 38 38 40.2 37 ' +
+         'C 39.8 32.5 41.2 27 41.6 20.5 C 42 12.5 38.5 6 30 6 Z',
   },
   U: {
     // Không rõ giới: đầu tròn, thân là một khối thang — cố ý KHÔNG có đường
     // vai cong của hình nam, để ở cỡ nhỏ vẫn nhận ra là hình thứ ba.
-    dau: { cx: 30, cy: 23, r: 10.5 },
-    than: 'M 12 58 C 12.5 48 15 41.5 17.5 40 L 42.5 40 C 45 41.5 47.5 48 48 58 Z',
+    dau: { cx: 30, cy: 20.5, r: 9 },
+    than: 'M 15 47 C 15.4 39 17.4 34 19.4 32.8 L 40.6 32.8 C 42.6 34 44.6 39 45 47 Z',
     toc: '',
   },
 };

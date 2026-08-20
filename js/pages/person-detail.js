@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
 //            utils/{text,date,image}
-// Phiên bản: 1.7.0 · Cập nhật: 20/08/2026 14:10
+// Phiên bản: 1.8.0 · Cập nhật: 20/08/2026 16:40
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -52,18 +52,21 @@
 // Nên nơi gọi truyền vào `onChonNguoi`, thẻ chỉ báo ra ngoài "người dùng vừa
 // chọn ai", không tự quyết định.
 //
-// --- Ảnh người: CHƯA làm, cố ý ------------------------------------------
+// --- Ảnh người: XONG ở bước 28 ------------------------------------------
 //
-// `photoFileId` đang trống ở mọi bản ghi, và nạp ảnh từ Drive thì cần
-// `gas.taiAnh()` — vẫn còn là khung. Để đến giai đoạn 2, cùng lúc với ảnh
-// trên ô sơ đồ, chứ không làm nửa vời ở đây.
+// Hai chỗ, cùng một hàm `veAnhTron()` trừ tâm vòng tròn (nó tính bề ngang bằng
+// phần trăm nên phải dựng riêng): đầu THẺ 60px, và TÂM menu vòng tròn.
+//
+// ⚠ Cùng một luật hai lớp với `render.js`: bóng người mặc định nằm sẵn trong
+// `<img>`, ảnh thật chỉ THAY vào khi đã tải về được. Gán thẳng rồi bắt
+// `onerror` thì trên mạng chậm người dùng thấy một ô trống trước đã.
 
 import { state } from '../state.js';
 import { suaDuoc } from '../services/repo.js';
 import { getAlternateNames } from '../domains/person.js';
 import { getPartnerUnions } from '../domains/union.js';
 import { mauVien } from '../domains/render.js';
-import { fullName, coGiaTri, doiSongNguoi } from '../utils/text.js';
+import { fullName, coGiaTri, doiSongNguoi, ngayGio } from '../utils/text.js';
 import { formatDate, calcAge } from '../utils/date.js';
 import { driveThumbUrl, anhMacDinhUri } from '../utils/image.js';
 
@@ -260,6 +263,7 @@ function veHangThongTin(p) {
   veHang(bang, 'Sinh', ghepNgayNoi(p.birth));
   veHang(bang, 'Mất', ghepNgayNoi(p.death));
   veHang(bang, 'An táng', p.burialPlace);
+  veHang(bang, 'Ngày giỗ', ngayGio(p));
   veHang(bang, tuoiTho(p).nhan, tuoiTho(p).giaTri);
   veHang(bang, 'Ghi chú', p.note, true);
 

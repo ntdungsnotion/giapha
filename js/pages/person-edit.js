@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate,media,render},
 //            services/{repo,gas}, utils/{graph,text,date,image}
-// Phiên bản: 1.7.0 · Cập nhật: 20/08/2026 14:25
+// Phiên bản: 1.8.0 · Cập nhật: 20/08/2026 16:40
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -441,6 +441,10 @@ function veCacO(nguoi) {
   ra.push(oNgay('death', nguoi.death));
   ra.push(oChu('deathPlace', 'Nơi mất', khoiNgayCua(nguoi.death).place, ''));
   ra.push(oChu('burialPlace', 'Nơi an táng', nguoi.burialPlace, ''));
+  // Ngày giỗ là ngày ÂM LỊCH và app KHÔNG suy ra nó từ ngày mất dương lịch —
+  // xem `utils/text.ngayGio()`. Nên đây là ô CHỮ TỰ DO, chữ mờ dạy cách gõ.
+  ra.push(oChu('gio', 'Ngày giỗ (âm lịch)',
+               (nguoi.vn && nguoi.vn.gio) || '', '20 tháng Chạp'));
   ra.push(veConSong(nguoi.living === true));
 
   ra.push(veNhan('Ghi chú'));
@@ -1376,6 +1380,7 @@ function gomThayDoi() {
     sex:         docO('sex'),
     living:      !!(o.living && o.living.checked),
     burialPlace: docO('burialPlace'),
+    gio:         docO('gio'),
     note:        docO('note'),
     birth: { raw: docO('birth'), place: docO('birthPlace') },
     death: { raw: docO('death'), place: docO('deathPlace') },

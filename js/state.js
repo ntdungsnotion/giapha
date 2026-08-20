@@ -3,7 +3,7 @@
 // Vai trò  : Trạng thái dùng chung toàn app. CHỈ lớp pages được ghi.
 // Lớp      : (đặc biệt) — chỉ đọc/ghi dữ liệu, không chứa logic
 // Phụ thuộc: config
-// Phiên bản: 0.4.1 · Cập nhật: 17/08/2026 11:40
+// Phiên bản: 0.5.0 · Cập nhật: 20/08/2026 16:40
 // ============================================================
 import { DEFAULT_SCOPE } from './config.js';
 
@@ -21,6 +21,14 @@ const MAC_DINH = {
   // thuật toán — layout.js không cần biết nó tồn tại (QUY-TAC-VE §1).
   // Công tắc bật/tắt nằm cuối cột nút dưới trái của pages/tree-view.js.
   showInLaws: true,
+
+  // Có vẽ hàng NGÀY GIỖ dưới mỗi ô hay không (bước 28).
+  //
+  // ⚠ Khác `showInLaws` một chỗ quan trọng: cái kia đổi AI được vẽ, cái này
+  // đổi CHIỀU CAO Ô. Bật lên là mọi ô cao thêm một hàng chữ, kể cả ô của người
+  // còn sống và người chưa ai điền ngày giỗ — luật "ô cao bằng nhau" không cho
+  // ô co theo nội dung. Vì thế MẶC ĐỊNH TẮT.
+  hienNgayGio: false,
 
   // Máy chủ có cắt chi tiết người còn sống trước khi trả cây hay không.
   // Giữ riêng để không lẫn "bị ẩn" với "gia phả còn thiếu" — hai thứ trông

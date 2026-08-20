@@ -3,7 +3,7 @@
 // Vai trò  : Hằng số hiển thị phía trình duyệt.
 // Lớp      : config — không gọi file nào khác
 // Phụ thuộc: (không)
-// Phiên bản: 0.7.0 · Cập nhật: 20/08/2026 15:10
+// Phiên bản: 0.8.0 · Cập nhật: 20/08/2026 16:40
 // ============================================================
 //
 // LƯU Ý: từ khi chuyển sang kiến trúc Apps Script, file này KHÔNG còn
@@ -18,10 +18,19 @@ export const PHOTO = {
   jpegQuality: 0.82,
   thumbSize:   200,
 
-  // Bán kính vòng ảnh trên ô sơ đồ. Ảnh vẽ ở đường kính 2×20 = 40px, nhưng
-  // XIN Drive bản 200px: màn hình điện thoại có tỷ lệ pixel gấp 2–3, xin đúng
-  // 40 thì ảnh rỗ.
-  banKinhTrenO: 20,
+  // Bán kính vòng ảnh trên ô sơ đồ.
+  //
+  // ⚠ **20 → 26 ở bước 28b** — chủ dự án: *"hình đại diện to hơn, chữ nhỏ
+  // hơn"*, học theo cách Quick Family Tree trình bày. Vòng ảnh nay 52px trên
+  // một ô rộng 120px, to hơn 30%, mà ô lại NGẮN ĐI: bảng tên đè lên đáy vòng.
+  //
+  // Đã thử 28 (56px) trước. Hỏng: để giữ chiều cao ô thì bảng tên phải đè sâu
+  // 14px, và lúc ấy vòng ảnh đọc ra thành hình vòng cung — xem `BONG` trong
+  // `utils/image.js`.
+  //
+  // ⚠ Vẽ 52px nhưng XIN Drive bản 200px (`thumbSize` ở trên): màn hình điện
+  // thoại có tỷ lệ pixel gấp 2–3, xin đúng 52 thì ảnh rỗ.
+  banKinhTrenO: 26,
 
   // Cách từ mép trên ô xuống đỉnh vòng ảnh.
   //
@@ -42,21 +51,35 @@ export const PHOTO = {
 // và dù người đó CÓ ẢNH HAY KHÔNG. Để ô co lại theo nội dung thì các ô cùng
 // một đời sẽ so le, sơ đồ nhìn gãy.
 //
-// ⚠ **64 → 104 ở bước 28** (20/08/2026), để chừa chỗ cho vòng ảnh 40px ở đầu
-// ô. Chủ dự án chọn phương án B sau khi xem bốn phương án vẽ đúng cỡ thật —
-// xem `kiem-thu/o-co-anh.html`. Bề ngang KHÔNG đổi, mà bề ngang mới là thứ
-// điện thoại thiếu.
+// ⚠ **64 → 104 → 88 trong cùng một ngày (20/08/2026, bước 28).** Ba con số ấy
+// kể lại đúng ba lần chủ dự án nhìn app thật:
 //
-// Con số này đọc CÙNG `vGap` bên dưới, đừng đọc riêng. Đo thật trên 59 sơ đồ
-// (`kiem-thu/do-o-co-anh.mjs`): ô cao thêm 62% mà **sơ đồ chỉ cao thêm 4%**
-// (trung bình 755 → 786px), vì `vGap` hạ từ 90 xuống 48 cùng lúc.
+//   64   trước khi có ảnh
+//   104  chừa chỗ cho vòng ảnh 40px xếp TRÊN chữ  → *"khoảng cách quá lớn"*
+//   88   vòng ảnh to lên 52px, nhưng BẢNG TÊN ĐÈ LÊN đáy nó, học theo QFT
 //
-// Con số này là chỗ duy nhất quyết định chiều cao ô. `layout.js` chụp nó vào
-// biến riêng NGAY LÚC NẠP (`const CAO = LAYOUT.nodeHeight`), nên sửa lúc chạy
-// thì không ăn — xem `kiem-thu/do-o-co-anh.mjs`.
+// Nghe ngược đời: ảnh to thêm 30% mà ô lại ngắn đi 16px. Chỗ tiết kiệm nằm ở
+// **phần chồng lên nhau** — bảng tên chồm lên vòng ảnh 8px — và ở chữ nhỏ đi
+// một nấc, nhờ đó ít tên phải xuống hai dòng hơn.
+//
+// Đọc CÙNG `vGap` bên dưới, đừng đọc riêng: bước hàng = nodeHeight + vGap.
+// Đo thật trên 59 sơ đồ bằng `kiem-thu/do-o-co-anh.mjs`.
 export const LAYOUT = {
   nodeWidth:  120,
-  nodeHeight: 104,
+
+  // ⚠ Chiều cao khi KHÔNG hiện hàng ngày giỗ.
+  nodeHeight:  88,
+
+  // Chiều cao khi công tắc "Ngày giỗ" đang BẬT: thêm đúng một hàng chữ.
+  //
+  // ⚠ Cao thêm cho MỌI ô, kể cả người không có ngày giỗ và người còn sống. Đó
+  // là cái giá của luật *"ô cao bằng nhau"* ngay ở đầu khối này. Ai thấy phí
+  // thì tắt công tắc đi — nó mặc định TẮT.
+  //
+  // ⚠ `layout.js` đọc lại hai con số này ở MỖI lần `computeLayout()`, không
+  // chụp một lần lúc nạp như trước bước 28. Xem ghi chú `CAO` ở đó.
+  nodeHeightNgayGio: 99,
+
   hGap:        28,   // cách ngang giữa 2 người
 
   // Cách dọc giữa 2 đời.
@@ -70,11 +93,11 @@ export const LAYOUT = {
   //
   //     trước bước 28   64 + 90 = 154
   //     giữa bước 28   104 + 90 = 194   ← chỗ chủ dự án kêu
-  //     nay            104 + 48 = 152
+  //     nay             88 + 48 = 136
   //
-  // Tức là ô to hơn hẳn mà sơ đồ vẫn **không cao hơn trước bước 28**. Chỗ
-  // 90px kia sinh ra khi ô mới cao 64 và có viền; bỏ viền rồi thì phần trống
-  // giữa hai hàng vốn đã rộng ra, cộng thêm 90 nữa là thừa hai lần.
+  // Tức là ảnh to hơn hẳn mà bước hàng vẫn **ngắn hơn cả thời chưa có ảnh**.
+  // Chỗ 90px kia sinh ra khi ô mới cao 64 và có viền; bỏ viền rồi thì phần
+  // trống giữa hai hàng vốn đã rộng ra, cộng thêm 90 nữa là thừa hai lần.
   //
   // ⚠ Sàn của con số này là `stubLength` (34) — nốt cụt mọc thẳng xuống phải
   // còn chỗ. 48 còn dư 14px. Hạ nữa thì phải hạ `stubLength` trước.
