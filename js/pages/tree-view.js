@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render,union}, utils/text,
 //            pages/{person-detail,person-edit,person-list,settings}
-// Phiên bản: 1.17.0 · Cập nhật: 21/08/2026 09:40
+// Phiên bản: 1.18.0 · Cập nhật: 21/08/2026 21:05
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -748,7 +748,12 @@ function veHopNutTrenPhai() {
  */
 function moDanhSachNguoi() {
   const goc = xuLyThe();
-  const dongTruoc = (fn) => (x) => { closePersonList(); fn(x); };
+  // ⚠ Chuyển tiếp MỌI tham số, không chỉ tham số đầu. Từ việc 4,
+  // `onSuaCap(mocId, unionId)` có hai tham số, và bản cũ — `(x) => fn(x)` —
+  // nuốt mất cái thứ hai: mở thẻ gia đình từ màn hình Danh sách người rồi bấm
+  // Sửa thì hộp *"cặp nào?"* hiện lại, dù người dùng đang đứng trong đúng một
+  // cặp. Không lời báo lỗi nào, chỉ là một câu hỏi thừa.
+  const dongTruoc = (fn) => (...a) => { closePersonList(); fn(...a); };
 
   // Bọc CẢ CHÍN, không bọc bốn rồi để những cái mới đi thẳng: bốn việc của bước 26
   // cũng mở hộp riêng của chúng, và cái danh sách còn nằm đè lên trên vẫn che
@@ -781,8 +786,8 @@ function moDanhSachNguoi() {
  * thứ bậc không đổi ai đứng đâu, còn công tắc *đổi chỗ trái/phải* thì đổi đúng
  * hai ô đang nằm trong sơ đồ người dùng đang nhìn.
  */
-function moFormSuaCap(personId) {
-  openUnionForm(personId, { onDaLuu: () => refresh() });
+function moFormSuaCap(personId, unionId) {
+  openUnionForm(personId, { onDaLuu: () => refresh(), unionId });
 }
 
 /**

@@ -6,7 +6,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate,media,render},
 //            services/{repo,gas}, utils/{graph,text,date,image}, config
-// Phiên bản: 1.13.0 · Cập nhật: 21/08/2026 18:20
+// Phiên bản: 1.14.0 · Cập nhật: 21/08/2026 21:05
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -3781,11 +3781,20 @@ async function ghiBanGhi(nguoiThem, cacUnion, moTa) {
  * Mở form sửa cặp của một người. Người ấy có nhiều cặp thì hỏi cặp nào trước.
  *
  * @param {string} mocId  người đang đứng giữa việc này
- * @param {{onDaLuu?:function(string)}} [xuLy]
+ * @param {{onDaLuu?:function(string), unionId?:string}} [xuLy]
+ *        `unionId` — nơi gọi ĐÃ BIẾT cặp nào, nên bỏ hẳn bước hỏi. Thẻ gia
+ *        đình (việc 4) vào bằng đường này: nó đang mở đúng một cặp, và hỏi lại
+ *        *"cặp nào"* ngay sau khi người ta bấm Sửa trên chính cặp ấy là hỏi
+ *        một câu vừa được trả lời.
  */
 export function openUnionForm(mocId, xuLy = {}) {
   const index = state.index;
   if (!index || !index.personById.has(mocId)) return;
+
+  if (xuLy.unionId && index.unionById.has(xuLy.unionId)) {
+    moFormCap(xuLy.unionId, xuLy);
+    return;
+  }
 
   const ds = getPartnerUnions(index, mocId);
 

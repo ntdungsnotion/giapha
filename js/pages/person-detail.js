@@ -1,10 +1,10 @@
 // ============================================================
 // giapha · js/pages/person-detail.js
-// Vai trò  : MENU vòng tròn (mở từ nút ⓘ · chuột phải) + THẺ thông tin
+// Vai trò  : MENU vòng tròn (mở từ nút ⓘ · chuột phải) + THẺ người + THẺ GIA ĐÌNH
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
 //            utils/{text,date,image}, config
-// Phiên bản: 1.15.0 · Cập nhật: 21/08/2026 20:15
+// Phiên bản: 1.17.0 · Cập nhật: 21/08/2026 21:40
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -17,6 +17,9 @@
 //   openPersonDetail() — *"người này LÀ AI?"*  ngày tháng, tên khác, ba nhóm
 //                        quan hệ, và nút **Sửa hồ sơ**. Mở bằng cách bấm vào
 //                        ẢNH ở giữa vòng tròn.
+//   openUnionDetail()  — *"gia đình này RA SAO?"*  ngày cưới, cặp bây giờ thế
+//                        nào, các con theo thứ tự. Mở từ nhóm Vợ/chồng trong
+//                        thẻ người. Việc 4, thêm 21/08/2026 — xem mục riêng.
 //
 // **Trước 20/08 hai thứ này nằm chung một thẻ, và đó là thừa.** Chạm giữ vào
 // một ô là hiện ra cả tiểu sử lẫn tám cái nút — mà chín lần trên mười người ta
@@ -203,6 +206,307 @@ export function openPersonDetail(personId, xuLy = {}) {
 export function closePersonDetail() {
   if (lopPhu) lopPhu.remove();
   lopPhu = null;
+}
+
+// ============================================================
+// THẺ GIA ĐÌNH — việc 4 (21/08/2026)
+// ============================================================
+//
+// Màn hình ĐỌC của một CẶP, đứng ngang hàng với thẻ người. Ba màn hình, ba câu
+// hỏi: *"làm gì với người này"* (vòng tròn) · *"người này là ai"* (thẻ người) ·
+// *"gia đình này ra sao"* (thẻ này).
+//
+// --- BỐN quyết định của thẻ gia đình ------------------------------------
+//
+// 1. **CỬA VÀO LÀ NÚT TRONG NHÓM VỢ/CHỒNG CỦA THẺ NGƯỜI, MỘT NÚT MỘT CẶP.**
+//    Vành sáu mục KHÔNG bị đụng tới — nó chật rồi, và sáu việc ở đó đều là
+//    việc SỬA, còn đây là màn hình ĐỌC.
+//
+//    Một nút một cặp, chứ không phải một nút chung rồi hỏi *"cặp nào"*: người
+//    có hai đời vợ thì hai dòng, mỗi dòng gọi thẳng tên người kia. Hỏi lại là
+//    thêm một hộp cho một câu mà cái nút đã trả lời được ngay trên mặt nó.
+//
+// 2. **NÚT SỬA NẰM TRONG THẺ NÀY, KHÔNG NẰM Ở THẺ NGƯỜI NỮA.** Đúng ranh giới
+//    đã chốt 20/08 cho thẻ người: *"sửa ngày sinh là sửa cái đang đọc, nên chỗ
+//    đúng của nút Sửa là ngay dưới thứ nó sắp sửa"*. Trước việc 4, nút *"Sửa
+//    cặp"* nằm trên thẻ NGƯỜI vì chưa có màn hình nào của cặp để mà đặt nó vào.
+//
+// 3. **DÙNG CHUNG CÔNG TẮC "Còn N mục chưa điền" VỚI THẺ NGƯỜI.** Một công tắc
+//    cho cả hai thẻ, không phải hai cái nhớ hai trạng thái: người đang đi rà
+//    thì rà cả người lẫn cặp, và hai công tắc lệch nhau là thứ không ai đoán
+//    được đang bật hay tắt.
+//
+// 4. **CÁC CON XẾP THEO `order`, KHÔNG XẾP THEO TUỔI.** `order` là thứ tự
+//    người ta đã chép tay, và `layout.js` vẽ sơ đồ đúng theo nó. Thẻ xếp khác
+//    sơ đồ là hai chỗ nói hai điều về cùng một nhà. Muốn đổi thì có màn hình
+//    *Sắp thứ tự các con*, và nó ghi `order` xuống dữ liệu.
+//
+// ⚠ **Chỗ đứng của ẢNH CƯỚI ở việc 5 là thẻ này**, ngay dưới đầu thẻ. Đừng
+// treo nó vào thẻ người — một tấm ảnh cưới thuộc về hai người, không thuộc về
+// một người.
+
+/**
+ * Mở thẻ gia đình của một cặp.
+ *
+ * @param {string} unionId
+ * @param {{onChonNguoi?:function(string), onSuaCap?:function(string,string),
+ *          onThemCon?:function(string), onSapThuTu?:function(string)}} [xuLy]
+ *        `onSuaCap` nhận HAI tham số — mã người làm mốc và MÃ CẶP. Tham số thứ
+ *        hai là thứ việc 4 thêm vào: từ đây ta đã biết đích xác cặp nào, nên
+ *        `openUnionForm` không được hỏi lại *"cặp nào"* một lần nữa.
+ */
+export function openUnionDetail(unionId, xuLy = {}) {
+  closePersonDetail();
+
+  const index = state.index;
+  const u = index && index.unionById && index.unionById.get(unionId);
+  if (!u) return;
+
+  lopPhu = document.createElement('div');
+  lopPhu.style.cssText = KIEU_LOP_PHU;
+
+  const the = document.createElement('div');
+  the.id = 'giapha-the-cap';   // mốc cho bài kiểm hành vi
+  the.style.cssText = KIEU_HOP;
+
+  the.append(...veDauTheCap(u));
+  the.append(...veHangThongTinCap(u));
+  the.append(...veNguoiTrongCap(index, u, xuLy));
+  the.append(veChanTheCap(u, xuLy));
+
+  lopPhu.addEventListener('click', (e) => { if (e.target === lopPhu) closePersonDetail(); });
+  lopPhu.append(the);
+  document.body.append(lopPhu);
+}
+
+/**
+ * Đầu thẻ gia đình: ảnh hai người chồng lên nhau một chút, tên ghép, mã cặp.
+ *
+ * ⚠ Hai ảnh CHỒNG MÉP chứ không đứng rời: hai vòng tròn cách nhau đọc lên là
+ * hai người, chồng mép đọc lên là một cặp — và cặp mới là thứ cái thẻ này nói
+ * tới. Cặp một người (`U0024` là ca thật) thì chỉ có một vòng, không có chỗ
+ * trống nào giữ chỗ cho người chưa có.
+ */
+function veDauTheCap(u) {
+  const index = state.index;
+  const ds = (Array.isArray(u.partners) ? u.partners : [])
+    .filter((id) => id && index.personById.has(id))
+    .map((id) => index.personById.get(id));
+
+  const dau = document.createElement('div');
+  dau.style.cssText = 'display:flex;gap:12px;align-items:flex-start';
+
+  if (ds.length > 0) {
+    const cumAnh = document.createElement('div');
+    cumAnh.style.cssText = 'flex:0 0 auto;display:flex';
+    ds.forEach((p, i) => {
+      const a = veAnhTron(p, 52);
+      if (i > 0) a.style.marginLeft = '-14px';
+      cumAnh.append(a);
+    });
+    dau.append(cumAnh);
+  }
+
+  const cot = document.createElement('div');
+  cot.style.cssText = 'flex:1 1 auto;min-width:0';
+
+  const ten = document.createElement('div');
+  ten.textContent = ds.length > 0
+    ? ds.map(fullName).join('  và  ')
+    : '(cặp chưa có ai)';
+  ten.style.cssText = 'font-size:18px;font-weight:600;line-height:1.3';
+  cot.append(ten);
+
+  // ⚠ DÒNG PHỤ LÀ SỐ NGƯỜI CON, KHÔNG PHẢI `ghiChuHonNhan(u)`.
+  //
+  // Bản đầu dùng `ghiChuHonNhan` — cùng cái hàm mà thẻ người dùng để chú thích
+  // một người bạn đời — và ảnh `gd-0.png` cho thấy nó kể "đã ly hôn, thứ 2"
+  // ngay trên hai hàng bảng nói y hệt điều ấy. Ba lần một tin trong một khung
+  // hình cao 200px.
+  //
+  // Số người con thì không trùng hàng nào trong bảng, và nó làm thêm một việc
+  // nữa: nói ra rằng đây là thẻ của một GIA ĐÌNH. Ca `U0024` — cặp một người
+  // — lộ ra nhu cầu ấy, vì đầu thẻ lúc đó là đúng một cái tên, đọc lên không
+  // khác gì thẻ người.
+  //
+  // Cặp CHƯA CÓ CON thì không ghi gì: chỗ nói điều đó là nhóm *Con* phía dưới,
+  // ngay cạnh cái nút thêm con — nói ở đây nữa là lại trùng.
+  const soCon = (Array.isArray(u.children) ? u.children : [])
+    .filter((c) => c && c.personId && index.personById.has(c.personId)).length;
+  if (soCon > 0) {
+    const d = document.createElement('div');
+    d.textContent = soCon + ' người con';
+    d.style.cssText = 'font-size:14px;color:#8a8078;margin-top:2px';
+    cot.append(d);
+  }
+
+  const ma = document.createElement('div');
+  ma.textContent = u.id;
+  ma.style.cssText = 'font-size:11px;color:#b3aaa0;margin-top:4px;letter-spacing:.05em';
+  cot.append(ma);
+
+  dau.append(cot);
+  return [dau];
+}
+
+/**
+ * Bảng của cặp, cùng công tắc "Còn N mục chưa điền" với thẻ người.
+ *
+ * ⚠ Hàng *"Cặp này bây giờ"* KHÔNG BAO GIỜ trống: thiếu `status` thì coi là
+ * đang là vợ chồng, đúng cùng phép chuẩn hoá của `union.updateUnion`. Cho nó
+ * rơi vào nhóm "chưa điền" là hỏi người dùng một câu mà dữ liệu đã trả lời.
+ */
+function veHangThongTinCap(u) {
+  const bang = document.createElement('div');
+  bang.style.cssText = 'margin-top:14px;display:flex;flex-direction:column;gap:1px';
+
+  const nut = document.createElement('button');
+  nut.type = 'button';
+  nut.style.cssText =
+    'margin-top:8px;padding:0;font:inherit;font-size:12px;color:#8a6a3a;' +
+    'background:none;border:none;text-decoration:underline;cursor:pointer;' +
+    'touch-action:manipulation;align-self:flex-start';
+
+  const veLaiBang = () => {
+    bang.innerHTML = '';
+    let soTrong = 0;
+    const hang = (nhan, giaTri, coTheDai) => {
+      if (veHang(bang, nhan, giaTri, coTheDai)) soTrong++;
+    };
+
+    const m = (u && typeof u.marriage === 'object' && u.marriage) ? u.marriage : {};
+    hang('Ngày cưới', ghepNgayNoi(m));
+    hang('Bây giờ', u.status === 'divorced' ? 'Đã ly hôn' : 'Đang là vợ chồng');
+    hang('Ghi chú', u.note, true);
+
+    nut.style.display = soTrong === 0 ? 'none' : '';
+    nut.textContent = hienMucTrong
+      ? 'Ẩn ' + soTrong + ' mục chưa điền'
+      : 'Còn ' + soTrong + ' mục chưa điền';
+    nut.setAttribute('aria-label',
+      (hienMucTrong ? 'Ẩn ' : 'Hiện ') + soTrong + ' mục chưa điền');
+  };
+
+  nut.addEventListener('click', () => { hienMucTrong = !hienMucTrong; veLaiBang(); });
+  veLaiBang();
+
+  return [bang, nut];
+}
+
+// --- ⚠ VÌ SAO THẺ GIA ĐÌNH KHÔNG CÓ HÀNG "THỨ BẬC" (chốt 21/08/2026) ----
+//
+// Bản đầu của việc 4 có hàng ấy, kể ra *"vợ / chồng thứ 2"*. Chủ dự án nhìn
+// ảnh `gd-0.png` và bác ngay, bằng một câu gọn hơn mọi thứ viết ở đây:
+//
+//   *"nếu xét góc độ Dũng thì Lan là vợ 2, nếu xét Lan thì Dũng là chồng 1"*
+//
+// `rank` là một con số BẤT ĐỐI XỨNG đang nằm ở một chỗ ĐỐI XỨNG. Nó chỉ có
+// nghĩa khi đọc *từ phía một người*: "cặp thứ mấy CỦA AI". Thẻ gia đình không
+// đứng về phía ai cả — nó nói về cả cặp — nên ở đây con số ấy không có mốc để
+// bám vào, và một con số không mốc thì đọc lên thế nào cũng có một nửa sai.
+//
+// Chỗ `rank` đọc lên ĐÚNG là thẻ NGƯỜI: ở đó `ghiChuHonNhan()` in nó cạnh tên
+// người bạn đời, mà người đang xem chính là cái mốc.
+//
+// ⚠ **VÀ CHÍNH VÌ THẾ CÒN MỘT KHIẾM KHUYẾT CHƯA XỬ LÝ, ĐỪNG MÔ TẢ NHƯ ĐÃ XONG:**
+// dữ liệu chỉ lưu MỘT số `rank` cho cả hai phía. Cặp Dũng–Lan mang `rank: 2`
+// vì Lan là vợ thứ hai của Dũng; nhưng nếu Lan cũng có hai đời chồng thì thẻ
+// của Lan sẽ đọc con số ấy lên thành "Dũng là chồng thứ 2" — sai. Bản dữ liệu
+// hôm nay chưa có ca nào như vậy, nên lỗi chưa lộ. Sửa cho đúng thì phải tách
+// `rank` thành thứ bậc THEO TỪNG PARTNER, và đó là một thay đổi lược đồ dữ
+// liệu, không phải một thay đổi giao diện — chưa làm, chưa hẹn.
+
+/**
+ * Hai nhóm của thẻ gia đình: Vợ/chồng và Con.
+ *
+ * ⚠ Các con xếp theo `order` — quyết định 4 ở đầu mục. Người thiếu `order`
+ * xuống cuối chứ không lên đầu: thiếu số thứ tự nghĩa là chưa ai xếp họ, và
+ * chưa xếp thì đứng sau người đã xếp.
+ */
+function veNguoiTrongCap(index, u, xuLy) {
+  const ra = [];
+
+  const banDoi = [];
+  for (const id of Array.isArray(u.partners) ? u.partners : []) {
+    themNguoi(banDoi, index, id, '');
+  }
+
+  const con = (Array.isArray(u.children) ? u.children : [])
+    .filter((c) => c && c.personId && index.personById.has(c.personId))
+    .slice()
+    .sort((a, b) => soThuTu(a) - soThuTu(b));
+
+  const dsCon = [];
+  for (const c of con) {
+    themNguoi(dsCon, index, c.personId, chuThichQuanHe(c.relation || 'birth', 'con'));
+  }
+
+  ra.push(...veNhom('Vợ / chồng', banDoi, xuLy));
+  ra.push(...veNhom('Con', dsCon, xuLy, nutThemConVaoCap(u, xuLy)));
+
+  if (dsCon.length === 0) {
+    const trong = document.createElement('div');
+    trong.textContent = 'Cặp này chưa có người con nào trong gia phả.';
+    trong.style.cssText =
+      'margin-top:14px;font-size:12px;line-height:1.5;color:#8a8078';
+    ra.push(trong);
+    const them = nutThemConVaoCap(u, xuLy);
+    if (them) { them.style.marginTop = '6px'; ra.push(them); }
+  }
+
+  return ra;
+}
+
+function soThuTu(c) {
+  const n = Number(c && c.order);
+  return Number.isFinite(n) ? n : 9999;
+}
+
+/** Nút *"Thêm người con"*, dùng lại đúng đường thêm con của vòng tròn. */
+function nutThemConVaoCap(u, xuLy) {
+  if (!xuLy || !xuLy.onThemCon) return null;
+  if (!suaDuoc()) return null;
+
+  const nut = document.createElement('button');
+  nut.type = 'button';
+  nut.dataset.viec = 'them-con';
+  nut.style.cssText =
+    'display:block;width:100%;text-align:left;padding:9px 11px;font-family:inherit;' +
+    'font-size:13px;color:#8a8078;border:1px dashed #e6e0d8;border-radius:8px;' +
+    'background:none;cursor:pointer;touch-action:manipulation';
+  nut.textContent = 'Thêm một người con vào gia đình này';
+
+  nut.addEventListener('click', () => {
+    closePersonDetail();
+    xuLy.onThemCon(u.id);
+  });
+  return nut;
+}
+
+/** Chân thẻ gia đình: Sửa · Sắp thứ tự các con · Đóng. */
+function veChanTheCap(u, xuLy) {
+  const chan = document.createElement('div');
+  chan.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:16px';
+
+  const mocId = (Array.isArray(u.partners) ? u.partners : [])
+    .find((id) => id && state.index.personById.has(id)) || '';
+
+  if (suaDuoc() && xuLy.onSuaCap && mocId) {
+    chan.append(nutChan('Sửa gia đình này', true,
+      () => { closePersonDetail(); xuLy.onSuaCap(mocId, u.id); }));
+  }
+
+  // Chỉ mọc khi có ÍT NHẤT HAI người con — một mình thì không có thứ tự nào để
+  // sắp, cùng đúng điều kiện của nutSapThuTu trên thẻ người.
+  const soCon = (Array.isArray(u.children) ? u.children : [])
+    .filter((c) => c && c.personId && state.index.personById.has(c.personId)).length;
+  if (suaDuoc() && xuLy.onSapThuTu && soCon >= 2 && mocId) {
+    chan.append(nutChan('Sắp thứ tự các con', false,
+      () => { closePersonDetail(); xuLy.onSapThuTu(mocId, 'con'); }));
+  }
+
+  chan.append(nutChan('Đóng', false, () => closePersonDetail()));
+  return chan;
 }
 
 // ============================================================
@@ -565,7 +869,9 @@ function veQuanHe(index, p, xuLy) {
   }
 
   ra.push(...veNhom('Cha mẹ', chaMe, xuLy));
-  ra.push(...veNhom('Vợ/chồng', banDoi, xuLy, nutSuaCap(p, xuLy)));
+  // MỘT NÚT MỘT CẶP — quyết định 1 của thẻ gia đình. Người có hai đời vợ thì
+  // hai dòng, mỗi dòng gọi thẳng tên người kia; không có hộp nào hỏi "cặp nào".
+  ra.push(...veNhom('Vợ/chồng', banDoi, xuLy, ...nutXemGiaDinh(index, p, xuLy)));
   ra.push(...veNhom('Con', con, xuLy, nutSapThuTu(p, xuLy)));
   return ra;
 }
@@ -604,24 +910,35 @@ function themNguoi(vao, index, id, ghiChu) {
  * @returns {HTMLElement|null} null khi nơi gọi không nhận việc này — lúc ấy
  *          nhóm Vợ/chồng hiện như cũ, không có nút chết nào mọc ra.
  */
-function nutSuaCap(p, xuLy) {
-  if (!xuLy || !xuLy.onSuaCap) return null;
-  if (!suaDuoc()) return null;   // chỉ có quyền xem thì không mọc nút sửa
+function nutXemGiaDinh(index, p, xuLy) {
+  const ds = getPartnerUnions(index, p.id);
+  if (ds.length === 0) return [];
 
-  const nut = document.createElement('button');
-  nut.type = 'button';
-  nut.dataset.viec = 'sua-cap';
-  nut.style.cssText =
-    'display:block;width:100%;text-align:left;padding:9px 11px;font-family:inherit;' +
-    'font-size:13px;color:#8a8078;border:1px dashed #e6e0d8;border-radius:8px;' +
-    'background:none;cursor:pointer;touch-action:manipulation';
-  nut.textContent = 'Sửa cặp — ngày cưới, ly hôn, thứ bậc, chỗ đứng trên sơ đồ';
+  // ⚠ KHÔNG đòi `suaDuoc()`. Đây là cửa vào một màn hình ĐỌC, khác hẳn nút
+  // *"Sửa cặp"* mà nó thay thế: người chỉ có quyền xem vẫn phải xem được ngày
+  // cưới và các con của một gia đình. Nút SỬA nằm trong thẻ ấy, và chính nó
+  // mới hỏi `suaDuoc()`.
+  return ds.map((u) => {
+    const kia = (Array.isArray(u.partners) ? u.partners : [])
+      .filter((id) => id && id !== p.id && index.personById.has(id))
+      .map((id) => fullName(index.personById.get(id)))
+      .join('  và  ');
 
-  nut.addEventListener('click', () => {
-    closePersonDetail();
-    xuLy.onSuaCap(p.id);
+    const nut = document.createElement('button');
+    nut.type = 'button';
+    nut.dataset.viec = 'xem-gia-dinh';
+    nut.dataset.cap = u.id;
+    nut.style.cssText =
+      'display:block;width:100%;text-align:left;padding:9px 11px;font-family:inherit;' +
+      'font-size:13px;color:#8a8078;border:1px dashed #e6e0d8;border-radius:8px;' +
+      'background:none;cursor:pointer;touch-action:manipulation';
+    nut.textContent = coGiaTri(kia)
+      ? 'Xem gia đình với ' + kia + ' — ngày cưới, các con'
+      : 'Xem gia đình này — ngày cưới, các con';
+
+    nut.addEventListener('click', () => openUnionDetail(u.id, xuLy));
+    return nut;
   });
-  return nut;
 }
 
 /**
@@ -668,7 +985,7 @@ function nutSapThuTu(p, xuLy) {
   return nut;
 }
 
-function veNhom(tieuDe, danhSach, xuLy, nutPhu) {
+function veNhom(tieuDe, danhSach, xuLy, ...cacNutPhu) {
   if (danhSach.length === 0) return [];   // nhóm rỗng thì ẩn cả nhóm
 
   const nhan = document.createElement('div');
@@ -709,7 +1026,7 @@ function veNhom(tieuDe, danhSach, xuLy, nutPhu) {
     hop.append(nut);
   }
 
-  if (nutPhu) hop.append(nutPhu);
+  for (const n of cacNutPhu) if (n) hop.append(n);
   return [nhan, hop];
 }
 
