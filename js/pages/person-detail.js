@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
 //            utils/{text,date,image}, config
-// Phiên bản: 1.17.0 · Cập nhật: 21/08/2026 21:40
+// Phiên bản: 1.18.0 · Cập nhật: 21/08/2026 16:00
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -109,7 +109,8 @@ import { mauVien } from '../domains/render.js';
 import { fullName, coGiaTri, doiSongNguoi, ngayGio } from '../utils/text.js';
 import { formatDate, calcAge } from '../utils/date.js';
 import { driveThumbUrl, anhMacDinhUri } from '../utils/image.js';
-import { nhanLoaiTenPhu, chuThichQuanHe } from '../config.js';
+import { nhanLoaiTenPhu, chuThichQuanHe,
+         rongHop, caoHop, leLopPhu } from '../config.js';
 
 let lopPhu = null;   // lớp phủ đang mở, hoặc null
 
@@ -139,12 +140,14 @@ let hienMucTrong = false;
 // hai lần ở đây: cùng họ với `--window-size` không ăn ở chế độ `--dump-dom`.
 const KIEU_LOP_PHU =
   'position:fixed;inset:0;background:rgba(42,38,34,.35);z-index:30;' +
-  'display:flex;align-items:center;justify-content:center;padding:20px;' +
+  'display:flex;align-items:center;justify-content:center;' +
+  'padding:' + leLopPhu() + ';' +
   'font-family:system-ui,sans-serif;color:#2a2622';
 
 const KIEU_HOP =
   'background:#fffdf9;border-radius:14px;padding:18px;box-sizing:border-box;' +
-  'width:100%;max-width:360px;max-height:82vh;overflow:auto;' +
+  'width:100%;max-width:' + rongHop(360, 620) + ';' +
+  'max-height:' + caoHop(82) + ';overflow:auto;' +
   'box-shadow:0 8px 32px rgba(42,38,34,.28);-webkit-overflow-scrolling:touch;'
 
 /**
@@ -1159,7 +1162,7 @@ export function openPersonMenu(personId, xuLy = {}) {
 
   const hop = document.createElement('div');
   hop.id = 'giapha-menu-nguoi';
-  hop.style.cssText = KIEU_HOP + 'max-width:340px;';
+  hop.style.cssText = KIEU_HOP + 'max-width:' + rongHop(340, 420, 46) + ';';
 
   // KHÔNG vẽ ảnh ở đầu MENU — tâm vòng tròn ngay bên dưới đã là ảnh. Cùng một
   // khuôn mặt hai lần trong một hộp rộng 340px thì cái ở trên chỉ làm loãng cái
@@ -1223,8 +1226,8 @@ function renderActionMenu(p, xuLy, khoiChon) {
   // ngoài hộp trên màn hình hẹp không — thứ chỉ đo được trong trình duyệt thật.
   vong.id = 'giapha-vong-tron';
   vong.style.cssText =
-    'position:relative;width:100%;max-width:280px;margin:0 auto;' +
-    'aspect-ratio:' + TY_LE_KHUNG + ';';
+    'position:relative;width:100%;max-width:' + rongHop(280, 360, 26) + ';' +
+    'margin:0 auto;aspect-ratio:' + TY_LE_KHUNG + ';';
 
   vong.append(nutTam(p, xuLy));
   for (const m of VANH) vong.append(nutVanh(m, p, xuLy, khoiChon, coQuyen));

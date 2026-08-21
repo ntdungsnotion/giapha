@@ -3,7 +3,7 @@
 // Vai trò  : Màn hình Cài đặt — người trung tâm mặc định, tuỳ chọn hiển thị
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, services/gas, utils/text
-// Phiên bản: 1.6.0 · Cập nhật: 21/08/2026 00:10
+// Phiên bản: 1.7.0 · Cập nhật: 21/08/2026 16:00
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
@@ -55,6 +55,7 @@
 import { state, notify } from '../state.js';
 import { coMayChu, datNguoiTrungTamMacDinh, xoaNguoiTrungTamMacDinh } from '../services/gas.js';
 import { fullName, coGiaTri, doiSongNguoi } from '../utils/text.js';
+import { rongHop, caoHop, leLopPhu, RONG_NUT_TOI_DA } from '../config.js';
 
 let lopPhu = null;
 let xuLyNgoai = {};   // { onDoiMacDinh } — nơi gọi truyền vào
@@ -85,14 +86,17 @@ export function openSettings(xuLy = {}) {
   lopPhu = document.createElement('div');
   lopPhu.style.cssText =
     'position:fixed;inset:0;background:rgba(42,38,34,.35);z-index:30;' +
-    'display:flex;align-items:center;justify-content:center;padding:20px;' +
+    'display:flex;align-items:center;justify-content:center;' +
+    'padding:' + leLopPhu() + ';' +
     'font-family:system-ui,sans-serif;color:#2a2622';
 
   const hop = document.createElement('div');
   hop.id = 'giapha-cai-dat';
   hop.style.cssText =
-    'background:#fffdf9;border-radius:14px;padding:18px;width:100%;max-width:380px;' +
-    'max-height:82vh;overflow:auto;box-shadow:0 8px 32px rgba(42,38,34,.28);' +
+    'background:#fffdf9;border-radius:14px;padding:18px;box-sizing:border-box;' +
+    'width:100%;max-width:' + rongHop(380, 600) + ';' +
+    'max-height:' + caoHop(82) + ';overflow:auto;' +
+    'box-shadow:0 8px 32px rgba(42,38,34,.28);' +
     '-webkit-overflow-scrolling:touch';
 
   const tieuDe = document.createElement('div');
@@ -108,7 +112,8 @@ export function openSettings(xuLy = {}) {
   dong.type = 'button';
   dong.textContent = 'Đóng';
   dong.style.cssText =
-    'margin-top:18px;width:100%;height:42px;font-size:14px;font-family:inherit;' +
+    'margin:18px auto 0;display:block;width:100%;height:42px;' +
+    'max-width:' + RONG_NUT_TOI_DA + ';font-size:14px;font-family:inherit;' +
     'border:1px solid #e6e0d8;border-radius:9px;background:#faf8f5;cursor:pointer;' +
     'touch-action:manipulation';
   dong.addEventListener('click', () => closeSettings());

@@ -4,7 +4,7 @@
 //            + MÀN HÌNH THÙNG RÁC — đường quay lại của người và cặp đã xoá
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/person, domains/union, utils/text
-// Phiên bản: 1.1.0 · Cập nhật: 20/08/2026 21:10
+// Phiên bản: 1.2.0 · Cập nhật: 21/08/2026 16:00
 // ============================================================
 //
 // --- Vì sao màn hình này phải có (bước 24) ------------------------------
@@ -74,6 +74,7 @@ import { state } from '../state.js';
 import { searchPersons } from '../domains/person.js';
 import { listDeletedUnions } from '../domains/union.js';
 import { fullName, coGiaTri } from '../utils/text.js';
+import { rongHop, caoHop, leLopPhu, RONG_NUT_TOI_DA } from '../config.js';
 
 /** Nhiều hơn mức này thì không vẽ hết — xem `conThua` trong `searchPersons`. */
 const TOI_DA = 200;
@@ -125,7 +126,8 @@ function moManHinh(che, xuLy) {
   lopPhu = document.createElement('div');
   lopPhu.style.cssText =
     'position:fixed;inset:0;background:rgba(42,38,34,.35);z-index:30;' +
-    'display:flex;align-items:center;justify-content:center;padding:20px;' +
+    'display:flex;align-items:center;justify-content:center;' +
+    'padding:' + leLopPhu() + ';' +
     'font-family:system-ui,sans-serif;color:#2a2622';
 
   // Cột dọc, phần đầu đứng yên và chỉ phần danh sách cuộn: gõ thêm một chữ mà
@@ -140,8 +142,8 @@ function moManHinh(che, xuLy) {
   hop.id = 'giapha-danh-sach';
   hop.style.cssText =
     'background:#fffdf9;border-radius:14px;padding:18px;box-sizing:border-box;' +
-    'width:100%;max-width:420px;' +
-    'height:82vh;display:flex;flex-direction:column;' +
+    'width:100%;max-width:' + rongHop(420, 680) + ';' +
+    'height:' + caoHop(82) + ';display:flex;flex-direction:column;' +
     'box-shadow:0 8px 32px rgba(42,38,34,.28)';
 
   const laThungRac  = cheDo === 'thungRac';
@@ -211,7 +213,8 @@ function moManHinh(che, xuLy) {
  */
 function veChan(laThungRac, laChonNguoi) {
   const chan = document.createElement('div');
-  chan.style.cssText = 'display:flex;gap:8px;margin-top:14px;flex:0 0 auto';
+  chan.style.cssText =
+    'display:flex;gap:8px;margin-top:14px;flex:0 0 auto;justify-content:center';
 
   if (!laThungRac && !laChonNguoi && xuLyNgoai.onThungRac) {
     const rac = nutChan('Thùng rác (' + demThungRac() + ')', () => {
@@ -233,6 +236,7 @@ function nutChan(chu, chay) {
   nut.textContent = chu;
   nut.style.cssText =
     'flex:1 1 0;height:42px;font-size:14px;font-family:inherit;color:inherit;' +
+    'max-width:' + RONG_NUT_TOI_DA + ';' +
     'border:1px solid #e6e0d8;border-radius:9px;background:#faf8f5;' +
     'cursor:pointer;touch-action:manipulation';
   nut.addEventListener('click', chay);

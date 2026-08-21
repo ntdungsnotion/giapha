@@ -3,7 +3,7 @@
 // Vai trò  : Hằng số hiển thị phía trình duyệt.
 // Lớp      : config — không gọi file nào khác
 // Phụ thuộc: (không)
-// Phiên bản: 0.11.0 · Cập nhật: 21/08/2026 18:20
+// Phiên bản: 0.12.0 · Cập nhật: 21/08/2026 16:00
 // ============================================================
 //
 // LƯU Ý: từ khi chuyển sang kiến trúc Apps Script, file này KHÔNG còn
@@ -258,4 +258,129 @@ export function chuThichQuanHe(ma, phia) {
   if (m === '' || m === 'birth') return '';
   const chu = nhanQuanHeCon(m, phia);
   return chu ? chu.charAt(0).toLowerCase() + chu.slice(1) : '';
+}
+
+// ============================================================
+// KHỔ MÀN HÌNH — hai công thức dùng chung cho MỌI lớp phủ
+// ============================================================
+//
+// Chốt 21/08/2026 (việc KM). Chủ dự án: form thiết kế cho điện thoại DỌC, nên
+// điện thoại NẰM NGANG và MÁY ĐỂ BÀN dùng chưa thoải mái — hộp vẫn hẹp đúng
+// 360px giữa một màn hình rộng 1440px.
+//
+// ⚠ **Dự án KHÔNG có file CSS.** Mọi kiểu viết thẳng vào `style.cssText`, mà
+// `@media` KHÔNG dùng được với kiểu inline. Nên cả hai việc — rộng ra trên máy
+// để bàn, cao lên khi màn hình thấp — phải làm bằng **CSS thuần co giãn**
+// (`clamp` · `min` · `max` · `vw` · `vh`), không một câu điều kiện nào trong JS.
+//
+// ⚠ **Hai công thức này là thứ mọi màn hình sinh sau phải GỌI.** Trước hôm nay
+// bảy chỗ chép tay bảy chuỗi `max-width:…px` rời nhau, và mỗi màn hình mới lại
+// chép thêm một bản. Gõ thẳng một con số px vào màn hình mới là dựng lại đúng
+// cái vừa phải đi sửa bảy lần.
+//
+// ⚠ **MỨC 3 — form hai cột trên màn hình rộng — ĐÃ LOẠI, đừng dựng lại.** Chủ
+// dự án: *"gây trải nghiệm không đồng bộ"*. Ai quen form một cột trên điện
+// thoại mà mở máy tính ra thấy hai cột thì phải học lại chỗ của từng ô.
+
+/**
+ * Chiều cao tối thiểu mà một hộp được phép chiếm, khi màn hình quá thấp để
+ * `xxvh` còn đủ dùng — điện thoại nằm ngang cao chừng 360–400px.
+ *
+ * 340px là chiều cao của khung vòng tròn (`280 × 320`) cộng chỗ cho một dòng
+ * tiêu đề. Thấp hơn nữa thì hộp nào cũng thành một khe ngang phải cuộn ba lần.
+ */
+const SAN_CAO_HOP = 340;
+
+/**
+ * Bề ngang của một hộp phủ, dạng giá trị cho `max-width`.
+ *
+ * ⚠ **`coSo` phải bằng ĐÚNG bề ngang hộp ấy đang có hôm nay.** Nhờ vậy không
+ * một khổ màn hình nào hẹp ĐI sau việc này — đó là điều kiện để mức 1+2 không
+ * phá thứ đang chạy tốt trên điện thoại DỌC. Trên 360px, `62vw` chỉ ra 223px
+ * nên `clamp` lấy sàn, tức hộp giữ nguyên xưa nay.
+ *
+ * `tiLeVw` cao (≈62) chứ không phải 46: chỗ được lợi nhiều nhất không phải máy
+ * để bàn — nó đã chạm trần — mà là **điện thoại nằm ngang** (740 × 360), nơi
+ * 46vw chỉ ra 340px, tức không rộng thêm một pixel nào so với hôm nay.
+ *
+ * @param {number} coSo   bề ngang hôm nay, px — cũng là sàn, không bao giờ hẹp hơn
+ * @param {number} toiDa  trần, px — chỗ chữ dài quá một dòng thì khó đọc
+ * @param {number} [tiLeVw] phần trăm bề ngang màn hình ở khoảng giữa
+ * @returns {string} chuỗi `clamp(...)` để ghép sau `max-width:`
+ */
+export function rongHop(coSo, toiDa, tiLeVw = 62) {
+  return 'clamp(' + coSo + 'px, ' + tiLeVw + 'vw, ' + toiDa + 'px)';
+}
+
+/**
+ * Chiều cao trần của một hộp phủ, dạng giá trị cho `max-height` (hoặc `height`
+ * ở màn hình Danh sách người, nơi chiều cao chốt cứng có lý do riêng).
+ *
+ * Công thức đọc là: **giữ nguyên `tiLeVh` như xưa nay, chỉ NỚI RA khi màn hình
+ * thấp đến mức `tiLeVh` không còn đủ `SAN_CAO_HOP`** — và ngay cả lúc nới cũng
+ * không vượt quá chỗ trống thật giữa hai lề của lớp phủ.
+ *
+ *   `max( <tiLeVh>vh , min( 340px , 100vh − hai lề ) )`
+ *
+ * Ba khổ để đọc ra ba nhánh, với `tiLeVh = 82` và lề 20px:
+ *
+ *   điện thoại DỌC   640px cao → max(525, min(340, 600)) = **525** — y hệt hôm nay
+ *   máy để bàn       900px cao → max(738, min(340, 860)) = **738** — y hệt hôm nay
+ *   điện thoại NGANG 360px cao → max(295, min(340, 331)) = **331** — nới ra, và
+ *                                vẫn vừa khít giữa hai lề nên KHÔNG tràn
+ *
+ * ⚠ Nhánh thứ ba là toàn bộ lý do có `min(...)`. Bỏ nó đi mà viết thẳng 340px
+ * thì trên màn hình cao 300px hộp sẽ cao hơn chỗ nó đứng, và vì lớp phủ căn
+ * GIỮA nên nó bị cắt CẢ HAI ĐẦU — phần trên cuộn tới không được nữa.
+ *
+ * ⚠ Phần trừ đi phải là **`haiLe()` của chính lớp phủ đang bọc hộp**, không
+ * phải một con số gõ tay: lề co lại trên màn hình thấp (xem `leLopPhu`), và hai
+ * công thức lệch nhau dù chỉ 8px là hộp thò ra ngoài đúng 8px ấy.
+ *
+ * @param {number} tiLeVh  tỉ lệ chiều cao hôm nay (82 · 86 · 70…)
+ * @param {number} [le]    `padding` gốc của lớp phủ, px — MỘT bên
+ * @returns {string} chuỗi `max(...)` để ghép sau `max-height:`
+ */
+export function caoHop(tiLeVh, le = 20) {
+  return 'max(' + tiLeVh + 'vh, min(' + SAN_CAO_HOP + 'px, ' +
+         'calc(100vh - ' + haiLe(le) + ')))';
+}
+
+/**
+ * Bề ngang TỐI ĐA của một nút hành động, khi hộp đã rộng ra.
+ *
+ * ⚠ Chốt sau khi NHÌN ẢNH của việc KM, không phải trước. Hộp rộng ra thì mọi
+ * thứ `width:100%` hay `flex:1` bên trong rộng theo, và một nút *Đóng* dài
+ * 640px thì đọc ra thành một cái thanh, không ra một cái nút — trong khi đích
+ * chạm chẳng khá hơn nút 320px chút nào. Bài kiểm tự động cho qua trọn vẹn:
+ * nút ấy KHÔNG SAI, nó chỉ xấu. Đây là lần thứ TÁM trong dự án này một lỗi bố
+ * cục chỉ lộ ra khi có người mở ảnh ra nhìn.
+ *
+ * 320px vì đó là bề ngang nút trên điện thoại dọc — khổ mà cả họ đang dùng.
+ * Lấy đúng con số ấy làm trần thì nút trên máy để bàn **to bằng** nút trên
+ * điện thoại, không to hơn: cùng một màn hình, không phải hai.
+ */
+export const RONG_NUT_TOI_DA = '320px';
+
+/**
+ * `padding` của một lớp phủ — **lề co lại khi màn hình thấp**.
+ *
+ * Lề trên/dưới 20px là 11% chiều cao của một điện thoại nằm ngang, mà lại chỉ
+ * là 4% của một màn hình máy để bàn. Cùng một con số px đọc ra hai nghĩa khác
+ * hẳn nhau, nên nó phải co: **đủ 20px khi màn cao từ 500px trở lên, dưới mức ấy
+ * thì thu theo đúng tỉ lệ.**
+ *
+ * Lề TRÁI/PHẢI không co — bề ngang chưa bao giờ là thứ thiếu ở đây, và một hộp
+ * chạm sát mép màn hình thì mất luôn chỗ bấm-ra-ngoài-để-đóng.
+ *
+ * @param {number} [le] lề gốc, px
+ * @returns {string} chuỗi để ghép sau `padding:`
+ */
+export function leLopPhu(le = 20) {
+  return 'min(' + le + 'px, ' + (le / 5) + 'vh) ' + le + 'px';
+}
+
+/** Tổng hai lề trên–dưới của `leLopPhu(le)`. Dùng trong `calc()` của `caoHop`. */
+function haiLe(le) {
+  return 'min(' + (le * 2) + 'px, ' + (le * 2 / 5) + 'vh)';
 }

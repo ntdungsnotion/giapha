@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render,union}, utils/text,
 //            pages/{person-detail,person-edit,person-list,settings}
-// Phiên bản: 1.18.0 · Cập nhật: 21/08/2026 21:05
+// Phiên bản: 1.19.0 · Cập nhật: 21/08/2026 16:00
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -74,6 +74,7 @@ import { openPersonForm, closePersonForm, quickAddChild, quickAddParent,
          khoiPhucNguoi, khoiPhucCap } from './person-edit.js';
 import { openPersonList, closePersonList, openThungRac } from './person-list.js';
 import { openSettings, closeSettings } from './settings.js';
+import { rongHop, caoHop, leLopPhu } from '../config.js';
 
 let khungCuon = null;   // div cuộn được, bọc quanh SVG
 let vungSoDo  = null;   // bọc khungCuon + ba cụm nút nổi; mốc neo của các nút
@@ -1038,7 +1039,8 @@ function hienLoiNhan(tieuDe, giaiThich) {
   if (khungCuon) khungCuon.style.padding = '0';
 
   const hop = document.createElement('div');
-  hop.style.cssText = 'max-width:420px;margin:48px auto;padding:0 24px;line-height:1.6';
+  hop.style.cssText = 'max-width:' + rongHop(420, 620) + ';' +
+                      'margin:48px auto;padding:0 24px;line-height:1.6';
 
   const h = document.createElement('h2');
   h.textContent = tieuDe;
@@ -1060,12 +1062,15 @@ function hienDanhSachChon(danhSachId) {
   const phu = document.createElement('div');
   phu.style.cssText =
     'position:fixed;inset:0;background:rgba(42,38,34,.35);z-index:20;' +
-    'display:flex;align-items:center;justify-content:center;padding:24px';
+    'display:flex;align-items:center;justify-content:center;' +
+    'padding:' + leLopPhu(24) + ';';
 
   const hop = document.createElement('div');
   hop.style.cssText =
-    'background:#fffdf9;border-radius:12px;padding:18px;max-width:340px;width:100%;' +
-    'max-height:70vh;overflow:auto;box-shadow:0 8px 32px rgba(42,38,34,.25);' +
+    'background:#fffdf9;border-radius:12px;padding:18px;box-sizing:border-box;' +
+    'width:100%;max-width:' + rongHop(340, 520) + ';' +
+    'max-height:' + caoHop(70, 24) + ';overflow:auto;' +
+    'box-shadow:0 8px 32px rgba(42,38,34,.25);' +
     'font-family:system-ui,sans-serif;color:#2a2622';
 
   const h = document.createElement('div');

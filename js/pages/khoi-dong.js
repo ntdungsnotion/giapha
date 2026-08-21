@@ -4,7 +4,7 @@
 //            báo lỗi rõ ràng nếu người dùng không có quyền xem.
 // Lớp      : pages
 // Phụ thuộc: services/repo, pages/tree-view
-// Phiên bản: 0.6.0 · Cập nhật: 17/08/2026 08:58
+// Phiên bản: 0.7.0 · Cập nhật: 21/08/2026 16:00
 // ============================================================
 //
 // Chat 1.5 đã gỡ hẳn khối thử 0.11 và bảng "Đã kết nối máy chủ" đi cùng nó.
@@ -18,6 +18,7 @@
 
 import * as repo from '../services/repo.js';
 import { mountTreeView } from './tree-view.js';
+import { rongHop } from '../config.js';
 
 /**
  * Hiện màn hình chờ, gọi repo.khoiTao(), rồi chuyển sang tree-view.
@@ -99,7 +100,8 @@ function hienManHinhLoi(el, loi) {
 
 function khung(phanTu) {
   const d = document.createElement('div');
-  d.style.cssText = 'max-width:520px;margin:0 auto;padding:32px 24px;' +
+  d.style.cssText = 'max-width:' + rongHop(520, 680) + ';' +
+                    'margin:0 auto;padding:32px 24px;' +
                     'font-family:system-ui,sans-serif;color:#2a2622;' +
                     'line-height:1.6';
   phanTu.filter(Boolean).forEach(x => d.append(x));

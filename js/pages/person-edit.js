@@ -6,7 +6,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate,media,render},
 //            services/{repo,gas}, utils/{graph,text,date,image}, config
-// Phiên bản: 1.14.0 · Cập nhật: 21/08/2026 21:05
+// Phiên bản: 1.15.0 · Cập nhật: 21/08/2026 16:00
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -148,8 +148,9 @@ import { fullName, coGiaTri } from '../utils/text.js';
 import { formatDate, parseLooseDate, stampNow, mocNgay } from '../utils/date.js';
 import { compressImage, driveThumbUrl, anhMacDinhUri, dataUri, moTaCo }
   from '../utils/image.js';
-import { LOAI_TEN_PHU, nhanLoaiTenPhu,
-         QUAN_HE_CON_NHAN, nhanQuanHeCon, chuThichQuanHe } from '../config.js';
+import { LOAI_TEN_PHU, nhanLoaiTenPhu, QUAN_HE_CON_NHAN, nhanQuanHeCon,
+         chuThichQuanHe, rongHop, caoHop, leLopPhu,
+         RONG_NUT_TOI_DA } from '../config.js';
 
 let lopPhu     = null;   // lớp phủ đang mở, hoặc null
 let o          = {};     // các ô nhập, tra theo tên trường
@@ -1131,7 +1132,7 @@ function nutChonAnh(nguoi) {
   nhan.style.cssText =
     'display:block;min-height:40px;padding:10px 12px;box-sizing:border-box;' +
     'font-size:14px;text-align:center;border-radius:9px;border:1px solid #e6e0d8;' +
-    'background:#faf8f5;line-height:1.3;' +
+    'background:#faf8f5;line-height:1.3;max-width:' + RONG_NUT_TOI_DA + ';' +
     'cursor:' + (batDuoc ? 'pointer' : 'not-allowed') + ';' +
     'opacity:' + (batDuoc ? '1' : '0.45');
   nhan.textContent = anhDangTai ? 'Đang tải lên…' : (anhChon ? 'Chọn ảnh khác' : 'Chọn ảnh');
@@ -1489,13 +1490,14 @@ function veChan(nguoi, luuDuoc) {
   const chan = document.createElement('div');
   chan.style.cssText =
     'display:flex;gap:8px;margin-top:18px;position:sticky;bottom:-18px;' +
-    'padding:10px 0;background:#fffdf9';
+    'padding:10px 0;background:#fffdf9;justify-content:center';
 
   nutLuu = document.createElement('button');
   nutLuu.type = 'button';
   nutLuu.textContent = laCheDoThem() ? tieuDeForm() : 'Lưu';
   nutLuu.disabled = !luuDuoc;
-  nutLuu.style.cssText = KIEU_NUT_CHAN + 'flex:1 1 auto;' +
+  nutLuu.style.cssText = KIEU_NUT_CHAN +
+    'flex:1 1 auto;max-width:' + RONG_NUT_TOI_DA + ';' +
     (luuDuoc
       ? 'background:#2a2622;color:#fffdf9;border:1px solid #2a2622;font-weight:600'
       : 'background:#2a2622;color:#fffdf9;border:1px solid #2a2622;opacity:.45;cursor:not-allowed');
@@ -2112,13 +2114,15 @@ const KIEU_NUT_CHAN =
 // hai hộp của cùng file này chồng lên nhau mà không ai biết vì sao.
 const KIEU_LOP_PHU =
   'position:fixed;inset:0;background:rgba(42,38,34,.35);z-index:35;' +
-  'display:flex;align-items:center;justify-content:center;padding:20px;' +
+  'display:flex;align-items:center;justify-content:center;' +
+  'padding:' + leLopPhu() + ';' +
   'font-family:system-ui,sans-serif;color:#2a2622';
 
 const KIEU_HOP =
   'background:#fffdf9;border-radius:14px;padding:18px;box-sizing:border-box;' +
-  'width:100%;max-width:380px;' +
-  'max-height:86vh;overflow:auto;box-shadow:0 8px 32px rgba(42,38,34,.28);' +
+  'width:100%;max-width:' + rongHop(380, 640) + ';' +
+  'max-height:' + caoHop(86) + ';overflow:auto;' +
+  'box-shadow:0 8px 32px rgba(42,38,34,.28);' +
   '-webkit-overflow-scrolling:touch';
 
 // ============================================================
