@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
 //            utils/{text,date,image}, config
-// Phiên bản: 1.13.0 · Cập nhật: 21/08/2026 18:20
+// Phiên bản: 1.15.0 · Cập nhật: 21/08/2026 20:15
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -36,8 +36,45 @@
 // bộ khác nhau là thứ đẻ ra cảnh cùng một nút mà lúc chạy lúc không, tuỳ người
 // dùng đã đi qua màn hình nào.
 //
-// Trường trống thì ẨN CẢ HÀNG: không nhãn, không giá trị, không "Không rõ".
-// Dùng utils/text.coGiaTri(), đừng tự kiểm theo kiểu riêng.
+// --- MỤC CÒN TRỐNG: MẶC ĐỊNH ẨN, CÓ CÔNG TẮC MỞ RA (21/08/2026) --------
+//
+// Trường trống thì ẨN CẢ HÀNG — luật 14/08/2026, `CLAUDE.md` mục 7, **vẫn còn
+// nguyên giá trị và mặc định của thẻ vẫn đúng như thế**. Dùng
+// utils/text.coGiaTri(), đừng tự kiểm theo kiểu riêng.
+//
+// Thêm ngày 21/08/2026, sau khi chủ dự án hỏi *"tại sao bấm ⓘ không hiện đủ
+// thông tin như khi sửa hồ sơ"*: dưới bảng có một dòng bấm được —
+// **"Còn N mục chưa điền"** — mở ra thì các hàng trống hiện lên đúng CHỖ CỦA
+// CHÚNG trong bảng, nhãn mờ và giá trị là một dấu "—".
+//
+// --- Vì sao là công tắc, không phải đảo hẳn luật -----------------------
+//
+// Hai nhu cầu thật, ngược nhau, và cái thẻ phải phục vụ cả hai:
+//
+//   · ĐỌC một người   → hàng trống là nhiễu. Mười ba dòng gạch để tìm ba dòng
+//                       có chữ là bắt người ta làm việc của cái máy.
+//   · RÀ để đi điền   → hàng trống chính là thứ cần thấy. Thẻ ngắn trông y hệt
+//                       dữ liệu bị mất, và người dùng không có cách nào biết
+//                       app còn hỏi được những gì.
+//
+// Ẩn hẳn thì hỏng nhu cầu thứ hai; hiện hẳn thì hỏng nhu cầu thứ nhất. Bản
+// ngày 21/08 đã thử hiện hẳn và chụp ảnh (`kiem-thu/td-0.png`) — đọc được,
+// nhưng chủ dự án chốt công tắc, và công tắc đúng hơn: nó nói ra CON SỐ mục
+// còn thiếu ngay cả khi đang đóng, tức là giải quyết nhu cầu thứ hai mà không
+// tốn một dòng nào của nhu cầu thứ nhất.
+//
+// ⚠ **HÀNG TRỐNG PHẢI NẰM ĐÚNG CHỖ CỦA NÓ, không dồn xuống cuối.** Mở công tắc
+// ra mà bảy hàng trống xếp thành một cụm ở đáy thì thứ tự đọc vỡ, và người
+// dùng không đối chiếu được với form — mà đối chiếu với form đúng là việc họ
+// đang làm. Vì thế bấm công tắc là VẼ LẠI cả bảng, không phải lật `display`.
+//
+// ⚠ **Trạng thái công tắc nhớ qua các lần mở thẻ, trong cùng một phiên.** Ai
+// bật nó lên là đang đi rà cả một loạt người; bắt bật lại cho từng người là
+// bắt trả lời một câu hỏi đã trả lời rồi. Tải lại trang thì về mặc định ẩn.
+//
+// ⚠ **Hàng trống KHÔNG được mang chữ "Không rõ" hay "..."** — nửa ấy của luật
+// cũ không bị đụng tới. Dấu "—" là quy ước bảng kê cho ô chưa điền, không phải
+// một lời khẳng định về người ta.
 //
 // Điểm dừng của chat 1.6: "xem xong một người là biết đủ, không phải cuộn
 // tìm". Vì thế thẻ này gom cả BA nhóm quan hệ — cha mẹ, vợ/chồng, con — chứ
@@ -74,6 +111,10 @@ import { nhanLoaiTenPhu, chuThichQuanHe } from '../config.js';
 let lopPhu = null;   // lớp phủ đang mở, hoặc null
 
 const GIOI = { M: 'Nam', F: 'Nữ' };   // 'U' cố ý KHÔNG có mặt — xem veHang()
+
+// Công tắc "Còn N mục chưa điền". Nhớ qua các lần mở thẻ trong cùng một phiên
+// — xem ghi chú đầu file. KHÔNG dọn nó ở `closePersonDetail`.
+let hienMucTrong = false;
 
 // Lớp phủ và hộp trắng: MỘT chỗ định nghĩa cho cả file, dùng chung cho THẺ và
 // cho MENU. Chép ra hai bản thì bản đầu tiên trôi lệch bao giờ cũng là
@@ -259,47 +300,30 @@ function veHangThongTin(p) {
   const bang = document.createElement('div');
   bang.style.cssText = 'margin-top:14px;display:flex;flex-direction:column;gap:1px';
 
-  // ⚠ Nhãn loại tên đọc qua `nhanLoaiTenPhu` chứ KHÔNG in thẳng cái mã ra thẻ.
-  // Từ hôm nay form ghi được `phap_danh` xuống dữ liệu, nên bản cũ — in nguyên
-  // `n.loai` — sẽ kể ra "Thích Minh Tâm (phap_danh)" giữa một cái thẻ toàn
-  // tiếng Việt. Trước hôm nay chưa ai thấy vì chưa bản ghi nào có tên phụ.
-  const tenKhac = getAlternateNames(p)
-    .map((n) => n.ten + (coGiaTri(n.loai) ? ' (' + nhanLoaiTenPhu(n.loai) + ')' : ''))
-    .join(' · ');
+  const nut = document.createElement('button');
+  nut.type = 'button';
+  nut.style.cssText =
+    'margin-top:8px;padding:0;font:inherit;font-size:12px;color:#8a6a3a;' +
+    'background:none;border:none;text-decoration:underline;cursor:pointer;' +
+    'touch-action:manipulation;align-self:flex-start';
 
-  veHang(bang, 'Tên khác', tenKhac);
-  veHang(bang, 'Giới tính', GIOI[p.sex] || '');
-  veHang(bang, 'Sinh', ghepNgayNoi(p.birth));
-  veHang(bang, 'Mất', ghepNgayNoi(p.death));
-  veHang(bang, 'An táng', p.burialPlace);
-  veHang(bang, 'Ngày giỗ', ngayGio(p));
-  veHang(bang, tuoiTho(p).nhan, tuoiTho(p).giaTri);
+  const veLaiBang = () => {
+    bang.innerHTML = '';
+    const soTrong = doDayBang(bang, p);
+    // Không thiếu mục nào thì KHÔNG có câu hỏi nào để hỏi — giấu luôn công tắc.
+    // Một dòng "Còn 0 mục chưa điền" là một dòng chữ nói rằng không có gì để nói.
+    nut.style.display = soTrong === 0 ? 'none' : '';
+    nut.textContent = hienMucTrong
+      ? 'Ẩn ' + soTrong + ' mục chưa điền'
+      : 'Còn ' + soTrong + ' mục chưa điền';
+    nut.setAttribute('aria-label',
+      (hienMucTrong ? 'Ẩn ' : 'Hiện ') + soTrong + ' mục chưa điền');
+  };
 
-  // --- BỘ THÔNG DỤNG (CAU-TRUC-DU-LIEU_V03) ------------------------------
-  //
-  // ⚠ **Đây là chỗ luật "trường trống thì KHÔNG vẽ hàng đó" thật sự bị thử.**
-  // Luật có từ 14/08/2026, nhưng tới hôm nay thẻ mới chỉ có tám hàng và gần như
-  // bản ghi nào cũng điền được vài hàng. Thêm tám hàng nữa mà vẽ cả hàng rỗng
-  // thì thẻ của một người chỉ còn ai nhớ mỗi cái tên sẽ dài thành một trang
-  // giấy trắng kẻ dòng — và người đọc phải lướt qua mười sáu dòng trống để tìm
-  // hai dòng có chữ. `veHang()` tự bỏ qua giá trị rỗng, nên gọi cả tám là an
-  // toàn; đừng ai "sửa" nó thành vẽ luôn hàng trống cho đều.
-  //
-  // ⚠ Thứ tự KHÔNG giống thứ tự các ô trong form, và đó là chủ ý. Form HỎI nên
-  // xếp theo nhóm câu hỏi; thẻ KỂ nên xếp theo thứ tự người ta muốn biết về một
-  // người: làm gì, học gì, ở đâu, thờ ai.
-  veHang(bang, 'Chức tước', p.title);
-  veHang(bang, 'Nghề nghiệp', p.occupation);
-  veHang(bang, 'Học vấn', p.education);
-  veHang(bang, 'Quê quán', p.residence);
-  veHang(bang, 'Dân tộc', p.nationality);
-  veHang(bang, 'Tôn giáo', p.religion);
-  veHang(bang, 'Đời', doiCua(p));
-  veHang(bang, 'Chi / nhánh', p.vn && p.vn.branch);
+  nut.addEventListener('click', () => { hienMucTrong = !hienMucTrong; veLaiBang(); });
+  veLaiBang();
 
-  veHang(bang, 'Ghi chú', p.note, true);
-
-  const ra = [bang];
+  const ra = [bang, nut];
 
   // "Bị ẩn" KHÔNG phải "còn thiếu" — hai thứ trông giống hệt nhau trên màn
   // hình mà kết luận ngược nhau: một bên app chạy đúng, một bên gia phả cần bổ
@@ -318,10 +342,60 @@ function veHangThongTin(p) {
   return ra;
 }
 
+/**
+ * Đổ mười sáu hàng vào bảng, theo trạng thái công tắc.
+ *
+ * @returns {number} SỐ MỤC CÒN TRỐNG — đếm đủ cả khi công tắc đang mở, vì con
+ *          số ấy là thứ cái nút phải kể ra ở cả hai trạng thái.
+ */
+function doDayBang(bang, p) {
+  let soTrong = 0;
+  const hang = (nhan, giaTri, coTheDai) => {
+    if (veHang(bang, nhan, giaTri, coTheDai)) soTrong++;
+  };
+
+  // ⚠ Nhãn loại tên đọc qua `nhanLoaiTenPhu` chứ KHÔNG in thẳng cái mã ra thẻ.
+  // Từ hôm nay form ghi được `phap_danh` xuống dữ liệu, nên bản cũ — in nguyên
+  // `n.loai` — sẽ kể ra "Thích Minh Tâm (phap_danh)" giữa một cái thẻ toàn
+  // tiếng Việt. Trước hôm nay chưa ai thấy vì chưa bản ghi nào có tên phụ.
+  const tenKhac = getAlternateNames(p)
+    .map((n) => n.ten + (coGiaTri(n.loai) ? ' (' + nhanLoaiTenPhu(n.loai) + ')' : ''))
+    .join(' · ');
+
+  hang('Tên khác', tenKhac);
+  hang('Giới tính', GIOI[p.sex] || '');
+  hang('Sinh', ghepNgayNoi(p.birth));
+  hang('Mất', ghepNgayNoi(p.death));
+  hang('An táng', p.burialPlace);
+  hang('Ngày giỗ', ngayGio(p));
+  hang(tuoiTho(p).nhan, tuoiTho(p).giaTri);
+
+  // --- BỘ THÔNG DỤNG (CAU-TRUC-DU-LIEU_V03) ------------------------------
+  //
+  // ⚠ Tám hàng này là chỗ luật MỚI tốn nhất: bản ghi nào cũng bỏ trống gần hết
+  // chúng. Đó là điều đã cân nhắc và chấp nhận — xem ghi chú đầu file.
+  //
+  // ⚠ Thứ tự KHÔNG giống thứ tự các ô trong form, và đó là chủ ý. Form HỎI nên
+  // xếp theo nhóm câu hỏi; thẻ KỂ nên xếp theo thứ tự người ta muốn biết về một
+  // người: làm gì, học gì, ở đâu, thờ ai.
+  hang('Chức tước', p.title);
+  hang('Nghề nghiệp', p.occupation);
+  hang('Học vấn', p.education);
+  hang('Quê quán', p.residence);
+  hang('Dân tộc', p.nationality);
+  hang('Tôn giáo', p.religion);
+  hang('Đời', doiCua(p));
+  hang('Chi / nhánh', p.vn && p.vn.branch);
+
+  hang('Ghi chú', p.note, true);
+
+  return soTrong;
+}
+
 /** "12/03/1927 · Hà Nội" — phần nào trống thì bỏ hẳn, không để dấu chấm lơ lửng. */
 /**
  * Đời, kể ra thành chữ. Số 0 hoặc không phải số thì coi như CHƯA AI GHI, và
- * `veHang()` sẽ bỏ hẳn hàng ấy — chứ không kể ra "Đời 0".
+ * `veHang()` tính hàng ấy là một MỤC CÒN TRỐNG — chứ không kể ra "Đời 0".
  *
  * ⚠ Trả về *"thứ 5"* chứ không phải *"Đời thứ 5"*: nhãn của hàng đã là chữ
  * *Đời* rồi, nên lặp lại nó trong giá trị thành *"Đời — Đời thứ 5"*. Cũng
@@ -354,17 +428,27 @@ function tuoiTho(p) {
 }
 
 /**
- * Một hàng nhãn — giá trị. Giá trị trống thì KHÔNG VẼ GÌ CẢ.
+ * Một hàng nhãn — giá trị.
  *
- * Đây là chỗ cài quy tắc "trường trống thì không vẽ hàng đó" cho cả thẻ. Giới
- * tính `sex: 'U'` rơi vào đúng đường này: `GIOI['U']` là `undefined`, thành
- * chuỗi rỗng, và hàng biến mất — đúng ý, vì "U" nghĩa là CHƯA BIẾT, mà chưa
- * biết thì không có gì để nói.
+ * @returns {boolean} hàng này có phải MỘT MỤC CÒN TRỐNG không. Nơi gọi cộng
+ *          dồn để biết con số kể trên công tắc — xem `doDayBang`.
+ *
+ * Công tắc đang ĐÓNG thì mục trống không được vẽ gì cả: đó là luật 14/08/2026
+ * và nó vẫn là mặc định. Công tắc MỞ thì vẽ, nhãn mờ đi và giá trị là dấu "—".
+ *
+ * Giới tính `sex: 'U'` rơi vào đúng đường này: `GIOI['U']` là `undefined`,
+ * thành chuỗi rỗng, nên nó được TÍNH LÀ một mục còn trống — đúng ý, vì "U"
+ * nghĩa là CHƯA BIẾT, và đó là thứ người đi rà cần thấy.
+ *
+ * ⚠ HÀNG TRỐNG PHẢI NHÌN RA NGAY LÀ HÀNG TRỐNG, không được chỉ hơi nhạt hơn
+ * một chút. Nhãn của nó dùng màu mờ nhất trong bảng màu của thẻ; ngay cả khi
+ * công tắc mở, đây vẫn là hàng người ta lướt qua để tìm hàng có chữ.
  *
  * `coTheDai` cho phép hàng đó tự thu gọn khi quá dài — xem `thuGonChu`.
  */
 function veHang(bang, nhan, giaTri, coTheDai) {
-  if (!coGiaTri(giaTri)) return;
+  const trong = !coGiaTri(giaTri);
+  if (trong && !hienMucTrong) return true;
 
   const hang = document.createElement('div');
   hang.style.cssText =
@@ -373,15 +457,23 @@ function veHang(bang, nhan, giaTri, coTheDai) {
 
   const n = document.createElement('div');
   n.textContent = nhan;
-  n.style.cssText = 'flex:0 0 82px;font-size:12px;color:#8a8078';
+  n.style.cssText = 'flex:0 0 82px;font-size:12px;' +
+    (trong ? 'color:#c4bcb2' : 'color:#8a8078');
 
   const g = document.createElement('div');
-  g.style.cssText = 'flex:1 1 auto;font-size:14px;line-height:1.45;word-break:break-word';
-  const chu = String(giaTri).trim();
-  if (coTheDai) thuGonChu(g, chu); else g.textContent = chu;
+  g.style.cssText = 'flex:1 1 auto;font-size:14px;line-height:1.45;word-break:break-word' +
+    (trong ? ';color:#c4bcb2' : '');
+
+  if (trong) {
+    g.textContent = '—';
+  } else {
+    const chu = String(giaTri).trim();
+    if (coTheDai) thuGonChu(g, chu); else g.textContent = chu;
+  }
 
   hang.append(n, g);
   bang.append(hang);
+  return trong;
 }
 
 const DAI_TOI_DA = 180;   // ký tự — quá mức này thì thu gọn
