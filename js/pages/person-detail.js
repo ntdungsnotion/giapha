@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
 //            utils/{text,date,image}, config
-// Phiên bản: 1.20.0 · Cập nhật: 21/08/2026 16:35
+// Phiên bản: 1.21.0 · Cập nhật: 21/08/2026 16:55
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -454,7 +454,13 @@ export function openUnionDetail(unionId, xuLy = {}) {
   the.id = 'giapha-the-cap';   // mốc cho bài kiểm hành vi
   the.style.cssText = KIEU_HOP;
 
+  theDangMo = { loai: 'cap', ma: unionId, xuLy };
+
   the.append(...veDauTheCap(u));
+  // Ảnh CƯỚI đứng ngay dưới đầu thẻ, không đứng cuối như dải ảnh của thẻ
+  // người: thẻ người đã có mặt người ấy ở đầu thẻ rồi, còn ở đây tấm ảnh
+  // cưới CHÍNH LÀ thứ người ta mở thẻ gia đình ra để xem.
+  the.append(...veDaiAnhThe(unionId, null));
   the.append(...veHangThongTinCap(u));
   the.append(...veNguoiTrongCap(index, u, xuLy));
   the.append(veChanTheCap(u, xuLy));

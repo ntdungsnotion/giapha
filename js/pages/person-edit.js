@@ -6,7 +6,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate,media,render},
 //            services/{repo,gas}, utils/{graph,text,date,image}, config
-// Phiên bản: 1.16.0 · Cập nhật: 21/08/2026 16:35
+// Phiên bản: 1.17.0 · Cập nhật: 21/08/2026 16:55
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -216,6 +216,17 @@ let khoAnh = [];           // [{ khoa, mediaId, driveFileId, caption, xemTruoc, 
 let anhDaiDienKhoa = '';   // khoá của tấm đang làm đại diện; '' là không dùng tấm nào
 let anhDangXet = '';       // khoá của tấm vừa bấm, để hàng nút mọc ngay dưới dải
 let demAnhMoi = 0;         // sinh khoá tạm; KHÔNG dùng lại số đã cấp trong một lần mở form
+
+// Kho ảnh đang mở là CỦA AI, và chủ thể ấy có ảnh đại diện hay không.
+//
+// ⚠ **Một CẶP không có ảnh đại diện, và đó không phải chuyện bỏ sót.**
+// `photoFileId` là trường của bản ghi NGƯỜI — sơ đồ vẽ mặt người trong ô, còn
+// một cặp thì không có ô nào của riêng nó để mà vẽ mặt. Nên với cặp, kho ảnh
+// chỉ còn hai việc: thêm và gỡ. Để nguyên đường đại diện rồi trông chờ
+// `setPortrait` trả `null` là dựa vào một sự tình cờ: giao diện vẫn hiện dấu ✓
+// và nút *Bỏ ảnh đại diện* cho một thứ không bao giờ có ảnh đại diện.
+let anhCuaAi = '';         // mã chủ thể: `P….` hoặc `U….`
+let anhCoDaiDien = true;   // false với một CẶP
 let anhDangTai = false;
 
 /**
@@ -338,6 +349,8 @@ export function closePersonForm() {
   quanHe       = null;
   khoiAnh      = null;
   khoAnh       = [];
+  anhCuaAi     = '';
+  anhCoDaiDien = true;
   anhDaiDienKhoa = '';
   anhDangXet   = '';
   demAnhMoi    = 0;
@@ -478,7 +491,7 @@ function veCacO(nguoi) {
   // nhánh. Thêm người xong, mở lại hồ sơ rồi gắn ảnh — thêm đúng một cú chạm.
   if (cheDo === 'sua') {
     ra.push(veNhan('Ảnh'));
-    ra.push(veKhoiAnh(nguoi));
+    ra.push(veKhoiAnh(nguoi.id, nguoi));
   }
 
   ra.push(veNhan('Tên'));
@@ -1098,10 +1111,18 @@ function keThayDoiQuanHe(qh) {
 //    kho ảnh sẽ đọc ra thành "người này không dùng tấm nào làm đại diện" rồi
 //    lặng lẽ xoá mất `photoFileId` của một người mà không ai đụng vào.
 
-function veKhoiAnh(nguoi) {
+/**
+ * @param {string} subjectId  mã người `P….` hoặc mã hôn nhân `U….`
+ * @param {object|null} nen   bản ghi người, CHỈ để lấy màu viền và bóng người.
+ *                            Cặp truyền `null` — `mauVien(null)` ra màu "chưa
+ *                            rõ", đúng thứ cần cho một tấm ảnh của hai người.
+ */
+function veKhoiAnh(subjectId, nen) {
   khoiAnh = document.createElement('div');
-  docKhoAnh(nguoi);
-  veLaiKhoiAnh(nguoi);
+  anhCuaAi = String(subjectId);
+  anhCoDaiDien = anhCuaAi.charAt(0) !== 'U';
+  docKhoAnh(nen);
+  veLaiKhoiAnh(nen);
   return khoiAnh;
 }
 
@@ -1114,7 +1135,7 @@ function veKhoiAnh(nguoi) {
 function docKhoAnh(nguoi) {
   const cay = state.tree;
 
-  khoAnh = getMediaFor(cay, nguoi.id).map((m) => ({
+  khoAnh = getMediaFor(cay, anhCuaAi).map((m) => ({
     khoa:        m.id,
     mediaId:     m.id,
     driveFileId: m.driveFileId,
@@ -1125,7 +1146,9 @@ function docKhoAnh(nguoi) {
     boDi:        false,
   }));
 
-  const dd = getPortrait(cay, nguoi.id);
+  if (!anhCoDaiDien) { anhDangXet = ''; demAnhMoi = 0; anhDaiDienKhoa = ''; return; }
+
+  const dd = getPortrait(cay, anhCuaAi);
   anhDaiDienKhoa = dd ? dd.id : '';
 
   // Quyết định 5: con trỏ trỏ vào chỗ kho không có gì.
@@ -1157,7 +1180,8 @@ function veLaiKhoiAnh(nguoi) {
   const hang = document.createElement('div');
   hang.style.cssText = 'display:flex;gap:12px;align-items:center';
 
-  hang.append(veXemTruocAnh(nguoi));
+  // Vòng ảnh tròn ở đầu khối là ẢNH ĐẠI DIỆN — cặp không có, nên không vẽ.
+  if (anhCoDaiDien) hang.append(veXemTruocAnh(nguoi));
 
   const cot = document.createElement('div');
   cot.style.cssText = 'flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:6px';
@@ -1178,7 +1202,7 @@ function veLaiKhoiAnh(nguoi) {
 
 /** Mục đang làm đại diện trong bản làm việc, hoặc null. */
 function mucDaiDien() {
-  if (!anhDaiDienKhoa) return null;
+  if (!anhCoDaiDien || !anhDaiDienKhoa) return null;
   return khoAnh.find((a) => a.khoa === anhDaiDienKhoa && !a.boDi) || null;
 }
 
@@ -1318,7 +1342,7 @@ function veHangNutAnh(muc, nguoi) {
       veLaiKhoiAnh(nguoi);
     }));
   } else {
-    if (muc.khoa !== anhDaiDienKhoa) {
+    if (anhCoDaiDien && muc.khoa !== anhDaiDienKhoa) {
       hang.append(nutNhoAnh('Đặt làm ảnh đại diện', batDuoc, false, () => {
         anhDaiDienKhoa = muc.khoa;
         veLaiKhoiAnh(nguoi);
@@ -1448,6 +1472,10 @@ function moTaTrangThaiAnh(nguoi) {
     return 'Chưa có ảnh. Sơ đồ đang vẽ bóng người theo giới tính. ' +
            'Ảnh được nén nhỏ lại trước khi gửi đi, không tải nguyên file gốc.';
   }
+  if (!anhCoDaiDien) {
+    return 'Ảnh của cặp này — ảnh cưới, ảnh cả nhà. Một cặp không có ảnh đại ' +
+           'diện: sơ đồ vẽ mặt từng người, không vẽ ô nào của riêng cặp.';
+  }
   if (!dd) {
     return 'Kho còn ảnh, nhưng không tấm nào đang làm đại diện — sơ đồ vẽ bóng ' +
            'người. Bấm một tấm rồi chọn "Đặt làm ảnh đại diện".';
@@ -1467,7 +1495,7 @@ async function chonVaTaiAnh(file, nguoi) {
 
   try {
     const nen = await compressImage(file);
-    const ten = 'anh_' + nguoi.id + '_' + stampNow().replace(/[^0-9]/g, '') + '.jpg';
+    const ten = 'anh_' + anhCuaAi + '_' + stampNow().replace(/[^0-9]/g, '') + '.jpg';
     const kq  = await taiAnh(nen.base64, ten);
 
     if (!kq || !kq.ok) {
@@ -1481,8 +1509,9 @@ async function chonVaTaiAnh(file, nguoi) {
       khoa, mediaId: '', driveFileId: kq.fileId, caption: '',
       xemTruoc: nen.base64, laMoi: true, laLe: false, boDi: false,
     });
-    // Quyết định 2: tấm vừa thêm luôn thành đại diện.
-    anhDaiDienKhoa = khoa;
+    // Quyết định 2: tấm vừa thêm luôn thành đại diện — nhưng chỉ khi chủ thể
+    // có ảnh đại diện. Ảnh cưới của một cặp thì thêm là thêm, hết.
+    if (anhCoDaiDien) anhDaiDienKhoa = khoa;
     anhDangXet = '';
 
     anhDangTai = false;
@@ -1516,7 +1545,8 @@ async function chonVaTaiAnh(file, nguoi) {
  * @returns {{tree, person, themVao, goRa, diff}|null} null khi lần lưu này
  *          không đụng tới ảnh — nơi gọi đọc `null` để biết có gì đổi hay không.
  */
-function apThayDoiAnh(cay, personId, ghiNhan) {
+function apThayDoiAnh(cay, subjectId, ghiNhan) {
+  const personId = subjectId;
   let tree = cay;
   const themVao = [];   // bản ghi ảnh MỚI, để đẩy sang máy chủ
   const goRa    = [];   // bản ghi ảnh vừa mang cờ `deleted`, cũng phải đẩy sang
@@ -1546,8 +1576,12 @@ function apThayDoiAnh(cay, personId, ghiNhan) {
     Object.assign(diff, kq.diff);
   }
 
-  // 3. ĐẠI DIỆN
-  const dd = mucDaiDien();
+  // 3. ĐẠI DIỆN — cặp không có bước này, xem `anhCoDaiDien`.
+  const dd = anhCoDaiDien ? mucDaiDien() : null;
+  if (!anhCoDaiDien) {
+    if (Object.keys(diff).length === 0) return null;
+    return { tree, person: null, themVao, goRa, diff };
+  }
   if (dd && dd.laLe) {
     // Con trỏ đang đúng như cũ, và không có bản ghi nào để trỏ lại. Không làm
     // gì là đúng — xem quyết định 5.
@@ -4056,7 +4090,7 @@ async function chayHoanTacGoNoi(personId, banCu) {
  * đầy đủ chứ không phải một mảnh. Người khác sửa cặp ấy cùng lúc thì dấu vân
  * tay của `luuCay()` chặn lại, không phải chỗ này.
  */
-async function ghiBanGhi(nguoiThem, cacUnion, moTa) {
+async function ghiBanGhi(nguoiThem, cacUnion, moTa, anh) {
   try {
     return await luuCay((cay) => {
       if (!Array.isArray(cay.persons)) cay.persons = [];
@@ -4075,6 +4109,22 @@ async function ghiBanGhi(nguoiThem, cacUnion, moTa) {
         const i = cay.unions.findIndex((x) => x && x.id === u.id);
         if (i >= 0) cay.unions[i] = JSON.parse(JSON.stringify(u));
         else        cay.unions.push(JSON.parse(JSON.stringify(u)));
+      }
+
+      // ẢNH — cùng hai vòng lặp với `handleSave`, cùng chốt chặn mã trùng.
+      if (anh) {
+        if (!Array.isArray(cay.media)) cay.media = [];
+        for (const m of anh.themVao) {
+          if (cay.media.some((x) => x && x.id === m.id)) {
+            throw new Error('Mã ảnh ' + m.id + ' vừa được dùng cho một tấm khác. ' +
+                            'Tải lại trang rồi gắn ảnh lại.');
+          }
+          cay.media.push(JSON.parse(JSON.stringify(m)));
+        }
+        for (const m of anh.goRa) {
+          const k = cay.media.findIndex((x) => x && x.id === m.id);
+          if (k >= 0) cay.media[k] = JSON.parse(JSON.stringify(m));
+        }
       }
     }, moTa);
   } catch (e) {
@@ -4218,6 +4268,14 @@ function veCacOCap(u) {
 
   ra.push(veNhan('Ghi chú về cặp này'));
   ra.push(oNhieuDong('note', u.note, 'Cưới ở quê, cụ Bá làm chủ hôn…'));
+
+  // ẢNH CƯỚI — việc 5 nửa B. Đứng CUỐI form, sau mọi ô chữ: nó là thứ nặng
+  // nhất trên màn hình, mà người mở form ra thì thường để sửa ngày cưới hay
+  // thứ bậc. Đặt nó lên trên là mỗi lần sửa một con số lại phải cuộn qua một
+  // dải ảnh. Trên THẺ thì ngược lại — ở đó ảnh đứng ngay dưới đầu thẻ, vì
+  // thẻ là để XEM.
+  ra.push(veNhan('Ảnh của cặp này'));
+  ra.push(veKhoiAnh(u.id, null));
 
   return ra;
 }
@@ -4399,6 +4457,11 @@ function khacGioi(partnerIds) {
 async function handleSaveUnion() {
   if (dangLuu) return;
 
+  // Dấu thời gian và người sửa, cho kho ảnh — `updateUnion` ở đây không nhận
+  // `ghiNhan`, nhưng `attachMedia` và `detachMedia` thì có.
+  const luc = stampNow();
+  const boi = (state.phien && state.phien.email) || '';
+
   const u = state.index && state.index.unionById.get(capDangSua);
   if (!u) {
     hienNhan('Không tìm thấy cặp này nữa. Tải lại trang rồi thử lại.', true);
@@ -4430,9 +4493,15 @@ async function handleSaveUnion() {
   const doiCho = !!(o.doiCho && o.doiCho.checked);
   const kqDoi  = doiCho ? swapPartnerOrder(kq.tree, capDangSua) : null;
 
-  const cayCuoi  = kqDoi ? kqDoi.tree  : kq.tree;
+  const sauDoi   = kqDoi ? kqDoi.tree  : kq.tree;
   const capCuoi  = kqDoi ? kqDoi.union : kq.union;
-  const diffCuoi = kqDoi ? Object.assign({}, kq.diff, kqDoi.diff) : kq.diff;
+
+  // ẢNH nối đuôi vào cây mà hai bước trên vừa trả về — cùng lý lẽ với
+  // `handleSave`: `attachMedia` sinh mã `M….` từ cây.
+  const anh      = apThayDoiAnh(sauDoi, capDangSua, { boi, luc });
+  const cayCuoi  = anh ? anh.tree : sauDoi;
+  const diffCuoi = Object.assign({}, kq.diff, kqDoi ? kqDoi.diff : null,
+                                 anh ? anh.diff : null);
 
   if (Object.keys(diffCuoi).length === 0) {
     hienNhan('Chưa có gì thay đổi so với bản đang lưu, nên không cần lưu lại.', false);
@@ -4468,9 +4537,9 @@ async function handleSaveUnion() {
   const ketQua = await ghiBanGhi(null, [capCuoi], {
     action: 'update',
     target: capDangSua,
-    note:   'Sửa cặp ' + keTenPartner(capDangSua) + '.',
+    note:   'Sửa cặp ' + keTenPartner(capDangSua) + '.' + keThayDoiAnh(anh),
     diff:   diffCuoi,
-  });
+  }, anh);
 
   dangLuu = false;
   if (!lopPhu) return;
