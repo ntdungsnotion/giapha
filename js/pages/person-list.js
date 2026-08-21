@@ -3,8 +3,8 @@
 // Vai trò  : MÀN HÌNH DANH SÁCH NGƯỜI — cửa vào KHÔNG đi qua sơ đồ
 //            + MÀN HÌNH THÙNG RÁC — đường quay lại của người và cặp đã xoá
 // Lớp      : pages — được phép gọi mọi lớp dưới
-// Phụ thuộc: state, domains/person, domains/union, utils/text
-// Phiên bản: 1.2.0 · Cập nhật: 21/08/2026 16:00
+// Phụ thuộc: state, domains/person, domains/union, utils/text, config
+// Phiên bản: 1.3.0 · Cập nhật: 21/08/2026 20:30
 // ============================================================
 //
 // --- Vì sao màn hình này phải có (bước 24) ------------------------------
@@ -91,13 +91,15 @@ let cheDo    = 'danhSach';   // 'danhSach' | 'thungRac'
  * Mở danh sách người.
  *
  * @param {{onXemHoSo?:function(string), onChonNguoi?:function(string),
- *          onThungRac?:function(), tuKhoa?:string}} [xuLy]
+ *          onThungRac?:function(), onRaSoat?:function(), tuKhoa?:string}} [xuLy]
  *        `onXemHoSo`   — bấm một dòng thì mở hồ sơ người ấy (đường thường).
  *        `onChonNguoi` — dùng khi màn hình này làm chỗ CHỌN NGƯỜI; chỉ chạy
  *                        khi không có `onXemHoSo`.
  *        `onThungRac`  — có thì chân màn hình mọc thêm nút *"Thùng rác (n)"*.
  *                        Chế độ CHỌN NGƯỜI không nhận nút này: đang giữa một
  *                        việc khác thì không phải lúc rẽ sang việc thứ hai.
+ *        `onRaSoat`    — có thì chân mọc thêm nút *"Rà soát"*. Cùng luật với
+ *                        `onThungRac`: chế độ CHỌN NGƯỜI không nhận.
  *        `tuKhoa`      — chữ điền sẵn vào ô tìm.
  */
 export function openPersonList(xuLy = {}) {
@@ -209,12 +211,23 @@ function moManHinh(che, xuLy) {
 
 /**
  * Chân màn hình. Danh sách người có thêm nút vào THÙNG RÁC — kèm con số, và
- * kèm cả khi con số là 0 (quyết định 4 ở đầu file).
+ * kèm cả khi con số là 0 (quyết định 4 ở đầu file) — và nút RÀ SOÁT.
+ *
+ * ⚠ Nút *Rà soát* CỐ Ý không mang con số, khác hẳn nút *Thùng rác*. Đếm thùng
+ * rác là lọc một mảng; đếm số lỗi thì phải chạy `validateAll(…, 'tree')`, mà
+ * phép ấy duyệt đồ thị một lượt cho TỪNG cạnh cha–con. Bắt mọi người mở danh
+ * sách để tìm một cái tên phải trả giá ấy là đặt việc nặng nhất của app vào
+ * đường đi thường ngày nhất — trong khi con số ấy chỉ có nghĩa với người đang
+ * chủ tâm đi dọn.
+ *
+ * Ba nút trên một hàng có thể tràn ở màn hình hẹp nhất, nên chân biết xuống
+ * dòng — `flex-wrap`, không phải chữ viết tắt.
  */
 function veChan(laThungRac, laChonNguoi) {
   const chan = document.createElement('div');
   chan.style.cssText =
-    'display:flex;gap:8px;margin-top:14px;flex:0 0 auto;justify-content:center';
+    'display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;flex:0 0 auto;' +
+    'justify-content:center';
 
   if (!laThungRac && !laChonNguoi && xuLyNgoai.onThungRac) {
     const rac = nutChan('Thùng rác (' + demThungRac() + ')', () => {
@@ -224,6 +237,16 @@ function veChan(laThungRac, laChonNguoi) {
     });
     rac.dataset.viec = 'thung-rac';
     chan.append(rac);
+  }
+
+  if (!laThungRac && !laChonNguoi && xuLyNgoai.onRaSoat) {
+    const ra = nutChan('Rà soát', () => {
+      const chay = xuLyNgoai.onRaSoat;
+      closePersonList();
+      chay();
+    });
+    ra.dataset.viec = 'ra-soat';
+    chan.append(ra);
   }
 
   chan.append(nutChan('Đóng', () => closePersonList()));

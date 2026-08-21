@@ -3,8 +3,8 @@
 // Vai trò  : MÀN HÌNH CHÍNH — sơ đồ cây, đổi người trung tâm
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render,union}, utils/text,
-//            pages/{person-detail,person-edit,person-list,settings}
-// Phiên bản: 1.19.0 · Cập nhật: 21/08/2026 16:00
+//            pages/{person-detail,person-edit,person-list,review,settings}
+// Phiên bản: 1.20.0 · Cập nhật: 21/08/2026 20:30
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -66,13 +66,14 @@ import { computeLayout } from '../domains/layout.js';
 import { renderTree } from '../domains/render.js';
 import { getSpouses, getParents, getChildren, getSiblings } from '../domains/union.js';
 import { fullName, doiSongNguoi } from '../utils/text.js';
-import { openPersonMenu, openPersonDetail,
+import { openPersonMenu, openPersonDetail, openUnionDetail,
          closePersonDetail } from './person-detail.js';
 import { openPersonForm, closePersonForm, quickAddChild, quickAddParent,
          quickAddSpouse, linkExisting, goNoiNguoi, xoaNguoi,
          openUnionForm, openSapThuTu,
          khoiPhucNguoi, khoiPhucCap } from './person-edit.js';
 import { openPersonList, closePersonList, openThungRac } from './person-list.js';
+import { openReview, closeReview } from './review.js';
 import { openSettings, closeSettings } from './settings.js';
 import { rongHop, caoHop, leLopPhu } from '../config.js';
 
@@ -104,6 +105,7 @@ export function mountTreeView(containerEl) {
   closePersonDetail();
   closePersonForm();
   closePersonList();
+  closeReview();
   closeSettings();
   containerEl.innerHTML = '';
   containerEl.style.cssText =
@@ -766,6 +768,7 @@ function moDanhSachNguoi() {
   // dưới đây — nên đường nào cũng đóng danh sách trước khi đi tiếp.
   openPersonList({
     onThungRac: moThungRac,
+    onRaSoat:   moRaSoat,
     onXemHoSo: (id) => openPersonDetail(id, {
       onChonNguoi:  dongTruoc(goc.onChonNguoi),
       onSuaNguoi:   dongTruoc(goc.onSuaNguoi),
@@ -804,6 +807,32 @@ function moThungRac() {
   openThungRac({
     onKhoiPhucNguoi: (id) => khoiPhucNguoi(id, { onDaLuu: moLai }),
     onKhoiPhucCap:   (id) => khoiPhucCap(id,   { onDaLuu: moLai }),
+  });
+}
+
+
+/**
+ * Mở màn hình RÀ SOÁT, và nối hai đường đi tiếp của nó.
+ *
+ * Bản báo cáo cũ ở màn hình Cài đặt (bước 17) bị gỡ đi ở bước 30 vì nó **chỉ
+ * kể tên lỗi mà không có đường sửa**. Đúng ba dòng dưới đây là thứ chữa chỗ
+ * ấy: mỗi dòng lỗi mở thẳng hồ sơ của người — hoặc thẻ của cặp — có vấn đề, và
+ * từ đó mọi việc đều làm được ngay.
+ *
+ * `xuLyThe()` KHÔNG cần bọc `dongTruoc` như bên Danh sách người: màn hình rà
+ * soát tự đóng trước khi gọi ra ngoài (xem `veMotDong` ở `review.js`), nên
+ * không còn lớp phủ nào nằm đè lên kết quả người dùng vừa gây ra.
+ *
+ * Không tự mở lại sau mỗi việc, khác Thùng rác. Thùng rác chỉ có **một** việc
+ * nên mở lại là đúng; ở đây một dòng lỗi dẫn tới cả một thẻ thông tin với mười
+ * việc, và bật cái danh sách lỗi trở lại sau mỗi việc là cắt ngang đúng lúc
+ * người dùng đang muốn nhìn kết quả mình vừa sửa. Muốn xem lại thì màn hình có
+ * sẵn nút *"Rà lại"*.
+ */
+function moRaSoat() {
+  openReview({
+    onXemHoSo: (id) => openPersonDetail(id, xuLyThe()),
+    onXemCap:  (id) => openUnionDetail(id, xuLyThe()),
   });
 }
 

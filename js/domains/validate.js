@@ -2,8 +2,8 @@
 // giapha · js/domains/validate.js
 // Vai trò  : Rà soát dữ liệu gia phả — chặn cái sai chắc chắn, cảnh báo cái đáng ngờ
 // Lớp      : domains — được gọi bởi: pages · được phép gọi: utils, config
-// Phụ thuộc: utils/date.js, utils/graph.js, utils/text.js
-// Phiên bản: 1.3.0 · Cập nhật: 21/08/2026 18:20
+// Phụ thuộc: utils/date.js, utils/graph.js, utils/text.js, domains/union.js
+// Phiên bản: 1.4.0 · Cập nhật: 21/08/2026 21:10
 // ============================================================
 //
 // HÀM THUẦN. Không gọi services, không chạm DOM, không đọc state.
@@ -53,11 +53,12 @@
 //   2. Cha/mẹ sinh sau con
 //   3. Một người là tổ tiên của chính mình
 //
-// Năm phép còn lại chỉ cảnh báo — kể cả "mẹ 14 tuổi lúc sinh", vì chuyện đó
+// SÁU phép còn lại chỉ cảnh báo — kể cả "mẹ 14 tuổi lúc sinh", vì chuyện đó
 // từng xảy ra thật.
 
 import { mocNgay, soSanhNgay, chenhNam, formatDate, calcAge } from '../utils/date.js';
 import { bfs } from '../utils/graph.js';
+import { conLyDoTonTai } from './union.js';
 import { fullName, coGiaTri, removeDiacritics } from '../utils/text.js';
 
 /**
@@ -200,7 +201,7 @@ export function checkNoAncestorCycle(index, childId, parentId) {
 }
 
 // ============================================================
-// NĂM PHÉP CẢNH BÁO
+// SÁU PHÉP CẢNH BÁO
 // ============================================================
 
 /**
@@ -356,6 +357,36 @@ export function checkDuplicate(tree, person) {
                  trung.map(moTaNguoi).join(', ') + '.');
 }
 
+/**
+ * CẢNH BÁO: một cặp không còn khẳng định được điều gì.
+ *
+ * Câu hỏi này đã có sẵn lời đáp ở `union.conLyDoTonTai()` từ bước 26, và app
+ * gọi nó sau MỌI lần gỡ nối — nên đường đi qua app không bao giờ để lại một
+ * cặp như thế. Phép rà này gác đúng cái cửa còn hở: **sửa tay file JSON ngoài
+ * app**, thứ `CLAUDE.md` mục 11 xếp vào loại chưa chặn được và phải nói thẳng.
+ *
+ * Một cặp rỗng không hiện ra ở đâu cả — `layout.js` bỏ qua nó, thẻ gia đình
+ * không có cửa nào dẫn tới. Nó chỉ nằm trong file làm cho `unions` dài thêm,
+ * đúng nghĩa RÁC, và đó là lý do nó thuộc về màn hình rà soát chứ không phải
+ * một hộp báo lỗi lúc lưu.
+ *
+ * KHÔNG chặn, chỉ cảnh báo: bản ghi thừa không làm sai một điều gì đang có.
+ */
+export function checkUnionPointless(index, unionId) {
+  const union = index && index.unionById ? index.unionById.get(unionId) : null;
+  if (!union) return boQua('thiếu bản ghi hôn nhân');
+  if (conLyDoTonTai(union)) return dat();
+
+  const soCon = (Array.isArray(union.children) ? union.children : [])
+    .filter((c) => c && c.personId).length;
+  const soPartner = (Array.isArray(union.partners) ? union.partners : [])
+    .filter(Boolean).length;
+
+  return canhBao('Cặp ' + unionId + ' không còn khẳng định điều gì — ' +
+                 soPartner + ' người trong cặp, ' + soCon + ' người con. ' +
+                 'Bản ghi thừa, xoá đi không mất mối nối nào.');
+}
+
 // ============================================================
 // GỌI CẢ BỘ
 // ============================================================
@@ -424,7 +455,8 @@ export function validateAll(tree, index, changeType, payload) {
         { personId: p.childId });
 
   } else if (changeType === 'union') {
-    ghi(ra, 'checkSpouseAgeGap', checkSpouseAgeGap(index, p.unionId), { unionId: p.unionId });
+    ghi(ra, 'checkSpouseAgeGap',    checkSpouseAgeGap(index, p.unionId),    { unionId: p.unionId });
+    ghi(ra, 'checkUnionPointless', checkUnionPointless(index, p.unionId), { unionId: p.unionId });
 
   } else if (changeType === 'tree') {
     // KHÔNG rà chiều xuống ở đây: vòng lặp này đi qua mọi người, nên mỗi cạnh
@@ -435,7 +467,8 @@ export function validateAll(tree, index, changeType, payload) {
       raSoatMotNguoi(ra, tree, index, nguoi, false);
     }
     for (const unionId of index.unionById.keys()) {
-      ghi(ra, 'checkSpouseAgeGap', checkSpouseAgeGap(index, unionId), { unionId });
+      ghi(ra, 'checkSpouseAgeGap',    checkSpouseAgeGap(index, unionId),    { unionId });
+      ghi(ra, 'checkUnionPointless', checkUnionPointless(index, unionId), { unionId });
     }
   }
 
