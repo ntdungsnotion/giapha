@@ -1,9 +1,10 @@
 // ============================================================
 // giapha · js/pages/settings.js
-// Vai trò  : Màn hình Cài đặt — người trung tâm mặc định, tuỳ chọn hiển thị
+// Vai trò  : Màn hình Cài đặt — người trung tâm mặc định, tuỳ chọn hiển thị,
+//            đường sang màn hình Sao lưu & khôi phục
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, services/gas, utils/text
-// Phiên bản: 1.7.0 · Cập nhật: 21/08/2026 16:00
+// Phiên bản: 1.8.0 · Cập nhật: 22/08/2026 00:40
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
@@ -72,12 +73,16 @@ let khoiMacDinh = null;
 /**
  * Mở màn hình Cài đặt.
  *
- * @param {{onDoiMacDinh?:function, onDoiHienThi?:function}} [xuLy]
+ * @param {{onDoiMacDinh?:function, onDoiHienThi?:function,
+ *          onMoSaoLuu?:function}} [xuLy]
  *        chạy sau khi đặt hoặc bỏ mặc định thành công. Dùng callback thay vì
  *        `import` ngược `tree-view.js` — hai file cùng lớp `pages`, import
  *        vòng tròn thì một trong hai sẽ thấy hàm của file kia là `undefined`.
  *        `onDoiHienThi` chạy sau khi đổi một công tắc trong khối Hiển thị —
  *        nơi gọi phải VẼ LẠI sơ đồ, vì công tắc ngày giỗ đổi cả chiều cao ô.
+ *        `onMoSaoLuu` mở màn hình Sao lưu & khôi phục. KHÔNG truyền thì khối
+ *        ấy không mọc ra — cùng khuôn với hai callback trên, và nhờ thế bài
+ *        kiểm mở riêng màn Cài đặt không phải dựng máy chủ giả cho việc 7.
  */
 export function openSettings(xuLy = {}) {
   closeSettings();
@@ -106,6 +111,7 @@ export function openSettings(xuLy = {}) {
 
   veKhoiMacDinh(hop);
   veKhoiHienThi(hop);
+  veKhoiSaoLuu(hop);
   veKhoiPhien(hop);
 
   const dong = document.createElement('button');
@@ -292,6 +298,41 @@ function veKhoiHienThi(vao) {
     'giỗ — sơ đồ dài thêm khoảng một phần tám. Vì thế mặc định tắt.';
   nhac.style.cssText = 'font-size:12px;line-height:1.5;color:#8a8078;margin-top:6px';
   khoi.append(nhac);
+
+  vao.append(khoi);
+  return khoi;
+}
+
+// ============================================================
+// Khối "Sao lưu & khôi phục" — việc 7
+// ============================================================
+//
+// Chỉ MỘT cái nút, mở sang màn hình riêng (`pages/backup.js`). Không nhúng
+// thẳng danh sách bản sao lưu vào đây, và có lý do: màn hình Cài đặt mở ra là
+// đọc ngay ba khối — nhúng vào nghĩa là MỖI LẦN mở Cài đặt lại gọi máy chủ
+// liệt kê cả thư mục Sao_luu, cho một việc mỗi tháng làm một lần.
+//
+// ⚠ Nút này KHÔNG mờ đi với người chỉ có quyền xem, và đó là chủ ý: bên trong
+// có nút *Sao lưu ngay* — cất một bản phòng hờ không phải là sửa gia phả. Thứ
+// chặn theo quyền nằm ở máy chủ, và câu từ chối của nó nói rõ vì sao.
+
+function veKhoiSaoLuu(vao) {
+  if (!xuLyNgoai.onMoSaoLuu) return null;
+
+  const khoi = document.createElement('div');
+  khoi.style.cssText = 'margin-top:20px';
+  khoi.append(veNhanKhoi('Sao lưu & khôi phục'));
+
+  const giaiThich = document.createElement('div');
+  giaiThich.textContent =
+    'Xem các bản phòng hờ máy chủ đã cất, cất thêm một bản ngay, hoặc đưa cả ' +
+    'gia phả quay về một bản cũ.';
+  giaiThich.style.cssText =
+    'font-size:13px;line-height:1.55;color:#8a8078;margin-bottom:10px';
+  khoi.append(giaiThich);
+
+  khoi.append(nut('Mở Sao lưu & khôi phục', false, true,
+                  () => xuLyNgoai.onMoSaoLuu()));
 
   vao.append(khoi);
   return khoi;

@@ -2,9 +2,10 @@
 // giapha · js/services/gas.js
 // Vai trò  : Cầu nối duy nhất xuống máy chủ Apps Script.
 //            Bọc google.script.run thành hàm Promise dùng await được.
-// Lớp      : services — được gọi bởi: services/repo, pages/settings · gọi: (không)
+// Lớp      : services — được gọi bởi: services/repo, pages/settings,
+//            pages/backup · gọi: (không)
 // Phụ thuộc: (không)
-// Phiên bản: 0.6.0 · Cập nhật: 21/08/2026 22:10
+// Phiên bản: 0.7.0 · Cập nhật: 22/08/2026 00:40
 // ============================================================
 //
 // ĐÂY LÀ RANH GIỚI GIỮA TRÌNH DUYỆT VÀ MÁY CHỦ.
@@ -127,7 +128,51 @@ export function xoaAnhThat(dsFileId) {
   return goi('xoaAnhThat', dsFileId);
 }
 
-/** Danh sách bản sao lưu để khôi phục. */
+// --- SAO LƯU VÀ KHÔI PHỤC (việc 7) --------------------------------------
+//
+// ⚠ Cả bốn lệnh chỉ CHỦ DỰ ÁN gọi được. Thư mục Sao_luu chỉ chia sẻ cho một
+// người, mà script chạy bằng danh tính người đang truy cập — người biên tập
+// khác gọi thì máy chủ trả về một câu lỗi nói thẳng điều đó, không phải một
+// danh sách rỗng. Nơi gọi phải kể lại câu ấy, đừng nuốt đi.
+
+/**
+ * Danh sách bản sao lưu, mới nhất trước.
+ * Trả về { ok, loi, thuMuc, ds:[{ fileId, ten, luc, lucSo, co, revision }] }.
+ */
 export function layDanhSachSaoLuu() {
   return goi('layDanhSachSaoLuu');
+}
+
+/**
+ * Cất NGAY bản đang nằm trên Drive vào thư mục Sao_luu, không đợi đến hạn.
+ * Trả về { ok, ten, loi, revision }.
+ *
+ * ⚠ Sao lưu bản TRÊN DRIVE, không gửi cây trong trình duyệt lên. Vì thế hàm
+ * này không nhận tham số nào — và đó là chủ ý, không phải thiếu sót.
+ */
+export function saoLuuNgay() {
+  return goi('saoLuuNgay');
+}
+
+/**
+ * Mở một bản sao lưu ra xem, KHÔNG ghi gì.
+ * Trả về { ok, loi, ten, tomTat, hienTai } — hai tóm tắt để đặt cạnh nhau.
+ */
+export function xemBanSaoLuu(fileId) {
+  return goi('xemBanSaoLuu', fileId);
+}
+
+/**
+ * ⚠ GHI ĐÈ toàn bộ gia phả bằng nội dung một bản sao lưu.
+ *
+ * Đây là đường ghi thứ HAI được phép làm số bản ghi ít đi (đường thứ nhất là
+ * dọn thùng rác), và nó KHÔNG đi qua `luuCay` — chỉ gọi từ chỗ đã kể đủ
+ * hậu quả bằng chữ cho người dùng đọc.
+ *
+ * @param {string} fileId        bản sao lưu muốn quay về
+ * @param {string} vanTayDaBiet  `state.headRevisionId` — máy chủ so để chặn
+ *                               ghi đè lên thay đổi của người khác
+ */
+export function khoiPhucSaoLuu(fileId, vanTayDaBiet) {
+  return goi('khoiPhucSaoLuu', fileId, vanTayDaBiet);
 }

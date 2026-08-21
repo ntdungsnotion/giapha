@@ -1,7 +1,7 @@
 // ============================================================
 // giapha · gas/Code.gs   (đặt trong Apps Script)
 // Vai trò  : API máy chủ. Trình duyệt gọi qua google.script.run.
-// Phiên bản: 0.7.0 · Cập nhật: 21/08/2026 22:10
+// Phiên bản: 0.8.0 · Cập nhật: 22/08/2026 00:40
 // ============================================================
 //
 // Triển khai BẮT BUỘC đặt:
@@ -12,13 +12,15 @@
 // trả về email thật và Drive thực thi phân quyền theo danh sách chia sẻ.
 // Đã kiểm chứng ba vòng ở phép thử 3 — xem NK-B03. ĐỪNG ĐỔI.
 //
-// TRẠNG THÁI (21/08/2026, việc 6B):
+// TRẠNG THÁI (22/08/2026, việc 7):
 //   doGet · layPhien · layCay · trangThaiCaiDat  → đã viết thật
 //   luuCay + sao lưu tự động                     → đã viết thật (chat 2.1)
 //   taiAnh · layAnhBase64 · trangThaiQuyenAnh ·
 //     moQuyenXemAnh · xoaAnhThu                  → đã viết thật (bước 28)
 //   xoaAnhThat                                   → đã viết thật (việc 6B)
-//   layDanhSachSaoLuu · taoFileDuLieuMoi         → còn khung
+//   layDanhSachSaoLuu · saoLuuNgay · xemBanSaoLuu ·
+//     khoiPhucSaoLuu                             → đã viết thật (việc 7)
+//   taoFileDuLieuMoi                             → còn khung
 //
 // ⚠ VIỆC 6B ĐỔI HAI THỨ TRONG `luuCay`, và cả hai đều là chỗ nguy hiểm:
 //   · `action: 'purge'` là đường DUY NHẤT được phép làm số bản ghi ít đi. Nó
@@ -991,8 +993,452 @@ function tenAnhAnToan_(tenFile) {
   return t;
 }
 
-/** Danh sách bản sao lưu trong THU_MUC_SAO_LUU_ID, mới nhất trước. */
-function layDanhSachSaoLuu() { /* TODO — giai đoạn 3, màn hình khôi phục */ }
+// --- SAO LƯU CHỦ ĐỘNG VÀ KHÔI PHỤC (việc 7) ------------------------------
+//
+// Bốn hàm dưới đây làm nốt việc mà `saoLuuNeuDenHan_` bỏ dở: nó CẤT được bản
+// cũ, nhưng cất xong thì không ai TÌM LẠI được từ trong app — phải mở thư mục
+// Sao_luu trên Drive mà nhìn. Một đường lùi chỉ dùng được bằng cách rời khỏi
+// app thì trong lúc hoảng không ai dùng.
+//
+// ⚠ AI DÙNG ĐƯỢC: chỉ CHỦ DỰ ÁN. Thư mục Sao_luu chỉ chia sẻ cho một người
+// (`PHAN-QUYEN_V03`), mà script chạy bằng danh tính người đang truy cập — nên
+// với người biên tập khác, `DriveApp.getFolderById` ném lỗi ngay dòng đầu.
+// Đây là hệ quả CỐ Ý của cách chia sẻ, y như chuyện họ không dọn được thùng
+// rác (việc 6B). Cả bốn hàm nói thẳng điều đó thay vì trả danh sách rỗng.
+
+/**
+ * Danh sách bản sao lưu trong THU_MUC_SAO_LUU_ID, mới nhất trước.
+ *
+ * @returns {{ok:boolean, loi:string|null, thuMuc:string,
+ *            ds:Array<{fileId:string, ten:string, luc:string, lucSo:number,
+ *                      co:number, revision:number|null}>}}
+ *
+ * ⚠ KHÔNG mở từng file ra đọc. Ba mươi bản sao lưu là ba mươi lần tải cả cây
+ * về máy chủ, cho một màn hình mà người dùng chỉ liếc qua rồi chọn một dòng.
+ * Số revision lấy từ TÊN FILE — `saoLuuNeuDenHan_` đã gắn sẵn `_rev123` vào
+ * đó, và đó chính là lý do nó gắn. Muốn biết bên trong có gì thì bấm vào một
+ * dòng: `xemBanSaoLuu` mở đúng MỘT file.
+ */
+function layDanhSachSaoLuu() {
+  var kq = { ok: false, loi: null, thuMuc: '', ds: [] };
+
+  if (!THU_MUC_SAO_LUU_ID || THU_MUC_SAO_LUU_ID.indexOf('DAN_ID_') === 0) {
+    kq.loi = 'Chưa điền THU_MUC_SAO_LUU_ID trong Config.gs, nên máy chủ ' +
+             'không biết tìm bản sao lưu ở đâu.';
+    return kq;
+  }
+
+  var thuMuc;
+  try {
+    thuMuc = DriveApp.getFolderById(THU_MUC_SAO_LUU_ID);
+    kq.thuMuc = thuMuc.getName();
+  } catch (e) {
+    kq.loi = 'Không mở được thư mục Sao_luu. Thư mục ấy chỉ chia sẻ cho ' +
+             NGUOI_QUAN_LY + ', nên chỉ người ấy xem và khôi phục được bản ' +
+             'sao lưu. (' + e.message + ')';
+    return kq;
+  }
+
+  try {
+    var ds  = dsSaoLuuMoiTruoc_(thuMuc);
+    var mui = muiGio_();
+    for (var i = 0; i < ds.length && i < 60; i++) {
+      var f   = ds[i];
+      var luc = f.getDateCreated();
+      kq.ds.push({
+        fileId:   f.getId(),
+        ten:      f.getName(),
+        luc:      Utilities.formatDate(luc, mui, 'dd/MM/yyyy HH:mm'),
+        lucSo:    luc.getTime(),
+        co:       f.getSize(),
+        revision: revTuTenSaoLuu_(f.getName()),
+      });
+    }
+    kq.ok = true;
+    return kq;
+  } catch (e) {
+    kq.loi = 'Đọc được thư mục nhưng không liệt kê được file: ' + e.message;
+    return kq;
+  }
+}
+
+/**
+ * SAO LƯU NGAY — cất bản đang nằm trên Drive vào thư mục Sao_luu, không đợi
+ * đến hạn.
+ *
+ * ⚠ Sao lưu bản TRÊN DRIVE, không sao lưu cây trong trình duyệt. Người bấm nút
+ * này thường đang sắp làm một việc lớn (nhập dữ liệu, dọn rác), và thứ họ muốn
+ * cất là *bản đang có thật*, chứ không phải bản có lẫn mấy thay đổi chưa lưu
+ * trên máy họ. Nhận cây từ trình duyệt còn mở ra một đường ghi thứ hai không
+ * qua `luuCay` — đúng thứ không nên có.
+ *
+ * @returns {{ok:boolean, ten:string|null, loi:string|null, revision:number|null}}
+ */
+function saoLuuNgay() {
+  var kq = { ok: false, ten: null, loi: null, revision: null };
+
+  var phien = layPhien();
+  if (phien.loi)      { kq.loi = phien.loi; return kq; }
+  if (!phien.docDuoc) {
+    kq.loi = 'Bạn chưa được cấp quyền xem file dữ liệu.';
+    return kq;
+  }
+
+  var cay;
+  try {
+    cay = JSON.parse(DriveApp.getFileById(FILE_ID).getBlob().getDataAsString('UTF-8'));
+  } catch (e) {
+    kq.loi = 'Không đọc được bản đang nằm trên Drive: ' + e.message;
+    return kq;
+  }
+
+  var ten = saoLuuNeuDenHan_(cay, true);
+  if (!laTenFileSaoLuu_(ten)) {
+    kq.loi = giaiThichSaoLuuHong_(ten);
+    return kq;
+  }
+
+  kq.ok       = true;
+  kq.ten      = ten;
+  kq.revision = soRevision_(cay);
+  return kq;
+}
+
+/**
+ * Mở MỘT bản sao lưu ra xem có gì bên trong, KHÔNG ghi gì cả.
+ *
+ * Đây là bước đứng giữa "chọn một dòng" và "khôi phục", và nó bắt buộc phải
+ * có: tên file chỉ nói ngày giờ và số revision, mà thứ người dùng cần biết
+ * trước khi ghi đè là *bản ấy có bao nhiêu người*. Bản sao lưu tuần trước có
+ * 57 người trong khi bản đang chạy có 59 — hai con số ấy đặt cạnh nhau nói ra
+ * cái giá của việc khôi phục, còn cái tên file thì không.
+ *
+ * @param {string} fileId  phải là file NẰM TRONG thư mục Sao_luu
+ */
+function xemBanSaoLuu(fileId) {
+  var kq = { ok: false, loi: null, ten: null, tomTat: null, hienTai: null };
+
+  var doc = docBanSaoLuu_(fileId);
+  if (doc.loi) { kq.loi = doc.loi; return kq; }
+
+  kq.ten    = doc.ten;
+  kq.tomTat = tomTatCay_(doc.cay);
+
+  try {
+    var cayNay = JSON.parse(
+      DriveApp.getFileById(FILE_ID).getBlob().getDataAsString('UTF-8'));
+    kq.hienTai = tomTatCay_(cayNay);
+  } catch (e) {
+    kq.hienTai = null;   // không đọc được bản hiện tại thì thôi, đừng ngã cả hàm
+  }
+
+  kq.ok = true;
+  return kq;
+}
+
+/**
+ * KHÔI PHỤC — ghi nội dung một bản sao lưu đè lên file gia phả đang dùng.
+ *
+ * Trình tự bắt buộc, KHÔNG được đảo:
+ *   1. Quyền sửa — không có thì từ chối ngay
+ *   2. Đọc bản sao lưu, và bắt nó nằm TRONG thư mục Sao_luu
+ *   3. Rà soát bản sao lưu bằng đúng phép rà của đường ghi thường
+ *   4. Khoá, đọc bản hiện tại, so dấu vân tay
+ *   5. SAO LƯU BẢN HIỆN TẠI — điều kiện, không phải thứ đi kèm
+ *   6. Dựng cây mới (hàm thuần), rồi ghi
+ *
+ * ⚠ ĐÂY LÀ ĐƯỜNG GHI THỨ HAI ĐƯỢC PHÉP LÀM SỐ BẢN GHI ÍT ĐI — đường thứ nhất
+ * là *Dọn thùng rác*. Nó KHÔNG đi qua `luuCay`, và điều đó phải nói thẳng chứ
+ * không giấu trong mã: `luuCay` chặn mọi lần ghi làm số bản ghi giảm, mà khôi
+ * phục thì gần như luôn giảm — đó chính là việc nó làm. Bốn chốt chặn thay
+ * cho phép kiểm ấy:
+ *
+ *   · file phải nằm trong thư mục Sao_luu — không nhận một fileId bất kỳ;
+ *   · nội dung phải qua `raSoatTruocKhiGhi_` như mọi lần ghi khác;
+ *   · phải cất được bản hiện tại trước, không cất được thì KHÔNG khôi phục;
+ *   · `changeLog` giữ bản DÀI HƠN, không bao giờ ngắn đi.
+ *
+ * ⚠ VÀ NÓ KHÔNG ĐI QUA `luuCay` NÊN CŨNG KHÔNG ĐƯỢC HƯỞNG PHÉP RÀ NGHIỆP VỤ
+ * của trình duyệt. Không sao: thứ đang ghi vào là một bản CHÍNH APP NÀY từng
+ * ghi ra, nó đã qua đủ phép rà một lần rồi.
+ *
+ * @param {string} fileId          bản sao lưu muốn quay về
+ * @param {string} vanTayDaBiet    dấu vân tay trình duyệt nhận ở lần đọc gần nhất
+ */
+function khoiPhucSaoLuu(fileId, vanTayDaBiet) {
+  var kq = {
+    ok: false, lyDo: null, loi: null,
+    saoLuu: 'khong-chay', revision: null, headRevisionId: null,
+    tomTatTruoc: null, tomTatSau: null,
+  };
+
+  // --- 1. QUYỀN -----------------------------------------------------------
+  var phien = layPhien();
+  if (phien.loi) {
+    kq.lyDo = 'caidat'; kq.loi = phien.loi; return kq;
+  }
+  if (!phien.suaDuoc) {
+    kq.lyDo = 'khongcoquyen';
+    kq.loi  = 'Bạn chỉ có quyền xem gia phả, không khôi phục được. ' +
+              'Việc này phải do ' + NGUOI_QUAN_LY + ' làm.';
+    return kq;
+  }
+
+  // --- 2. ĐỌC BẢN SAO LƯU -------------------------------------------------
+  var doc = docBanSaoLuu_(fileId);
+  if (doc.loi) {
+    kq.lyDo = 'khongdocduoc'; kq.loi = doc.loi; return kq;
+  }
+
+  // --- 3. RÀ SOÁT ---------------------------------------------------------
+  var loiRaSoat = raSoatTruocKhiGhi_(doc.cay);
+  if (loiRaSoat) {
+    kq.lyDo = 'dulieuhong';
+    kq.loi  = 'Bản sao lưu "' + doc.ten + '" không dùng được: ' + loiRaSoat;
+    return kq;
+  }
+
+  // --- 4. KHOÁ VÀ VÂN TAY -------------------------------------------------
+  var khoa = LockService.getScriptLock();
+  try {
+    khoa.waitLock(10000);
+  } catch (e) {
+    kq.lyDo = 'khoaban';
+    kq.loi  = 'Có người khác đang lưu cùng lúc. Chờ vài giây rồi thử lại.';
+    return kq;
+  }
+
+  try {
+    var file, cayCu;
+    try {
+      file  = DriveApp.getFileById(FILE_ID);
+      cayCu = JSON.parse(file.getBlob().getDataAsString('UTF-8'));
+    } catch (e) {
+      kq.lyDo = 'khongdocduoc';
+      kq.loi  = 'Không đọc được bản đang nằm trên Drive nên chưa dám ghi đè: ' +
+                e.message;
+      return kq;
+    }
+
+    // Cùng lý lẽ với `luuCay`: người khác vừa sửa mà mình ghi đè bằng một bản
+    // cũ thì thay đổi của họ mất không dấu vết. Khôi phục là việc cố ý, nhưng
+    // cố ý đè lên bản của CHÍNH MÌNH, không phải của người khác.
+    var vanTayHienTai = dauVanTay_(cayCu, file);
+    if (String(vanTayDaBiet || '') !== vanTayHienTai) {
+      kq.lyDo           = 'xungdot';
+      kq.headRevisionId = vanTayHienTai;
+      kq.loi            = 'Bản trên Drive đã đổi kể từ lúc bạn mở app' +
+                          moTaAiVuaSua_(cayCu) + '. CHƯA khôi phục gì cả. ' +
+                          'Tải lại trang để nhìn bản mới rồi quyết định.';
+      return kq;
+    }
+
+    // --- 5. CẤT BẢN HIỆN TẠI — ĐIỀU KIỆN ---------------------------------
+    // Giống hệt lệnh dọn thùng rác, và vì đúng một lý do: sau dòng ghi ở dưới,
+    // bản hiện tại là thứ KHÔNG còn ở đâu nữa. Không cất được nó thì thà không
+    // khôi phục — người dùng còn nguyên hai lựa chọn, thay vì mất một.
+    kq.saoLuu = saoLuuNeuDenHan_(cayCu, true);
+    if (!laTenFileSaoLuu_(kq.saoLuu)) {
+      kq.lyDo = 'khongsaoluuduoc';
+      kq.loi  = 'CHƯA khôi phục gì cả. Máy chủ không cất được bản ĐANG DÙNG ' +
+                'trước khi ghi đè (' + kq.saoLuu + '), mà đó là đường lùi duy ' +
+                'nhất nếu bạn đổi ý. ' + giaiThichSaoLuuHong_(kq.saoLuu);
+      return kq;
+    }
+
+    // --- 6. DỰNG CÂY MỚI RỒI GHI ------------------------------------------
+    var luc    = bayGio_();
+    var cayMoi = dungCayKhoiPhuc_(cayCu, doc.cay, doc.ten, luc, phien.email);
+
+    try {
+      file.setContent(JSON.stringify(cayMoi, null, 2));
+    } catch (e) {
+      kq.lyDo = 'loighi';
+      kq.loi  = 'Drive từ chối ghi file: ' + e.message;
+      return kq;
+    }
+
+    kq.headRevisionId = dauVanTay_(cayMoi, DriveApp.getFileById(FILE_ID));
+    kq.revision       = cayMoi.tree.revision;
+    kq.tomTatTruoc    = tomTatCay_(cayCu);
+    kq.tomTatSau      = tomTatCay_(cayMoi);
+    kq.ok             = true;
+    return kq;
+
+  } finally {
+    khoa.releaseLock();
+  }
+}
+
+/**
+ * Đọc một file trong thư mục Sao_luu. Trả `{ten, cay, loi}`.
+ *
+ * ⚠ PHẢI DUYỆT THƯ MỤC, không được `getFileById` thẳng. Trình duyệt gửi lên
+ * `fileId`, mà mọi thứ trình duyệt gửi lên đều là lời khai — cùng lý lẽ đã
+ * dùng cho quyền ở `luuCay`. Nhận thẳng mã file nghĩa là mở một đường ghi đè
+ * gia phả bằng NỘI DUNG BẤT KỲ nào chủ script đọc được trên Drive. Duyệt thư
+ * mục thì thứ ghi vào chỉ có thể là thứ chính app này từng ghi ra.
+ */
+function docBanSaoLuu_(fileId) {
+  var kq = { ten: null, cay: null, loi: null };
+  var ma = String(fileId || '');
+  if (!ma) { kq.loi = 'Chưa chọn bản sao lưu nào.'; return kq; }
+
+  if (!THU_MUC_SAO_LUU_ID || THU_MUC_SAO_LUU_ID.indexOf('DAN_ID_') === 0) {
+    kq.loi = 'Chưa điền THU_MUC_SAO_LUU_ID trong Config.gs.';
+    return kq;
+  }
+
+  var f = null;
+  try {
+    var lap = DriveApp.getFolderById(THU_MUC_SAO_LUU_ID).getFiles();
+    while (lap.hasNext()) {
+      var x = lap.next();
+      if (x.getId() === ma) { f = x; break; }
+    }
+  } catch (e) {
+    kq.loi = 'Không mở được thư mục Sao_luu. Thư mục ấy chỉ chia sẻ cho ' +
+             NGUOI_QUAN_LY + '. (' + e.message + ')';
+    return kq;
+  }
+
+  if (!f) {
+    kq.loi = 'Không tìm thấy bản sao lưu ấy trong thư mục Sao_luu. Có thể nó ' +
+             'vừa bị dọn đi. Tải lại danh sách rồi chọn bản khác.';
+    return kq;
+  }
+
+  kq.ten = f.getName();
+  try {
+    kq.cay = JSON.parse(f.getBlob().getDataAsString('UTF-8'));
+  } catch (e) {
+    kq.loi = 'Bản sao lưu "' + kq.ten + '" không đọc được — file hỏng hoặc ' +
+             'không phải JSON. (' + e.message + ')';
+  }
+  return kq;
+}
+
+// --- BỐN HÀM THUẦN, cắt ra chạy được ngoài Apps Script -------------------
+//
+// `kiem-sao-luu.mjs` cắt đúng bốn hàm này ra khỏi file thật rồi chạy trong
+// Node — cùng cách `kiem-don-rac.mjs` gác `raSoatDonRac_`. Chúng là phần duy
+// nhất của đường khôi phục có thể sai lặng lẽ: DriveApp hỏng thì ném lỗi, còn
+// một con số revision tính sai thì ghi xuống êm ru.
+
+/**
+ * Cây sẽ được ghi khi khôi phục. HÀM THUẦN — không đụng Drive, không đọc giờ.
+ *
+ * Ba điều nó quyết, và cả ba đều có thể làm sai theo hướng ngược lại:
+ *
+ * 1. **`revision` LỚN HƠN CẢ HAI BÊN.** Bản sao lưu mang số cũ (rev 12), bản
+ *    đang chạy mang số mới (rev 20). Chép nguyên rev 12 xuống thì mọi trình
+ *    duyệt đang mở sẽ thấy số revision TỤT, và cơ chế chống ghi đè đọc số ấy.
+ *    Nên số mới là 21 — cao hơn bản cao nhất từng có.
+ * 2. **`changeLog` giữ mảng DÀI HƠN.** Nhật ký kể chuyện đã xảy ra; khôi phục
+ *    không làm chuyện đã xảy ra biến mất. Bản đang chạy hầu như luôn dài hơn,
+ *    nhưng đừng giả định — cứ so độ dài rồi lấy.
+ * 3. **Mục nhật ký ghi rõ TÊN FILE nguồn.** Không có nó thì sáu tháng sau
+ *    không ai trả lời được câu *"hôm ấy quay về bản nào"*.
+ */
+function dungCayKhoiPhuc_(cayHienTai, cayKhoiPhuc, tenFile, luc, email) {
+  var cay = JSON.parse(JSON.stringify(cayKhoiPhuc));
+
+  if (!cay.tree || typeof cay.tree !== 'object') cay.tree = {};
+  cay.tree.revision  = revisionKhoiPhuc_(cayHienTai, cayKhoiPhuc);
+  cay.tree.updatedAt = luc;
+  cay.tree.updatedBy = email;
+
+  cay.changeLog = changeLogKhoiPhuc_(cayHienTai, cayKhoiPhuc);
+  cay.changeLog.push({
+    ts:     luc,
+    by:     email,
+    action: 'restore',
+    target: String(tenFile || ''),
+    note:   'Khôi phục toàn bộ gia phả từ bản sao lưu ' + tenFile + '.',
+    diff:   {
+      'tree.revision': [String(soRevision_(cayHienTai)),
+                        String(cay.tree.revision)],
+      'persons':       [String(demBanGhi_(cayHienTai).persons),
+                        String(demBanGhi_(cay).persons)],
+      'unions':        [String(demBanGhi_(cayHienTai).unions),
+                        String(demBanGhi_(cay).unions)],
+    },
+  });
+
+  return cay;
+}
+
+/** Số revision sau khi khôi phục: cao hơn cả bản đang chạy lẫn bản quay về. */
+function revisionKhoiPhuc_(cayHienTai, cayKhoiPhuc) {
+  var a = soRevision_(cayHienTai);
+  var b = soRevision_(cayKhoiPhuc);
+  return (a > b ? a : b) + 1;
+}
+
+/** Nhật ký sau khi khôi phục: mảng dài hơn trong hai bản, không bao giờ ngắn đi. */
+function changeLogKhoiPhuc_(cayHienTai, cayKhoiPhuc) {
+  var a = (cayHienTai  && Array.isArray(cayHienTai.changeLog))  ? cayHienTai.changeLog  : [];
+  var b = (cayKhoiPhuc && Array.isArray(cayKhoiPhuc.changeLog)) ? cayKhoiPhuc.changeLog : [];
+  var giu = (a.length >= b.length) ? a : b;
+  return JSON.parse(JSON.stringify(giu));
+}
+
+/**
+ * Tóm tắt một cây để hiện lên màn hình. Đếm CẢ bản ghi mang cờ `deleted` và
+ * kể riêng ra: hai bản cùng "59 người" mà một bản có 4 người trong thùng rác
+ * là hai thứ khác nhau, và người sắp ghi đè cần thấy điều đó.
+ */
+function tomTatCay_(cay) {
+  var d = { persons: 0, unions: 0, media: 0, daXoa: 0,
+            changeLog: 0, revision: 0, updatedAt: '', updatedBy: '' };
+  if (!cay || typeof cay !== 'object') return d;
+
+  var ds = ['persons', 'unions', 'media'];
+  for (var k = 0; k < ds.length; k++) {
+    var m = cay[ds[k]];
+    if (!Array.isArray(m)) continue;
+    d[ds[k]] = m.length;
+    for (var i = 0; i < m.length; i++) if (m[i] && m[i].deleted === true) d.daXoa++;
+  }
+
+  d.changeLog = Array.isArray(cay.changeLog) ? cay.changeLog.length : 0;
+  d.revision  = soRevision_(cay);
+  d.updatedAt = String((cay.tree && cay.tree.updatedAt) || '');
+  d.updatedBy = String((cay.tree && cay.tree.updatedBy) || '');
+  return d;
+}
+
+/** Số revision đọc từ tên file sao lưu (`…_rev123.json`). Không có thì null. */
+function revTuTenSaoLuu_(ten) {
+  var m = String(ten || '').match(/_rev(\d+)\./);
+  return m ? Number(m[1]) : null;
+}
+
+/** Múi giờ của script, luôn có giá trị dùng được. */
+function muiGio_() {
+  var mui = 'Asia/Ho_Chi_Minh';
+  try { mui = Session.getScriptTimeZone() || mui; } catch (e) {}
+  return mui;
+}
+
+/**
+ * Bốn chữ trạng thái của `saoLuuNeuDenHan_` dịch ra câu người đọc hiểu được.
+ * Ba trong bốn chữ ấy là chuyện CÀI ĐẶT, không phải chuyện hỏng hóc — nói
+ * đúng cái nào thì người dùng biết phải làm gì tiếp.
+ */
+function giaiThichSaoLuuHong_(chu) {
+  if (chu === 'tat') {
+    return 'Sao lưu đang TẮT trong Config.gs (SAO_LUU.bat = false).';
+  }
+  if (chu === 'khong-cau-hinh') {
+    return 'Chưa điền THU_MUC_SAO_LUU_ID trong Config.gs.';
+  }
+  if (chu === 'loi') {
+    return 'Drive từ chối tạo file trong thư mục Sao_luu. Thư mục ấy chỉ ' +
+           'chia sẻ cho ' + NGUOI_QUAN_LY + ', nên chỉ người ấy sao lưu được.';
+  }
+  return 'Máy chủ trả về "' + chu + '".';
+}
 
 /**
  * Cất bản CŨ vào thư mục Sao_luu, nếu đã đến hạn.

@@ -3,8 +3,9 @@
 // Vai trò  : MÀN HÌNH CHÍNH — sơ đồ cây, đổi người trung tâm
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render,union}, utils/text,
-//            pages/{person-detail,person-edit,person-list,review,settings}
-// Phiên bản: 1.22.0 · Cập nhật: 21/08/2026 23:10
+//            pages/{person-detail,person-edit,person-list,review,settings,
+//            backup}
+// Phiên bản: 1.23.0 · Cập nhật: 22/08/2026 00:40
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -76,6 +77,7 @@ import { openPersonForm, closePersonForm, quickAddChild, quickAddParent,
 import { openPersonList, closePersonList, openThungRac } from './person-list.js';
 import { openReview, closeReview } from './review.js';
 import { openSettings, closeSettings } from './settings.js';
+import { openBackup, closeBackup } from './backup.js';
 import { rongHop, caoHop, leLopPhu } from '../config.js';
 
 let khungCuon = null;   // div cuộn được, bọc quanh SVG
@@ -108,6 +110,7 @@ export function mountTreeView(containerEl) {
   closePersonList();
   closeReview();
   closeSettings();
+  closeBackup();
   containerEl.innerHTML = '';
   containerEl.style.cssText =
     'position:absolute;inset:0;display:flex;flex-direction:column;' +
@@ -734,7 +737,13 @@ function veHopNutTrenPhai() {
     'position:absolute;right:12px;top:12px;z-index:10;' +
     'display:flex;flex-direction:column;align-items:stretch;gap:8px';
   hop.append(
-    nutTron('⚙', 'Cài đặt', () => openSettings({ onDoiHienThi: () => refresh() })),
+    nutTron('⚙', 'Cài đặt', () => openSettings({
+      onDoiHienThi: () => refresh(),
+      // Đóng Cài đặt TRƯỚC khi mở màn sao lưu: hai lớp phủ cùng z-index 30,
+      // chồng nhau thì cái mở sau nằm dưới và người dùng bấm vào khoảng không
+      // — đúng cái bẫy đã sập một lần ở bước 26.
+      onMoSaoLuu: () => { closeSettings(); openBackup(); },
+    })),
     nutTron('🔍', 'Tìm người trong gia phả', () => moDanhSachNguoi()),
   );
   return hop;
