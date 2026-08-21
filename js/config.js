@@ -3,7 +3,7 @@
 // Vai trò  : Hằng số hiển thị phía trình duyệt.
 // Lớp      : config — không gọi file nào khác
 // Phụ thuộc: (không)
-// Phiên bản: 0.9.0 · Cập nhật: 20/08/2026 17:20
+// Phiên bản: 0.10.0 · Cập nhật: 21/08/2026 14:10
 // ============================================================
 //
 // LƯU Ý: từ khi chuyển sang kiến trúc Apps Script, file này KHÔNG còn
@@ -154,3 +154,40 @@ export const DEFAULT_SCOPE = {
   spouseOfDescendants: true,
   k:                   1,
 };
+
+// ============================================================
+// TÊN PHỤ — nhãn tiếng Việt của `names[].type`
+// ============================================================
+//
+// Gia phả Việt gọi một người bằng nhiều tên: tên huý (tên thật lúc nhỏ, kiêng
+// gọi ra), tên tự, tên thụy (đặt sau khi mất), pháp danh (nhà chùa đặt), và
+// tên thường gọi. Schema đã chứa cả năm từ bước 00 — `CAU-TRUC-DU-LIEU §names[]`.
+//
+// ⚠ **Bảng này ở `config` chứ không nằm trong hai file `pages`, và đó là chủ ý.**
+// Form GHI mã `phap_danh` xuống dữ liệu, thẻ ĐỌC mã ấy lên để kể tên. Hai bên
+// giữ hai bảng riêng thì tới ngày ai đó thêm một loại tên, một bên biết còn bên
+// kia hiện trơ cái mã `phap_danh` ra giữa thẻ. Đây đúng là *hằng số hiển thị*.
+//
+// ⚠ **`chinh` KHÔNG có trong bảng.** Tên chính không phải một lựa chọn trong
+// danh sách tên phụ — nó là dòng tên lớn ở đầu thẻ, và mỗi người chỉ có đúng một.
+export const LOAI_TEN_PHU = [
+  { ma: 'huy',        chu: 'Tên huý' },
+  { ma: 'tu',         chu: 'Tên tự' },
+  { ma: 'thuy',       chu: 'Tên thụy' },
+  { ma: 'phap_danh',  chu: 'Pháp danh' },
+  { ma: 'thuong_goi', chu: 'Thường gọi' },
+  { ma: 'khac',       chu: 'Tên khác' },
+];
+
+/**
+ * Nhãn tiếng Việt của một mã loại tên. Mã lạ — dữ liệu cũ, hoặc file GEDCOM
+ * nhập từ phần mềm khác — trả về CHÍNH CÁI MÃ chứ không trả về chuỗi rỗng:
+ * thấy `birth_name` giữa thẻ thì còn biết đường mà tra, thấy khoảng trống thì
+ * tưởng dữ liệu hỏng.
+ */
+export function nhanLoaiTenPhu(ma) {
+  const m = String(ma || '').trim();
+  if (m === '') return '';
+  const muc = LOAI_TEN_PHU.find((x) => x.ma === m);
+  return muc ? muc.chu : m;
+}

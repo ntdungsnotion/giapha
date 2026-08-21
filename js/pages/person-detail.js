@@ -3,8 +3,8 @@
 // Vai trò  : MENU vòng tròn (mở từ nút ⓘ · chuột phải) + THẺ thông tin
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
-//            utils/{text,date,image}
-// Phiên bản: 1.11.0 · Cập nhật: 21/08/2026 11:20
+//            utils/{text,date,image}, config
+// Phiên bản: 1.12.0 · Cập nhật: 21/08/2026 14:45
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -69,6 +69,7 @@ import { mauVien } from '../domains/render.js';
 import { fullName, coGiaTri, doiSongNguoi, ngayGio } from '../utils/text.js';
 import { formatDate, calcAge } from '../utils/date.js';
 import { driveThumbUrl, anhMacDinhUri } from '../utils/image.js';
+import { nhanLoaiTenPhu } from '../config.js';
 
 let lopPhu = null;   // lớp phủ đang mở, hoặc null
 
@@ -258,8 +259,12 @@ function veHangThongTin(p) {
   const bang = document.createElement('div');
   bang.style.cssText = 'margin-top:14px;display:flex;flex-direction:column;gap:1px';
 
+  // ⚠ Nhãn loại tên đọc qua `nhanLoaiTenPhu` chứ KHÔNG in thẳng cái mã ra thẻ.
+  // Từ hôm nay form ghi được `phap_danh` xuống dữ liệu, nên bản cũ — in nguyên
+  // `n.loai` — sẽ kể ra "Thích Minh Tâm (phap_danh)" giữa một cái thẻ toàn
+  // tiếng Việt. Trước hôm nay chưa ai thấy vì chưa bản ghi nào có tên phụ.
   const tenKhac = getAlternateNames(p)
-    .map((n) => n.ten + (coGiaTri(n.loai) ? ' (' + n.loai + ')' : ''))
+    .map((n) => n.ten + (coGiaTri(n.loai) ? ' (' + nhanLoaiTenPhu(n.loai) + ')' : ''))
     .join(' · ');
 
   veHang(bang, 'Tên khác', tenKhac);

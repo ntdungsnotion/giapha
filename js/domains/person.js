@@ -3,7 +3,7 @@
 // Vai trò  : Nghiệp vụ hồ sơ cá nhân — tạo, sửa, đọc thông tin một người
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: utils/{text,date,id}
-// Phiên bản: 1.6.0 · Cập nhật: 21/08/2026 11:20
+// Phiên bản: 1.7.0 · Cập nhật: 21/08/2026 14:25
 // ============================================================
 import { fullName, coGiaTri, removeDiacritics, doiSongNguoi } from '../utils/text.js';
 import { parseLooseDate } from '../utils/date.js';
@@ -84,6 +84,7 @@ export function createPerson(tree, data, ghiNhan) {
  * @param {object} changes   chỉ những trường muốn đổi; khoá vắng mặt = không đụng tới
  *        {
  *          name:  { surname, middle, given },   // áp vào mục names type:'chinh'
+ *          altNames: [ { type, surname, middle, given } ],  // TÊN PHỤ, CẢ danh sách
  *          sex, living, burialPlace, note,
  *          title, occupation, education, religion, residence, nationality,
  *          birth: { raw, place, iso? },
@@ -141,6 +142,7 @@ export function updatePerson(tree, personId, changes, ghiNhan) {
   const ghi  = (duong, truoc, sau) => { diff[personId + '.' + duong] = [truoc, sau]; };
 
   if (ch.name) datTenChinh(moi, ch.name, ghi);
+  datTenPhu(moi, ch.altNames, ghi);
 
   datChuoi(moi, 'sex',         ch.sex,         ghi);
   datChuoi(moi, 'burialPlace', ch.burialPlace, ghi);
@@ -209,6 +211,91 @@ function datTenChinh(nguoi, ten, ghi) {
   }
   const sau = fullName(muc);
   if (truoc !== sau) ghi('names.chinh', truoc, sau);
+}
+
+/**
+ * TÊN PHỤ — mọi mục trong `names[]` KHÁC mục tên chính: huý · tự · thụy ·
+ * pháp danh · thường gọi · khác.
+ *
+ * @param {Array} danhSach  cả danh sách tên phụ SAU khi sửa, không phải phần
+ *        thêm vào. Vắng mặt (`undefined`) = không đụng tới tên phụ.
+ *
+ * --- Vì sao nhận CẢ DANH SÁCH chứ không nhận từng phép thêm/bớt ----------
+ *
+ * Đây là mảng, không phải ô chữ. Nhận `{ them: …, bo: … }` thì hàm phải khớp
+ * hai bên bằng chỉ số hoặc bằng mã, mà mục tên phụ **không có mã** — hai người
+ * cùng tên huý "Bá" là hai mục giống hệt nhau. Form giữ nguyên cả danh sách
+ * đang gõ dở và gửi lên trọn vẹn; hàm này thay hẳn phần tên phụ. Cùng lối với
+ * `union.reorderChildren()`, và cùng lý do: sửa một mảng thì gửi cả mảng.
+ *
+ * --- Mục tên chính KHÔNG BAO GIỜ bị đụng tới ----------------------------
+ *
+ * Nó được nhấc ra trước rồi ghép lại vào đầu, đúng cùng một quy tắc mà
+ * `utils/text.fullName` dùng để chọn tên hiển thị: có `type:'chinh'` thì lấy
+ * nó, không có thì mục ĐẦU TIÊN đóng vai ấy. Chọn khác đi là sơ đồ gọi một
+ * người bằng một tên còn thẻ gọi bằng tên khác.
+ *
+ * ⚠ **Người chưa có tên nào mà lại có tên phụ thì hàm dựng một mục `chinh`
+ * RỖNG đứng đầu.** Không dựng thì mục tên huý trôi lên hàng đầu và `fullName`
+ * lấy nó làm tên chính — cả sơ đồ hiện tên huý, đúng cái tên mà gia phả cũ
+ * kiêng không gọi ra.
+ *
+ * ⚠ **Hàng trống là hàng BỊ XOÁ.** Người dùng xoá sạch chữ trong một hàng rồi
+ * bấm Lưu thì mục ấy biến mất, không lưu một mục tên rỗng. Mục rỗng vô hình
+ * trên thẻ (`getAlternateNames` bỏ qua) nhưng vẫn nằm trong file, và lần xuất
+ * GEDCOM sau sinh ra một thẻ `NAME` không có chữ nào.
+ */
+function datTenPhu(nguoi, danhSach, ghi) {
+  if (danhSach === undefined) return;
+  if (!Array.isArray(nguoi.names)) nguoi.names = [];
+
+  const chinh = nguoi.names.find((n) => n && n.type === 'chinh') || nguoi.names[0] || null;
+
+  const sach = [];
+  for (const m of (Array.isArray(danhSach) ? danhSach : [])) {
+    if (!m || typeof m !== 'object') continue;
+    const muc = {
+      type:    chuanLoaiTenPhu(m.type),
+      surname: m.surname === undefined || m.surname === null ? '' : String(m.surname).trim(),
+      middle:  m.middle  === undefined || m.middle  === null ? '' : String(m.middle).trim(),
+      given:   m.given   === undefined || m.given   === null ? '' : String(m.given).trim(),
+    };
+    if (!coGiaTri(fullName(muc))) continue;
+    sach.push(muc);
+  }
+
+  const truoc = keTenPhu(nguoi.names, chinh);
+  const sau   = keTenPhu(sach, null);
+  if (truoc === sau) return;
+
+  if (chinh) nguoi.names = [chinh].concat(sach);
+  else if (sach.length) nguoi.names = [{ type: 'chinh', surname: '', middle: '', given: '' }].concat(sach);
+  else nguoi.names = [];
+
+  ghi('names.phu', truoc, sau);
+}
+
+/**
+ * Loại tên phụ, chuẩn hoá. Mã lạ được GIỮ NGUYÊN chứ không ép về `khac`:
+ * file GEDCOM nhập từ phần mềm khác có thể mang `birth_name`, `married_name`,
+ * và ép hết về `khac` là làm mất một điều dữ liệu gốc đã nói rõ.
+ *
+ * Chỉ một mã bị đổi: `chinh`. Mục tên chính đứng riêng ở đầu mảng, nên một mục
+ * thứ hai cũng mang `chinh` sẽ làm `fullName` và `getAlternateNames` đọc ra hai
+ * người khác nhau từ cùng một bản ghi.
+ */
+function chuanLoaiTenPhu(loai) {
+  const t = String(loai === undefined || loai === null ? '' : loai).trim();
+  if (t === '' || t === 'chinh') return 'khac';
+  return t;
+}
+
+/** Kể tên phụ thành một dòng chữ cho `diff`: `huy:Bá · phap_danh:Minh Tâm`. */
+function keTenPhu(danhSach, boQua) {
+  return (Array.isArray(danhSach) ? danhSach : [])
+    .filter((n) => n && n !== boQua)
+    .map((n) => String(n.type || '') + ':' + fullName(n))
+    .join(' · ');
 }
 
 /**

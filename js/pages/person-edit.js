@@ -4,8 +4,8 @@
 //            SẮP THỨ TỰ ANH CHỊ EM, xoá · hoàn tác · đưa trở lại từ thùng rác
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate,media,render},
-//            services/{repo,gas}, utils/{graph,text,date,image}
-// Phiên bản: 1.11.1 · Cập nhật: 21/08/2026 12:30
+//            services/{repo,gas}, utils/{graph,text,date,image}, config
+// Phiên bản: 1.12.0 · Cập nhật: 21/08/2026 14:40
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -121,6 +121,7 @@ import { fullName, coGiaTri } from '../utils/text.js';
 import { formatDate, parseLooseDate, stampNow, mocNgay } from '../utils/date.js';
 import { compressImage, driveThumbUrl, anhMacDinhUri, dataUri, moTaCo }
   from '../utils/image.js';
+import { LOAI_TEN_PHU, nhanLoaiTenPhu } from '../config.js';
 
 let lopPhu     = null;   // lớp phủ đang mở, hoặc null
 let o          = {};     // các ô nhập, tra theo tên trường
@@ -160,6 +161,11 @@ let sapKeo = null;   // { tu:number } — đang kéo thẻ thứ mấy, null là
 // Đường ngược lại — lưu hồ sơ trước rồi mới tải ảnh — tệ hơn nhiều: máy chủ
 // nhận hồ sơ xong mà ảnh hỏng giữa chừng thì `photoFileId` trỏ vào một file
 // không tồn tại, và ô sơ đồ mang một khoảng trống không ai giải thích được.
+// TÊN PHỤ (nửa B của bộ trường thông dụng). `tenPhu` là bản làm việc của form,
+// tách hẳn khỏi cây: mỗi mục là { type, goc:{surname,middle,given}, chu }.
+let tenPhu    = [];
+let khoiTenPhu = null;   // khối chứa các hàng, để vẽ lại một mình nó
+
 let khoiAnh = null;   // tham chiếu tới khối, để vẽ lại một mình nó
 let anhChon = null;   // { fileId, xemTruoc, ten, co } — vừa tải lên xong
 let anhBo   = false;  // người dùng đã bấm "Bỏ ảnh"
@@ -280,6 +286,8 @@ export function closePersonForm() {
   sapCtx       = null;
   sapDay       = null;
   sapKeo       = null;
+  tenPhu       = [];
+  khoiTenPhu   = null;
   khoiAnh      = null;
   anhChon      = null;
   anhBo        = false;
@@ -438,6 +446,12 @@ function veCacO(nguoi) {
   );
   ra.push(hangTen);
 
+  // TÊN PHỤ đứng NGAY DƯỚI tên chính, không xuống cuối form cùng bộ thông
+  // dụng: nó là tên của cùng một người, và ai vừa gõ xong ba ô Họ · Đệm · Tên
+  // thì tên huý đang ở ngay trong đầu họ.
+  ra.push(veNhan('Tên khác'));
+  ra.push(veKhoiTenPhu(nguoi));
+
   ra.push(veNhan('Giới tính'));
   // Thêm vợ/chồng: giới tính suy ra được từ người kia, nên điền sẵn và KHOÁ.
   // Thêm cha/mẹ: KHÔNG khoá — từ bước 27 chính ô này là chỗ nói đây là cha hay
@@ -516,6 +530,160 @@ function veNhan(chu) {
     'margin-top:16px;margin-bottom:6px;font-size:12px;font-weight:600;' +
     'letter-spacing:.04em;color:#8a8078';
   return d;
+}
+
+// ============================================================
+// Khối TÊN PHỤ — huý · tự · thụy · pháp danh · thường gọi
+// ============================================================
+//
+// Thẻ thông tin ĐỌC RA những tên này từ bước 14 (`person.getAlternateNames`),
+// còn form thì chưa bao giờ sửa được — treo lâu nhất trong bộ trường thông
+// dụng, và là nửa B của việc 2 trong bảng giai đoạn 3.
+//
+// --- Vì sao MỘT ô chữ, không phải ba ô Họ · Đệm · Tên -------------------
+//
+// Schema cho tên phụ đúng cùng khuôn với tên chính (`surname`·`middle`·`given`),
+// nhưng tên huý là *"Bá"*, pháp danh là *"Thích Minh Tâm"* — không ai tách
+// chúng ra làm họ với đệm. Ba ô thì hai ô luôn trống, và ô trống trong form là
+// một câu hỏi không ai trả lời được. Nên form hỏi MỘT ô, và ghi chữ ấy vào
+// `given`; `fullName()` ghép lại đọc ra y nguyên.
+//
+// ⚠ **Chữ KHÔNG ĐỔI thì ba phần cũ được giữ nguyên** — xem `phanTenPhu()`.
+// Ca thật sẽ đến ở việc 10 (nhập GEDCOM): file nước ngoài mang tên phụ đã tách
+// sẵn `SURN`/`GIVN`, và mở form ra xem một lượt rồi bấm Lưu mà app dồn hết vào
+// `given` là làm mất một phần dữ liệu người ta đã có.
+//
+// --- Vì sao form GIỮ RIÊNG một mảng, không đọc ngược từ DOM -------------
+//
+// Hàng thêm/bớt được thì DOM là thứ bị vẽ lại; đọc ngược từ nó là mỗi lần vẽ
+// lại một lần phải khớp hàng cũ với hàng mới. Mảng `tenPhu` là bản làm việc,
+// mọi ô ghi thẳng vào nó, và `gomThayDoi()` chỉ việc gửi cả mảng đi.
+
+function veKhoiTenPhu(nguoi) {
+  tenPhu = docTenPhu(nguoi);
+  khoiTenPhu = document.createElement('div');
+  veLaiTenPhu();
+  return khoiTenPhu;
+}
+
+/** Tên phụ đang lưu, đọc thành bản làm việc của form. */
+function docTenPhu(nguoi) {
+  const ds = Array.isArray(nguoi.names) ? nguoi.names : [];
+  // Cùng quy tắc chọn tên chính với `utils/text.fullName`: có 'chinh' thì lấy
+  // nó, không có thì mục ĐẦU TIÊN. Chọn khác đi là form hiện tên chính của một
+  // người trong danh sách tên phụ của chính họ.
+  const chinh = ds.find((n) => n && n.type === 'chinh') || ds[0] || null;
+  return ds
+    .filter((n) => n && n !== chinh)
+    .map((n) => ({
+      type: coGiaTri(n.type) ? String(n.type) : 'khac',
+      goc:  { surname: n.surname || '', middle: n.middle || '', given: n.given || '' },
+      chu:  fullName(n),
+    }));
+}
+
+function veLaiTenPhu() {
+  if (!khoiTenPhu) return;
+  khoiTenPhu.innerHTML = '';
+
+  tenPhu.forEach((muc, i) => khoiTenPhu.append(veHangTenPhu(muc, i)));
+
+  const them = document.createElement('button');
+  them.type = 'button';
+  them.textContent = '+ Thêm tên khác';
+  them.setAttribute('aria-label', 'Thêm tên khác');
+  them.style.cssText = KIEU_NUT_CHAN + 'width:100%;margin-top:6px;text-align:center;' +
+    'background:#faf8f5;color:#2a2622;border:1px dashed #ddd5ca';
+  them.addEventListener('click', () => {
+    // Loại mặc định là TÊN HUÝ, không phải "Tên khác": gia phả Việt ghi tên huý
+    // nhiều hơn hẳn bốn loại kia gộp lại, nên đoán như vậy đúng phần lớn số lần
+    // — và đoán sai thì đổi mất một cú chạm.
+    tenPhu.push({ type: 'huy', goc: { surname: '', middle: '', given: '' }, chu: '' });
+    veLaiTenPhu();
+    const oCuoi = khoiTenPhu.querySelector('input[data-ten-phu="' + (tenPhu.length - 1) + '"]');
+    if (oCuoi) oCuoi.focus();
+  });
+  khoiTenPhu.append(them);
+}
+
+function veHangTenPhu(muc, i) {
+  const hang = document.createElement('div');
+  // ⚠ `flex-wrap` + `flex-basis:140px` ở ô chữ, KHÔNG dùng media query. Màn
+  // hình hẹp (hộp form co xuống 280px) thì ba thứ trên một hàng không đủ chỗ,
+  // và thứ bị bóp là ô chữ: ảnh `tp-2.png` cho thấy "Thích Minh Tâm" hiện ra
+  // thành "Thích |". Ô chọn loại bị bóp thì còn bấm ra xem được; ô chữ bị bóp
+  // là người ta gõ xong mà không đọc lại được thứ mình vừa gõ.
+  //
+  // Với `flex:1 1 140px`, hễ hàng còn dưới 140px cho ô chữ thì nó tự xuống
+  // dòng — loại tên đứng một mình dòng trên, ô chữ và nút ✕ dòng dưới. Rộng
+  // rãi thì cả ba nằm một hàng như cũ.
+  //
+  // ⚠ Khe GIỮA hai hàng (12px) phải rộng gấp đôi khe TRONG một hàng (6px).
+  // Để cả hai bằng nhau thì lúc xuống dòng, ba hàng đọc lên thành sáu dòng
+  // đều tăm tắp và không còn nhìn ra ô loại nào đi với ô chữ nào — ảnh
+  // `tp-2.png` bản đầu là đúng cảnh ấy.
+  hang.style.cssText =
+    'display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;align-items:center';
+
+  const chon = document.createElement('select');
+  chon.setAttribute('aria-label', 'Loại tên khác ' + (i + 1));
+  chon.style.cssText = KIEU_O + 'width:auto;flex:0 1 auto;min-width:0;padding-right:6px';
+  const danhSach = LOAI_TEN_PHU.slice();
+  // Mã lạ — dữ liệu cũ, hoặc file GEDCOM nhập từ phần mềm khác — được thêm vào
+  // danh sách chứ không bị thay bằng một mã trong bảng. Không thêm thì cái
+  // `<select>` tự nhảy về mục đầu tiên, và người dùng chỉ mở form ra xem cũng
+  // đủ làm mất loại tên mà file gốc đã ghi rõ.
+  if (!danhSach.some((x) => x.ma === muc.type)) {
+    danhSach.push({ ma: muc.type, chu: nhanLoaiTenPhu(muc.type) });
+  }
+  for (const loai of danhSach) {
+    const op = document.createElement('option');
+    op.value = loai.ma;
+    op.textContent = loai.chu;
+    if (loai.ma === muc.type) op.selected = true;
+    chon.append(op);
+  }
+  chon.addEventListener('change', () => { muc.type = chon.value; });
+
+  const o1 = document.createElement('input');
+  o1.type = 'text';
+  o1.value = muc.chu;
+  o1.placeholder = 'Bá';
+  o1.setAttribute('aria-label', 'Tên khác ' + (i + 1));
+  o1.setAttribute('data-ten-phu', String(i));
+  o1.style.cssText = KIEU_O + 'flex:1 1 140px;min-width:0';
+  o1.addEventListener('input', () => { muc.chu = o1.value; });
+
+  const bo = document.createElement('button');
+  bo.type = 'button';
+  bo.textContent = '✕';
+  bo.setAttribute('aria-label', 'Bỏ tên khác ' + (i + 1));
+  bo.style.cssText =
+    'flex:0 0 auto;width:38px;height:38px;font-size:15px;font-family:inherit;' +
+    'border-radius:9px;cursor:pointer;touch-action:manipulation;' +
+    'background:#faf8f5;color:#8a8078;border:1px solid #e6e0d8';
+  // Bỏ NGAY, không hỏi lại. Hàng này chưa được ghi xuống Drive — bỏ nhầm thì
+  // bấm "+ Thêm tên khác" gõ lại, còn một hộp hỏi cho mỗi cú bấm là bắt người
+  // ta trả lời một câu hỏi không đáng hỏi.
+  bo.addEventListener('click', () => { tenPhu.splice(i, 1); veLaiTenPhu(); });
+
+  hang.append(chon, o1, bo);
+  return hang;
+}
+
+/**
+ * Một hàng trong form thành một mục `names[]`.
+ *
+ * Chữ không đổi so với lúc mở form thì trả lại ĐÚNG ba phần cũ — xem ghi chú
+ * đầu khối. Chữ đã đổi thì cả câu vào `given`, hai phần kia trống: người vừa
+ * gõ lại tên ấy đang gõ một cái tên liền, không gõ một cấu trúc ba phần.
+ */
+function phanTenPhu(muc) {
+  const chu = String(muc.chu || '').trim();
+  if (chu === fullName(muc.goc)) {
+    return Object.assign({ type: muc.type }, muc.goc);
+  }
+  return { type: muc.type, surname: '', middle: '', given: chu };
 }
 
 // ============================================================
@@ -1441,6 +1609,11 @@ function gomThayDoi() {
       middle:  docO('middle'),
       given:   docO('given'),
     },
+
+    // TÊN PHỤ đi thành CẢ danh sách, không đi thành từng phép thêm/bớt — lý lẽ
+    // ở `domains/person.datTenPhu`. Hàng người dùng bỏ trống chữ được `datTenPhu`
+    // loại đi, nên form không phải lọc trước.
+    altNames: tenPhu.map(phanTenPhu),
     sex:         docO('sex'),
     living:      !!(o.living && o.living.checked),
     burialPlace: docO('burialPlace'),
