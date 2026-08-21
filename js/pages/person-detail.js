@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
 //            utils/{text,date,image}, config
-// Phiên bản: 1.18.0 · Cập nhật: 21/08/2026 16:00
+// Phiên bản: 1.20.0 · Cập nhật: 21/08/2026 16:35
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -105,6 +105,7 @@ import { state } from '../state.js';
 import { suaDuoc } from '../services/repo.js';
 import { getAlternateNames } from '../domains/person.js';
 import { getParentUnions, getPartnerUnions } from '../domains/union.js';
+import { getMediaFor } from '../domains/media.js';
 import { mauVien } from '../domains/render.js';
 import { fullName, coGiaTri, doiSongNguoi, ngayGio } from '../utils/text.js';
 import { formatDate, calcAge } from '../utils/date.js';
@@ -113,6 +114,10 @@ import { nhanLoaiTenPhu, chuThichQuanHe,
          rongHop, caoHop, leLopPhu } from '../config.js';
 
 let lopPhu = null;   // lớp phủ đang mở, hoặc null
+
+// Thẻ nào đang mở, để dải ảnh vẽ lại được chính nó — xem `veLaiTheDangMo`.
+// { loai: 'nguoi' | 'cap', ma, xuLy }
+let theDangMo = null;
 
 const GIOI = { M: 'Nam', F: 'Nữ' };   // 'U' cố ý KHÔNG có mặt — xem veHang()
 
@@ -196,7 +201,11 @@ export function openPersonDetail(personId, xuLy = {}) {
   the.id = 'giapha-the-nguoi';   // mốc cho bài kiểm đo bố cục, xem kiem-vong-tron.mjs
   the.style.cssText = KIEU_HOP;
 
-  the.append(...veDauThe(p), ...veHangThongTin(p), ...veQuanHe(index, p, xuLy));
+  theDangMo = { loai: 'nguoi', ma: personId, xuLy };
+
+  the.append(...veDauThe(p), ...veHangThongTin(p));
+  the.append(...veDaiAnhThe(personId, p));
+  the.append(...veQuanHe(index, p, xuLy));
   the.append(veChanThe(p, xuLy));
 
   // Bấm ra ngoài thẻ thì đóng — nhưng CHỈ khi bấm trúng đúng lớp phủ, không
@@ -209,6 +218,179 @@ export function openPersonDetail(personId, xuLy = {}) {
 export function closePersonDetail() {
   if (lopPhu) lopPhu.remove();
   lopPhu = null;
+  theDangMo = null;
+}
+
+// ============================================================
+// DẢI ẢNH trên thẻ — việc 5 nửa A
+// ============================================================
+//
+// Màn hình ĐỌC của kho ảnh. Kho sửa được nằm trong form (`person-edit.js`);
+// đây chỉ xem.
+//
+// ⚠ **Phải có mặt ở đây, không được để riêng trong form.** Phần lớn người trong
+// họ chỉ có quyền XEM — họ không bao giờ mở form ra. Một kho ảnh mà chỉ người
+// sửa được mới thấy thì với đa số người dùng nó không tồn tại.
+//
+// ⚠ Hàm nhận `subjectId`, không nhận bản ghi người: `media[].subjectId` mang cả
+// mã người (`P….`) lẫn mã hôn nhân (`U….`). Nhờ vậy nửa B — ảnh cưới trên thẻ
+// gia đình — dùng lại đúng khối này, không chép lần thứ hai.
+
+// Tấm đang mở to, và MỞ TRÊN THẺ CỦA AI.
+//
+// ⚠ Phải nhớ cả chủ thể, không chỉ mã tấm. Bấm một tấm là vẽ LẠI cả thẻ
+// (`veLaiTheDangMo`), mà vẽ lại thì đi qua `closePersonDetail` — nên nếu
+// đóng thẻ mà dọn biến này thì cú bấm tự xoá đúng thứ nó vừa đặt, và tấm
+// ảnh không bao giờ mở ra được. Để trạng thái sống qua lần vẽ lại, rồi
+// **so chủ thể** ở `veDaiAnhThe`: mở thẻ người khác là coi như chưa mở tấm
+// nào, không cần ai dọn cả.
+let anhDangXemTren = '';   // mã tấm đang mở to; '' là chưa mở tấm nào
+let anhDangXemCua  = '';   // mã chủ thể của tấm ấy
+
+/**
+ * Dải ảnh của một người hoặc một cặp. Trả về mảng rỗng khi kho không có tấm
+ * nào — trường trống thì không vẽ hàng đó.
+ *
+ * @param {string} subjectId  mã người `P….` hoặc mã hôn nhân `U….`
+ * @param {object} [nguoiNen] bản ghi người, chỉ dùng để lấy màu viền và bóng
+ *                            người lúc ảnh chưa tải xong
+ * @returns {Array<HTMLElement>}
+ */
+function veDaiAnhThe(subjectId, nguoiNen) {
+  const ds = getMediaFor(state.tree, subjectId);
+  if (ds.length === 0) return [];
+
+  const boc = document.createElement('div');
+  boc.id = 'giapha-dai-anh-the';   // mốc cho bài kiểm hành vi
+  boc.style.cssText = 'margin-top:10px';
+
+  const dai = document.createElement('div');
+  dai.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px';
+  for (const m of ds) dai.append(veTamAnhThe(m, nguoiNen, subjectId));
+  boc.append(dai);
+
+  const mo = (anhDangXemCua === subjectId)
+    ? ds.find((m) => m.id === anhDangXemTren)
+    : null;
+  if (mo) boc.append(veAnhTo(mo, nguoiNen));
+
+  const nhan = document.createElement('div');
+  nhan.textContent = 'Ảnh (' + ds.length + ')';
+  nhan.style.cssText =
+    'margin-top:14px;margin-bottom:6px;font-size:12px;font-weight:600;' +
+    'letter-spacing:.04em;color:#8a8078';
+
+  return [nhan, boc];
+}
+
+function veTamAnhThe(m, nguoiNen, subjectId) {
+  const co = 56;
+  const laMat = laAnhDaiDien(m, subjectId);
+
+  const nut = document.createElement('button');
+  nut.type = 'button';
+  nut.dataset.anh = m.id;
+  nut.style.cssText =
+    'position:relative;width:' + co + 'px;height:' + co + 'px;padding:0;' +
+    'border-radius:10px;overflow:hidden;cursor:pointer;touch-action:manipulation;' +
+    'background:#faf8f5;border:2px solid ' +
+    (m.id === anhDangXemTren && anhDangXemCua === subjectId
+      ? '#8a8078'
+      : (laMat ? mauVien(nguoiNen) : '#e6e0d8')) + ';';
+
+  const im = document.createElement('img');
+  im.alt = '';
+  im.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
+  im.src = anhMacDinhUri(nguoiNen && nguoiNen.sex, mauVien(nguoiNen));
+  taiAnhVaoThe(im, driveThumbUrl(m.driveFileId, co * 2));
+  nut.append(im);
+
+  // Dấu hiệu đọc được KHÔNG CẦN MÀU, cùng luật với dải ảnh trong form:
+  // viền màu một mình thì người phân biệt màu kém không thấy tấm nào đang
+  // làm mặt. Trên thẻ chỉ có MỘT dấu — không có ✕ như trong form, vì thẻ
+  // không gỡ được tấm nào.
+  if (laMat) {
+    const dau = document.createElement('span');
+    dau.textContent = '✓';
+    dau.style.cssText =
+      'position:absolute;left:0;bottom:0;min-width:18px;height:18px;' +
+      'display:flex;align-items:center;justify-content:center;font-size:12px;' +
+      'color:#fffdf9;background:' + mauVien(nguoiNen) + ';border-radius:0 8px 0 8px';
+    nut.append(dau);
+  }
+
+  if (coGiaTri(m.caption)) nut.title = String(m.caption);
+
+  nut.addEventListener('click', () => {
+    const dangMo = anhDangXemTren === m.id && anhDangXemCua === subjectId;
+    anhDangXemTren = dangMo ? '' : m.id;
+    anhDangXemCua  = dangMo ? '' : subjectId;
+    veLaiTheDangMo();
+  });
+  return nut;
+}
+
+/** Tấm đang mở, to hết bề ngang thẻ. Chú thích nằm dưới, chỉ khi có chữ. */
+function veAnhTo(m, nguoiNen) {
+  const boc = document.createElement('div');
+  boc.style.cssText = 'margin-top:8px';
+
+  const im = document.createElement('img');
+  im.alt = '';
+  im.style.cssText =
+    'width:100%;max-height:52vh;object-fit:contain;display:block;' +
+    'border-radius:10px;background:#faf8f5';
+  im.src = anhMacDinhUri(nguoiNen && nguoiNen.sex, mauVien(nguoiNen));
+  taiAnhVaoThe(im, driveThumbUrl(m.driveFileId, 1200));
+  boc.append(im);
+
+  if (coGiaTri(m.caption)) {
+    const chu = document.createElement('div');
+    chu.textContent = String(m.caption);
+    chu.style.cssText = 'font-size:12px;line-height:1.5;color:#8a8078;margin-top:5px';
+    boc.append(chu);
+  }
+  return boc;
+}
+
+/**
+ * Đổi `src` CHỈ KHI ảnh tải xong thật — cùng lý lẽ với `datAnhKhiTaiXong` ở
+ * `person-edit.js`: một biểu tượng ảnh vỡ đọc ra thành "app hỏng", còn bóng
+ * người đọc ra thành "chưa có ảnh".
+ */
+function taiAnhVaoThe(im, duong) {
+  if (!duong) return;
+  const thu = new Image();
+  thu.onload = () => {
+    if (thu.naturalWidth > 0 && thu.naturalHeight > 0) im.src = duong;
+  };
+  thu.src = duong;
+}
+
+/** Tấm này có đang làm ảnh đại diện của chủ thể không. Cặp thì không bao giờ. */
+function laAnhDaiDien(m, subjectId) {
+  const p = state.index && state.index.personById.get(subjectId);
+  if (!p) return false;
+  const cu = typeof p.photoFileId === 'string' ? p.photoFileId.trim() : '';
+  return !!cu && cu === m.driveFileId;
+}
+
+/**
+ * Vẽ lại thẻ đang mở, giữ nguyên chỗ đã cuộn tới.
+ *
+ * ⚠ Dựng lại cả thẻ chứ không vá một khối, vì thẻ này KHÔNG có ô nhập nào —
+ * không có gì gõ dở để mất. Ngược hẳn với form, nơi dựng lại là xoá sạch những
+ * thứ người dùng đang gõ (xem `veLaiKhoiAnh`).
+ */
+function veLaiTheDangMo() {
+  if (!theDangMo) return;
+  const hop = lopPhu && lopPhu.firstElementChild;
+  const cuon = hop ? hop.scrollTop : 0;
+  const { loai, ma, xuLy } = theDangMo;
+  if (loai === 'nguoi') openPersonDetail(ma, xuLy);
+  else openUnionDetail(ma, xuLy);
+  const hopMoi = lopPhu && lopPhu.firstElementChild;
+  if (hopMoi) hopMoi.scrollTop = cuon;
 }
 
 // ============================================================

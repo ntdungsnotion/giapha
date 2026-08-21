@@ -6,7 +6,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate,media,render},
 //            services/{repo,gas}, utils/{graph,text,date,image}, config
-// Phiên bản: 1.15.0 · Cập nhật: 21/08/2026 16:00
+// Phiên bản: 1.16.0 · Cập nhật: 21/08/2026 16:35
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -139,7 +139,8 @@ import { createUnion, addChild, addPartner, removeChild, removePartner,
          thuTuConTheoTuoi, updateUnion, updateChildRelation, swapPartnerOrder,
          getParentUnions, getPartnerUnions, getSpouses, getChildren } from '../domains/union.js';
 import { validateAll, checkOrphanNode } from '../domains/validate.js';
-import { datAnhDaiDien, clearPortrait } from '../domains/media.js';
+import { attachMedia, detachMedia, setPortrait, clearPortrait,
+         getMediaFor, getPortrait } from '../domains/media.js';
 import { mauVien } from '../domains/render.js';
 import { luuCay, suaDuoc } from '../services/repo.js';
 import { taiAnh } from '../services/gas.js';
@@ -199,9 +200,22 @@ let khoiTenPhu = null;   // khối chứa các hàng, để vẽ lại một mì
 // không đọc ngược từ DOM. Xem ghi chú đầu khối Quan hệ.
 let quanHe    = null;
 
-let khoiAnh = null;   // tham chiếu tới khối, để vẽ lại một mình nó
-let anhChon = null;   // { fileId, xemTruoc, ten, co } — vừa tải lên xong
-let anhBo   = false;  // người dùng đã bấm "Bỏ ảnh"
+// KHO ẢNH (việc 5, nửa A). Cùng lối với `tenPhu` và `quanHe`: form giữ RIÊNG
+// một bản làm việc, không đọc ngược từ DOM và không đụng `state.tree` cho tới
+// lúc bấm Lưu.
+//
+// ⚠ **`khoa` không phải `mediaId`.** Một tấm vừa tải lên chưa có mã `M….` —
+// mã ấy chỉ sinh ra lúc `attachMedia` chạy, mà `attachMedia` thì chạy lúc lưu.
+// Nhưng người dùng phải chỉ được vào tấm ấy NGAY để đặt nó làm đại diện. Nên
+// mỗi mục mang một `khoa` riêng, sống suốt đời cái form: mã `M….` thật với ảnh
+// đã có trong cây, và `moi-1`, `moi-2`… với ảnh vừa tải lên. `anhDaiDienKhoa`
+// trỏ vào `khoa`, không trỏ vào `mediaId` — có thế thì chọn một tấm chưa có mã
+// làm đại diện mới nói được thành lời.
+let khoiAnh = null;        // tham chiếu tới khối, để vẽ lại một mình nó
+let khoAnh = [];           // [{ khoa, mediaId, driveFileId, caption, xemTruoc, laMoi, boDi }]
+let anhDaiDienKhoa = '';   // khoá của tấm đang làm đại diện; '' là không dùng tấm nào
+let anhDangXet = '';       // khoá của tấm vừa bấm, để hàng nút mọc ngay dưới dải
+let demAnhMoi = 0;         // sinh khoá tạm; KHÔNG dùng lại số đã cấp trong một lần mở form
 let anhDangTai = false;
 
 /**
@@ -323,8 +337,10 @@ export function closePersonForm() {
   khoiTenPhu   = null;
   quanHe       = null;
   khoiAnh      = null;
-  anhChon      = null;
-  anhBo        = false;
+  khoAnh       = [];
+  anhDaiDienKhoa = '';
+  anhDangXet   = '';
+  demAnhMoi    = 0;
   anhDangTai   = false;
 }
 
@@ -461,7 +477,7 @@ function veCacO(nguoi) {
   // người chưa có mã là mở thêm một nhánh nữa trong một hàm lưu vốn đã nhiều
   // nhánh. Thêm người xong, mở lại hồ sơ rồi gắn ảnh — thêm đúng một cú chạm.
   if (cheDo === 'sua') {
-    ra.push(veNhan('Ảnh đại diện'));
+    ra.push(veNhan('Ảnh'));
     ra.push(veKhoiAnh(nguoi));
   }
 
@@ -1050,13 +1066,80 @@ function keThayDoiQuanHe(qh) {
 }
 
 // ============================================================
-// Khối ẢNH ĐẠI DIỆN — bước 28
+// KHO ẢNH của một người — bước 28 (một ảnh đại diện) · việc 5 nửa A (cả kho)
 // ============================================================
+//
+// NĂM QUYẾT ĐỊNH CỦA KHO ẢNH — chốt 21/08/2026
+//
+// 1. **Kho ảnh nằm NGAY TRONG form, không phải một màn hình riêng.** Người vào
+//    đây để sửa hồ sơ một con người, mà ảnh là một phần của hồ sơ ấy. Dựng thêm
+//    một màn hình nữa là bắt người dùng nhớ thêm một chỗ đứng, đổi lại chẳng
+//    được gì — kho ảnh của một người trong gia phả này đếm trên đầu ngón tay.
+//
+// 2. **Ảnh vừa thêm LUÔN thành đại diện.** Giữ nguyên hành vi của bước 28: chọn
+//    một tấm rồi Lưu là mặt người ấy đổi trên sơ đồ. Muốn thêm vào kho mà không
+//    đổi mặt thì bấm tấm cũ đặt lại làm đại diện — một cú chạm, và nó nói ra
+//    được bằng lời, khác hẳn một cái ô đánh dấu "dùng làm đại diện" nằm im.
+//
+// 3. **Bấm một tấm KHÔNG đặt nó làm đại diện ngay — nó mở một hàng nút.** Một
+//    tấm ảnh mang hai việc khác hẳn nhau (làm mặt · bỏ khỏi kho) mà chỉ có một
+//    cử chỉ để bấm. Cùng lối với bảng chọn phụ của menu vòng tròn: câu hỏi phụ
+//    mọc ra ngay cạnh cái vừa bấm. Và nút thì cao 40px, còn một dấu ✕ nhét vào
+//    góc tấm ảnh 56px thì không đích chạm nào đủ rộng.
+//
+// 4. **Gỡ khỏi kho KHÔNG xoá gì cả.** `detachMedia` đặt cờ `deleted`, file trên
+//    Drive nằm nguyên. Xoá nhầm một tấm ảnh cụ ông chụp năm 1950 là mất vĩnh
+//    viễn — luật 3 của `domains/media.js`.
+//
+// 5. ⚠ **Ảnh đại diện LẺ là một ca thật, không phải dữ liệu hỏng.** Một bản ghi
+//    có `photoFileId` mà `media[]` không có tấm nào tương ứng — nhập từ GEDCOM,
+//    hoặc file bị sửa tay ngoài app. Bản làm việc giữ nó thành một mục mang cờ
+//    `laLe`, hiện ra trong dải kèm chú thích. **Bỏ mục ấy đi là sai:** lúc lưu,
+//    kho ảnh sẽ đọc ra thành "người này không dùng tấm nào làm đại diện" rồi
+//    lặng lẽ xoá mất `photoFileId` của một người mà không ai đụng vào.
 
 function veKhoiAnh(nguoi) {
   khoiAnh = document.createElement('div');
+  docKhoAnh(nguoi);
   veLaiKhoiAnh(nguoi);
   return khoiAnh;
+}
+
+/**
+ * Dựng bản làm việc từ cây. Chạy MỘT lần lúc mở form.
+ *
+ * `getMediaFor` trả về mới nhất đứng trước, và dải ảnh giữ đúng thứ tự ấy: tấm
+ * vừa thêm nằm đầu, chỗ mắt nhìn tới trước.
+ */
+function docKhoAnh(nguoi) {
+  const cay = state.tree;
+
+  khoAnh = getMediaFor(cay, nguoi.id).map((m) => ({
+    khoa:        m.id,
+    mediaId:     m.id,
+    driveFileId: m.driveFileId,
+    caption:     m.caption || '',
+    xemTruoc:    '',
+    laMoi:       false,
+    laLe:        false,
+    boDi:        false,
+  }));
+
+  const dd = getPortrait(cay, nguoi.id);
+  anhDaiDienKhoa = dd ? dd.id : '';
+
+  // Quyết định 5: con trỏ trỏ vào chỗ kho không có gì.
+  const conTro = nguoi && typeof nguoi.photoFileId === 'string' ? nguoi.photoFileId.trim() : '';
+  if (!dd && conTro) {
+    khoAnh.unshift({
+      khoa: 'le', mediaId: '', driveFileId: conTro, caption: '',
+      xemTruoc: '', laMoi: false, laLe: true, boDi: false,
+    });
+    anhDaiDienKhoa = 'le';
+  }
+
+  anhDangXet = '';
+  demAnhMoi  = 0;
 }
 
 /**
@@ -1080,10 +1163,12 @@ function veLaiKhoiAnh(nguoi) {
   cot.style.cssText = 'flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:6px';
 
   cot.append(nutChonAnh(nguoi));
-  if (coAnhSauKhiLuu(nguoi)) cot.append(nutBoAnh(nguoi));
+  if (mucDaiDien()) cot.append(nutBoAnh(nguoi));
 
   hang.append(cot);
   khoi.append(hang);
+
+  if (khoAnh.length > 0) khoi.append(veDaiAnh(nguoi));
 
   const loi = document.createElement('div');
   loi.style.cssText = 'font-size:12px;line-height:1.5;color:#8a8078;margin-top:8px';
@@ -1091,7 +1176,18 @@ function veLaiKhoiAnh(nguoi) {
   khoi.append(loi);
 }
 
-/** Ảnh đang xem trước: ảnh vừa chọn > ảnh cũ > bóng người. */
+/** Mục đang làm đại diện trong bản làm việc, hoặc null. */
+function mucDaiDien() {
+  if (!anhDaiDienKhoa) return null;
+  return khoAnh.find((a) => a.khoa === anhDaiDienKhoa && !a.boDi) || null;
+}
+
+/** Đường dẫn xem một tấm: ảnh vừa tải lên xem bằng chuỗi ở máy, ảnh cũ nhờ Drive. */
+function duongXemAnh(muc, co) {
+  return muc.xemTruoc ? dataUri(muc.xemTruoc) : driveThumbUrl(muc.driveFileId, co * 2);
+}
+
+/** Ảnh đang xem trước: tấm đang làm đại diện, hoặc bóng người. */
 function veXemTruocAnh(nguoi) {
   const co = 72;
   const boc = document.createElement('div');
@@ -1106,24 +1202,165 @@ function veXemTruocAnh(nguoi) {
   im.src = anhMacDinhUri(nguoi && nguoi.sex, mauVien(nguoi));
   boc.append(im);
 
-  if (anhChon) {
-    // Xem trước bằng chính chuỗi vừa nén ở máy này — không đợi Drive dựng
-    // thumbnail, và không tốn một lần tải nào.
-    im.src = dataUri(anhChon.xemTruoc);
-  } else if (!anhBo) {
-    const cu = nguoi && typeof nguoi.photoFileId === 'string' ? nguoi.photoFileId.trim() : '';
-    if (cu) {
-      const duong = driveThumbUrl(cu, co * 2);
-      const thu = new Image();
-      thu.onload = () => {
-        if (thu.naturalWidth > 0 && thu.naturalHeight > 0) im.src = duong;
-      };
-      thu.src = duong;
-    }
-  }
+  const dd = mucDaiDien();
+  if (dd) datAnhKhiTaiXong(im, duongXemAnh(dd, co));
 
   return boc;
 }
+
+/**
+ * Đổi `src` CHỈ KHI ảnh tải xong thật.
+ *
+ * Gán thẳng `im.src` thì lúc Drive từ chối — ảnh chưa mở quyền xem, hoặc mạng
+ * hỏng — cái đang hiện là **biểu tượng ảnh vỡ**, chứ không phải bóng người mà
+ * bước 28 đã dựng ra để đứng ở đúng chỗ ấy. Một ô sơ đồ mang hình ảnh vỡ đọc ra
+ * thành "app hỏng", còn bóng người đọc ra thành "chưa có ảnh".
+ */
+function datAnhKhiTaiXong(im, duong) {
+  if (!duong) return;
+  if (duong.indexOf('data:') === 0) { im.src = duong; return; }
+  const thu = new Image();
+  thu.onload = () => {
+    if (thu.naturalWidth > 0 && thu.naturalHeight > 0) im.src = duong;
+  };
+  thu.src = duong;
+}
+
+// ============================================================
+// Dải ảnh — mọi tấm trong kho
+// ============================================================
+
+function veDaiAnh(nguoi) {
+  const boc = document.createElement('div');
+  boc.style.cssText = 'margin-top:12px';
+
+  const nhan = document.createElement('div');
+  nhan.textContent = 'Kho ảnh (' + khoAnh.filter((a) => !a.boDi).length + ')';
+  nhan.style.cssText = 'font-size:12px;font-weight:600;color:#8a8078;margin-bottom:6px';
+  boc.append(nhan);
+
+  const dai = document.createElement('div');
+  dai.id = 'giapha-dai-anh';   // mốc cho bài kiểm hành vi
+  dai.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px';
+  for (const muc of khoAnh) dai.append(veTamAnh(muc, nguoi));
+  boc.append(dai);
+
+  const xet = khoAnh.find((a) => a.khoa === anhDangXet);
+  if (xet) boc.append(veHangNutAnh(xet, nguoi));
+
+  return boc;
+}
+
+function veTamAnh(muc, nguoi) {
+  const co = 56;
+  const laDD  = muc.khoa === anhDaiDienKhoa && !muc.boDi;
+  const laXet = muc.khoa === anhDangXet;
+
+  const nut = document.createElement('button');
+  nut.type = 'button';
+  nut.dataset.anh = muc.khoa;
+  nut.disabled = anhDangTai || dangLuu;
+  nut.style.cssText =
+    'position:relative;width:' + co + 'px;height:' + co + 'px;padding:0;' +
+    'border-radius:10px;overflow:hidden;cursor:pointer;touch-action:manipulation;' +
+    'background:#faf8f5;' +
+    'border:2px solid ' + (laDD ? mauVien(nguoi) : (laXet ? '#8a8078' : '#e6e0d8')) + ';' +
+    'opacity:' + (muc.boDi ? '.35' : '1') + ';';
+
+  const im = document.createElement('img');
+  im.alt = '';
+  im.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
+  im.src = anhMacDinhUri(nguoi && nguoi.sex, mauVien(nguoi));
+  datAnhKhiTaiXong(im, duongXemAnh(muc, co));
+  nut.append(im);
+
+  // Dấu hiệu đọc được KHÔNG CẦN MÀU: người phân biệt màu kém vẫn phải thấy tấm
+  // nào đang làm mặt. Viền màu một mình thì không đủ.
+  if (laDD) nut.append(dauGocAnh('✓', mauVien(nguoi)));
+  if (muc.boDi) nut.append(dauGocAnh('✕', '#8a3a2a'));
+
+  nut.addEventListener('click', () => {
+    anhDangXet = (anhDangXet === muc.khoa) ? '' : muc.khoa;
+    veLaiKhoiAnh(nguoi);
+  });
+  return nut;
+}
+
+function dauGocAnh(chu, mau) {
+  const d = document.createElement('span');
+  d.textContent = chu;
+  d.style.cssText =
+    'position:absolute;left:0;bottom:0;min-width:18px;height:18px;' +
+    'display:flex;align-items:center;justify-content:center;font-size:12px;' +
+    'color:#fffdf9;background:' + mau + ';border-radius:0 8px 0 8px';
+  return d;
+}
+
+/**
+ * Hàng nút mọc ra dưới dải, cho tấm vừa bấm.
+ *
+ * Không hiện nút nào mà bấm vào không xảy ra gì: tấm đang làm đại diện thì
+ * không có nút *Đặt làm đại diện*, tấm đã đánh dấu bỏ thì nút đổi thành *Giữ
+ * lại*. Một hàng nút lúc nào cũng đủ ba cái, trong đó có cái bấm không ăn, là
+ * cùng loại lỗi với nút chết ở menu vòng tròn (bước 26).
+ */
+function veHangNutAnh(muc, nguoi) {
+  const hang = document.createElement('div');
+  hang.style.cssText =
+    'display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;padding:10px;' +
+    'background:#faf8f5;border-radius:10px';
+
+  const batDuoc = suaDuoc() && !anhDangTai && !dangLuu;
+
+  if (muc.boDi) {
+    hang.append(nutNhoAnh('Giữ lại tấm này', batDuoc, false, () => {
+      muc.boDi = false;
+      veLaiKhoiAnh(nguoi);
+    }));
+  } else {
+    if (muc.khoa !== anhDaiDienKhoa) {
+      hang.append(nutNhoAnh('Đặt làm ảnh đại diện', batDuoc, false, () => {
+        anhDaiDienKhoa = muc.khoa;
+        veLaiKhoiAnh(nguoi);
+      }));
+    }
+    // Mục LẺ không có bản ghi trong kho để mà gỡ — việc duy nhất làm được với
+    // nó là thôi dùng làm đại diện, và nút "Bỏ ảnh đại diện" ở trên đã lo.
+    if (!muc.laLe) {
+      hang.append(nutNhoAnh('Gỡ khỏi kho ảnh', batDuoc, true, () => {
+        muc.boDi = true;
+        if (anhDaiDienKhoa === muc.khoa) anhDaiDienKhoa = '';
+        veLaiKhoiAnh(nguoi);
+      }));
+    }
+  }
+
+  hang.append(nutNhoAnh('Thôi', true, false, () => {
+    anhDangXet = '';
+    veLaiKhoiAnh(nguoi);
+  }));
+
+  return hang;
+}
+
+function nutNhoAnh(chu, batDuoc, laDo, chay) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = chu;
+  b.disabled = !batDuoc;
+  b.style.cssText =
+    'min-height:40px;padding:0 12px;font-size:13px;font-family:inherit;' +
+    'border-radius:9px;border:1px solid #e6e0d8;background:#fffdf9;' +
+    'color:' + (laDo ? '#8a3a2a' : '#2a2622') + ';' +
+    'cursor:' + (batDuoc ? 'pointer' : 'not-allowed') + ';' +
+    'opacity:' + (batDuoc ? '1' : '.45') + ';touch-action:manipulation';
+  if (batDuoc) b.addEventListener('click', chay);
+  return b;
+}
+
+// ============================================================
+// Thêm một tấm mới
+// ============================================================
 
 function nutChonAnh(nguoi) {
   const batDuoc = suaDuoc() && !anhDangTai && !dangLuu;
@@ -1135,7 +1372,9 @@ function nutChonAnh(nguoi) {
     'background:#faf8f5;line-height:1.3;max-width:' + RONG_NUT_TOI_DA + ';' +
     'cursor:' + (batDuoc ? 'pointer' : 'not-allowed') + ';' +
     'opacity:' + (batDuoc ? '1' : '0.45');
-  nhan.textContent = anhDangTai ? 'Đang tải lên…' : (anhChon ? 'Chọn ảnh khác' : 'Chọn ảnh');
+  nhan.textContent = anhDangTai
+    ? 'Đang tải lên…'
+    : (khoAnh.some((a) => !a.boDi) ? 'Thêm ảnh' : 'Chọn ảnh');
 
   const oFile = document.createElement('input');
   oFile.type = 'file';
@@ -1154,25 +1393,22 @@ function nutChonAnh(nguoi) {
 function nutBoAnh(nguoi) {
   const b = document.createElement('button');
   b.type = 'button';
-  b.textContent = 'Bỏ ảnh';
+  b.textContent = 'Bỏ ảnh đại diện';
   b.disabled = anhDangTai || dangLuu;
   b.style.cssText =
     'min-height:36px;padding:7px 12px;font-size:13px;font-family:inherit;' +
     'border-radius:9px;border:1px solid #e6e0d8;background:#fffdf9;color:#8a3a2a;' +
-    'cursor:pointer;touch-action:manipulation';
+    'cursor:pointer;touch-action:manipulation;max-width:' + RONG_NUT_TOI_DA + ';';
   b.addEventListener('click', () => {
-    anhChon = null;
-    anhBo   = true;
+    anhDaiDienKhoa = '';
     veLaiKhoiAnh(nguoi);
   });
   return b;
 }
 
-/** Sau khi bấm Lưu thì người này còn ảnh hay không. */
-function coAnhSauKhiLuu(nguoi) {
-  if (anhChon) return true;
-  if (anhBo) return false;
-  return !!(nguoi && typeof nguoi.photoFileId === 'string' && nguoi.photoFileId.trim());
+/** Sau khi bấm Lưu thì người này còn ảnh đại diện hay không. */
+function coAnhSauKhiLuu() {
+  return !!mucDaiDien();
 }
 
 /**
@@ -1183,27 +1419,47 @@ function coAnhSauKhiLuu(nguoi) {
  */
 function moTaTrangThaiAnh(nguoi) {
   if (anhDangTai) return 'Đang nén và tải ảnh lên Google Drive…';
-  if (anhChon) {
-    return 'Ảnh đã lên Drive (' + moTaCo(anhChon.co) + '). ' +
-           'Bấm "Lưu" ở cuối form thì nó mới thành ảnh đại diện của ' +
-           fullName(nguoi) + '.';
+
+  const moi = khoAnh.filter((a) => a.laMoi && !a.boDi).length;
+  const bo  = khoAnh.filter((a) => a.boDi && !a.laMoi).length;
+  const dd  = mucDaiDien();
+
+  const cau = [];
+  if (moi > 0) {
+    cau.push(moi === 1
+      ? 'Một tấm đã lên Drive nhưng chưa vào gia phả.'
+      : moi + ' tấm đã lên Drive nhưng chưa vào gia phả.');
   }
-  if (anhBo) {
-    return 'Bấm "Lưu" thì ô sơ đồ của ' + fullName(nguoi) + ' quay về bóng người. ' +
-           'Tấm ảnh cũ vẫn nằm nguyên trên Drive và trong kho ảnh của gia phả — ' +
-           'app không xoá ảnh bao giờ.';
+  if (bo > 0) {
+    cau.push(bo === 1
+      ? 'Một tấm sẽ được gỡ khỏi kho — bản ghi vẫn nằm lại trong file, file ảnh vẫn nằm nguyên trên Drive.'
+      : bo + ' tấm sẽ được gỡ khỏi kho — bản ghi vẫn nằm lại trong file, file ảnh vẫn nằm nguyên trên Drive.');
   }
-  const cu = nguoi && typeof nguoi.photoFileId === 'string' ? nguoi.photoFileId.trim() : '';
-  if (cu) return 'Đang dùng một ảnh có sẵn. Chọn ảnh khác để thay.';
-  return 'Chưa có ảnh. Sơ đồ đang vẽ bóng người theo giới tính. ' +
-         'Ảnh được nén nhỏ lại trước khi gửi đi, không tải nguyên file gốc.';
+  if (dd && dd.laLe) {
+    cau.push('Ảnh đại diện hiện nay không có bản ghi nào trong kho — bản ghi này ' +
+             'nhập từ nơi khác, hoặc file đã bị sửa tay ngoài app.');
+  }
+  if (cau.length > 0) {
+    cau.push('Bấm "Lưu" ở cuối form thì những việc trên mới thành thật.');
+    return cau.join(' ');
+  }
+
+  if (khoAnh.length === 0) {
+    return 'Chưa có ảnh. Sơ đồ đang vẽ bóng người theo giới tính. ' +
+           'Ảnh được nén nhỏ lại trước khi gửi đi, không tải nguyên file gốc.';
+  }
+  if (!dd) {
+    return 'Kho còn ảnh, nhưng không tấm nào đang làm đại diện — sơ đồ vẽ bóng ' +
+           'người. Bấm một tấm rồi chọn "Đặt làm ảnh đại diện".';
+  }
+  return 'Bấm một tấm trong kho để đặt nó làm ảnh đại diện, hoặc gỡ nó ra.';
 }
 
 /**
  * Nén rồi tải một tấm ảnh lên Drive.
  *
  * ⚠ Hàm này **không** đụng tới `state.tree`, không gọi `luuCay()`. Nó chỉ đổi
- * `anhChon`. Cả cây chỉ đổi ở đúng một chỗ: `handleSave()`.
+ * bản làm việc `khoAnh`. Cả cây chỉ đổi ở đúng một chỗ: `handleSave()`.
  */
 async function chonVaTaiAnh(file, nguoi) {
   anhDangTai = true;
@@ -1219,13 +1475,16 @@ async function chonVaTaiAnh(file, nguoi) {
         'Máy chủ không nhận ảnh mà không nói rõ vì sao.');
     }
 
-    anhChon = {
-      fileId:   kq.fileId,
-      xemTruoc: nen.base64,
-      ten:      kq.ten,
-      co:       kq.coByte,
-    };
-    anhBo = false;
+    demAnhMoi += 1;
+    const khoa = 'moi-' + demAnhMoi;
+    khoAnh.unshift({
+      khoa, mediaId: '', driveFileId: kq.fileId, caption: '',
+      xemTruoc: nen.base64, laMoi: true, laLe: false, boDi: false,
+    });
+    // Quyết định 2: tấm vừa thêm luôn thành đại diện.
+    anhDaiDienKhoa = khoa;
+    anhDangXet = '';
+
     anhDangTai = false;
     veLaiKhoiAnh(nguoi);
     // Dọn lời nhắn cũ, KHÔNG gọi `hienNhan('')` — hàm ấy dựng ra một cái hộp
@@ -1239,25 +1498,85 @@ async function chonVaTaiAnh(file, nguoi) {
 }
 
 /**
- * Áp thay đổi ảnh lên một cây ĐÃ SỬA XONG phần hồ sơ.
+ * Áp thay đổi kho ảnh lên một cây ĐÃ SỬA XONG phần hồ sơ.
  *
  * Chạy SAU `updatePerson` và trên chính cây nó trả về, vì `attachMedia` sinh mã
  * `M….` từ cây — sinh trên cây cũ rồi ghép vào cây mới là đúng cái bẫy mà
  * `utils/id.js` đã dặn ở đầu file.
  *
- * @returns {{tree, person, media, diff}|null} null khi lần lưu này không đụng ảnh
+ * ⚠ **BA BƯỚC, ĐÚNG THỨ TỰ NÀY, và mỗi bước NỐI ĐUÔI bước trước.**
+ *
+ *   1. THÊM trước — vì bước 3 cần mã `M….` thật của tấm vừa thêm, mà mã ấy chỉ
+ *      có sau khi `attachMedia` chạy.
+ *   2. GỠ tiếp.
+ *   3. ĐẠI DIỆN sau cùng — vì `detachMedia` **tự xoá `photoFileId`** khi tấm bị
+ *      gỡ đúng là tấm đang làm mặt. Đặt đại diện trước rồi mới gỡ thì bước 2
+ *      xoá mất việc bước 3 vừa làm, và cái sai ấy không có gì báo lỗi cả.
+ *
+ * @returns {{tree, person, themVao, goRa, diff}|null} null khi lần lưu này
+ *          không đụng tới ảnh — nơi gọi đọc `null` để biết có gì đổi hay không.
  */
 function apThayDoiAnh(cay, personId, ghiNhan) {
-  if (anhChon) {
-    const kq = datAnhDaiDien(cay, personId, anhChon.fileId, '', ghiNhan);
-    return kq ? { tree: kq.tree, person: kq.person, media: kq.media, diff: kq.diff } : null;
+  let tree = cay;
+  const themVao = [];   // bản ghi ảnh MỚI, để đẩy sang máy chủ
+  const goRa    = [];   // bản ghi ảnh vừa mang cờ `deleted`, cũng phải đẩy sang
+  const diff    = {};
+  const maThat  = new Map();   // khoá tạm -> mã `M….` thật
+
+  // 1. THÊM
+  for (const a of khoAnh) {
+    if (!a.laMoi || a.boDi) continue;
+    const kq = attachMedia(tree, personId, a.driveFileId, a.caption, ghiNhan);
+    if (!kq) continue;
+    tree = kq.tree;
+    themVao.push(kq.media);
+    Object.assign(diff, kq.diff);
+    maThat.set(a.khoa, kq.media.id);
   }
-  if (anhBo) {
-    const kq = clearPortrait(cay, personId, ghiNhan);
-    if (!kq || Object.keys(kq.diff).length === 0) return null;
-    return { tree: kq.tree, person: kq.person, media: null, diff: kq.diff };
+
+  // 2. GỠ. Tấm vừa thêm mà lại bỏ đi ngay thì KHÔNG có gì để gỡ — nó chưa bao
+  //    giờ vào cây. File trên Drive nằm lại, cùng lối với "chọn ảnh rồi đóng
+  //    form không lưu" của bước 28.
+  for (const a of khoAnh) {
+    if (a.laMoi || a.laLe || !a.boDi || !a.mediaId) continue;
+    const kq = detachMedia(tree, a.mediaId, ghiNhan);
+    if (!kq) continue;
+    tree = kq.tree;
+    goRa.push(kq.media);
+    Object.assign(diff, kq.diff);
   }
-  return null;
+
+  // 3. ĐẠI DIỆN
+  const dd = mucDaiDien();
+  if (dd && dd.laLe) {
+    // Con trỏ đang đúng như cũ, và không có bản ghi nào để trỏ lại. Không làm
+    // gì là đúng — xem quyết định 5.
+  } else if (dd) {
+    const ma = dd.laMoi ? maThat.get(dd.khoa) : dd.mediaId;
+    const kq = ma ? setPortrait(tree, personId, ma, ghiNhan) : null;
+    if (kq) { tree = kq.tree; Object.assign(diff, kq.diff); }
+  } else {
+    const kq = clearPortrait(tree, personId, ghiNhan);
+    if (kq) { tree = kq.tree; Object.assign(diff, kq.diff); }
+  }
+
+  if (Object.keys(diff).length === 0) return null;
+
+  const nguoi = (Array.isArray(tree.persons) ? tree.persons : [])
+    .find((p) => p && p.id === personId) || null;
+
+  return { tree, person: nguoi, themVao, goRa, diff };
+}
+
+/** Một câu kể những gì kho ảnh vừa đổi, để đưa vào `changeLog`. */
+function keThayDoiAnh(anh) {
+  if (!anh) return '';
+  const phan = [];
+  if (anh.themVao.length > 0) phan.push('thêm ' + anh.themVao.length + ' ảnh');
+  if (anh.goRa.length > 0)    phan.push('gỡ ' + anh.goRa.length + ' ảnh');
+  const doiMat = Object.keys(anh.diff).some((k) => k.endsWith('.photoFileId'));
+  if (doiMat) phan.push(coAnhSauKhiLuu() ? 'đổi ảnh đại diện' : 'bỏ ảnh đại diện');
+  return phan.length > 0 ? ' Kho ảnh: ' + phan.join(', ') + '.' : '';
 }
 
 /** Một ô nhập một dòng. `phan` là tỷ lệ bề rộng khi nằm cùng hàng với ô khác. */
@@ -1607,7 +1926,8 @@ async function handleSave(nguoi) {
   // hai lần thì lần thứ hai hỏng sẽ để lại `photoFileId` trỏ vào một tấm ảnh
   // không có trong kho.
   const nguoiMoi = nguoiCuoi;
-  const anhMoi   = anh && anh.media ? anh.media : null;
+  const anhThem  = anh ? anh.themVao : [];
+  const anhGoRa  = anh ? anh.goRa    : [];
   const capMoi   = qh.capDoi;
   let ketQua;
   try {
@@ -1627,24 +1947,36 @@ async function handleSave(nguoi) {
           if (j >= 0) cay.unions[j] = JSON.parse(JSON.stringify(u));
         }
 
-        if (anhMoi) {
+        if (anhThem.length > 0 || anhGoRa.length > 0) {
           if (!Array.isArray(cay.media)) cay.media = [];
-          // Chốt chặn cuối, cùng lý lẽ với mã người ở `handleAddChild`: mã ảnh
-          // sinh từ cây lúc bấm Lưu, còn hàm này chạy trên bản sao của cây LÚC
-          // GỬI. Hai cây lệch nhau thì thà hỏng lần lưu còn hơn ghi hai bản ghi
-          // ảnh trùng mã.
-          if (cay.media.some((m) => m && m.id === anhMoi.id)) {
-            throw new Error('Mã ảnh ' + anhMoi.id + ' vừa được dùng cho một tấm khác. ' +
+        }
+
+        // ẢNH MỚI — thêm vào kho. Chốt chặn cuối, cùng lý lẽ với mã người ở
+        // `handleAddChild`: mã ảnh sinh từ cây lúc bấm Lưu, còn hàm này chạy
+        // trên bản sao của cây LÚC GỬI. Hai cây lệch nhau thì thà hỏng lần lưu
+        // còn hơn ghi hai bản ghi ảnh trùng mã.
+        for (const m of anhThem) {
+          if (cay.media.some((x) => x && x.id === m.id)) {
+            throw new Error('Mã ảnh ' + m.id + ' vừa được dùng cho một tấm khác. ' +
                             'Tải lại trang rồi gắn ảnh lại.');
           }
-          cay.media.push(JSON.parse(JSON.stringify(anhMoi)));
+          cay.media.push(JSON.parse(JSON.stringify(m)));
+        }
+
+        // ẢNH GỠ — THAY THẾ bản ghi cũ, không thêm mới và không xoá khỏi mảng:
+        // gỡ ảnh là đặt cờ `deleted`, luật 3 của `domains/media.js`. Không tìm
+        // ra bản ghi thì bỏ qua, không ném lỗi — người khác vừa gỡ đúng tấm ấy
+        // là một cuộc đua vô hại, kết quả cuối vẫn là tấm ảnh bị gỡ.
+        for (const m of anhGoRa) {
+          const k = cay.media.findIndex((x) => x && x.id === m.id);
+          if (k >= 0) cay.media[k] = JSON.parse(JSON.stringify(m));
         }
       },
       {
         action: 'update',
         target: nguoi.id,
         note:   'Sửa hồ sơ ' + fullName(nguoiMoi) + ' bằng form nhập liệu.' +
-                (anhChon ? ' Đổi ảnh đại diện.' : (anhBo ? ' Bỏ ảnh đại diện.' : '')) +
+                keThayDoiAnh(anh) +
                 keThayDoiQuanHe(qh),
         diff:   diffCuoi,
       }
