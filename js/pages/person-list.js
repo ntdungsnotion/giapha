@@ -4,7 +4,7 @@
 //            + MÀN HÌNH THÙNG RÁC — đường quay lại của người và cặp đã xoá
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/person, domains/union, utils/text, config
-// Phiên bản: 1.3.0 · Cập nhật: 21/08/2026 20:30
+// Phiên bản: 1.4.0 · Cập nhật: 21/08/2026 22:10
 // ============================================================
 //
 // --- Vì sao màn hình này phải có (bước 24) ------------------------------
@@ -45,7 +45,7 @@
 // Hai file `pages` KHÔNG import lẫn nhau: file này không mở thẻ thông tin, nó
 // báo ra ngoài bằng callback (đúng luật đã chốt 17/08/2026, chat 1.6).
 //
-// --- THÙNG RÁC — bốn quyết định (bước 29) --------------------------------
+// --- THÙNG RÁC — năm quyết định (bước 29, và quyết định 5 ở việc 6B) ------
 //
 // Treo từ bước 21: xoá là đặt cờ `deleted`, hoàn tác chỉ làm được NGAY LÚC ẤY
 // trong lúc hộp còn mở. Đóng hộp rồi thì người ấy nằm trong file mãi mãi mà
@@ -69,6 +69,16 @@
 // 4. **Nút vào thùng rác nằm ở chân màn hình Danh sách người**, và luôn hiện
 //    kèm con số — kể cả khi con số là 0. Nút mọc ra rồi biến đi tuỳ lúc là thứ
 //    người dùng không tìm lại được lần sau.
+//
+// 5. **XOÁ THẬT chỉ có ĐÚNG MỘT CỬA: nút *Dọn thùng rác* ngay trong màn hình
+//    này** (việc 6B). Không thêm một mục nào vào menu vòng tròn, không thêm nút
+//    nào vào thẻ thông tin. Người bấm *"Xoá khỏi gia phả"* giữa lúc đang xem sơ
+//    đồ không ở tâm thế dọn dẹp — họ đang sửa một bản ghi, và một thao tác không
+//    lùi được đặt giữa dòng công việc bình thường thì có ngày mất dữ liệu thật.
+//
+//    ⚠ Và nút ấy **ngược luật của quyết định 4**: nó biến đi khi thùng rác
+//    trống. Hai nút, hai loại: nút *Thùng rác (n)* là một CỬA nên phải luôn tìm
+//    lại được; nút này là một VIỆC, mà việc không có gì để làm thì đừng mời bấm.
 
 import { state } from '../state.js';
 import { searchPersons } from '../domains/person.js';
@@ -109,15 +119,25 @@ export function openPersonList(xuLy = {}) {
 /**
  * Mở THÙNG RÁC — người và cặp đang mang cờ `deleted`.
  *
- * @param {{onKhoiPhucNguoi?:function(string), onKhoiPhucCap?:function(string)}} [xuLy]
- *        Cả hai đều là CỬA, không phải việc: hộp xác nhận và đường ghi xuống
+ * @param {{onKhoiPhucNguoi?:function(string), onKhoiPhucCap?:function(string),
+ *          onDonThungRac?:function()}} [xuLy]
+ *        Cả ba đều là CỬA, không phải việc: hộp xác nhận và đường ghi xuống
  *        Drive nằm ở `person-edit.js`, cùng chỗ với mọi đường ghi khác. Màn
  *        hình này tự đóng trước khi gọi — hộp xác nhận mở ra sau nó, và hai lớp
  *        phủ chồng nhau thì cái mở sau lại nằm dưới (xem `moKetNoi` ở
  *        `tree-view.js`).
+ *        `onDonThungRac` — XOÁ THẬT. Nút chỉ mọc ra khi thùng rác có thứ gì.
  */
 export function openThungRac(xuLy = {}) {
   moManHinh('thungRac', xuLy);
+}
+
+/**
+ * Thùng rác có trống hay không — dùng để quyết định nút *Dọn thùng rác* có mọc
+ * ra hay không. Đếm trên bản ghi, cùng phép với `demThungRac()`.
+ */
+function thungRacTrong() {
+  return demThungRac() === 0;
 }
 
 function moManHinh(che, xuLy) {
@@ -249,19 +269,40 @@ function veChan(laThungRac, laChonNguoi) {
     chan.append(ra);
   }
 
+  // XOÁ THẬT — quyết định 5 ở đầu file. Nút này KHÁC ba nút kia ở hai chỗ, và
+  // cả hai đều cố ý:
+  //
+  //   · nó MẤT ĐI khi thùng rác trống, ngược hẳn luật của nút *Thùng rác (n)*
+  //     ở màn hình bên cạnh. Nút kia phải luôn hiện vì nó là CỬA đi tới một chỗ;
+  //     nút này là một VIỆC, mà một cái nút mời bấm rồi trả lời "không có gì để
+  //     làm" thì lần sau người ta thôi không tin nó nữa;
+  //   · nó mang màu đỏ. Đây là nút duy nhất trong cả hai màn hình làm một việc
+  //     không lùi được.
+  if (laThungRac && xuLyNgoai.onDonThungRac && !thungRacTrong()) {
+    const don = nutChan('Dọn thùng rác', () => {
+      const chay = xuLyNgoai.onDonThungRac;
+      closePersonList();
+      chay();
+    }, true);
+    don.dataset.viec = 'don-thung-rac';
+    chan.append(don);
+  }
+
   chan.append(nutChan('Đóng', () => closePersonList()));
   return chan;
 }
 
-function nutChan(chu, chay) {
+function nutChan(chu, chay, nguyHiem) {
   const nut = document.createElement('button');
   nut.type = 'button';
   nut.textContent = chu;
   nut.style.cssText =
-    'flex:1 1 0;height:42px;font-size:14px;font-family:inherit;color:inherit;' +
+    'flex:1 1 0;height:42px;font-size:14px;font-family:inherit;' +
     'max-width:' + RONG_NUT_TOI_DA + ';' +
-    'border:1px solid #e6e0d8;border-radius:9px;background:#faf8f5;' +
-    'cursor:pointer;touch-action:manipulation';
+    'border-radius:9px;cursor:pointer;touch-action:manipulation;' +
+    (nguyHiem
+      ? 'color:#8a3a2a;background:#fbf0ec;border:1px solid #f0d8d0;font-weight:600'
+      : 'color:inherit;background:#faf8f5;border:1px solid #e6e0d8');
   nut.addEventListener('click', chay);
   return nut;
 }

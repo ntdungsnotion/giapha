@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render,union}, utils/text,
 //            pages/{person-detail,person-edit,person-list,review,settings}
-// Phiên bản: 1.20.0 · Cập nhật: 21/08/2026 20:30
+// Phiên bản: 1.21.0 · Cập nhật: 21/08/2026 22:10
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -71,7 +71,7 @@ import { openPersonMenu, openPersonDetail, openUnionDetail,
 import { openPersonForm, closePersonForm, quickAddChild, quickAddParent,
          quickAddSpouse, linkExisting, goNoiNguoi, xoaNguoi,
          openUnionForm, openSapThuTu,
-         khoiPhucNguoi, khoiPhucCap } from './person-edit.js';
+         khoiPhucNguoi, khoiPhucCap, donThungRac } from './person-edit.js';
 import { openPersonList, closePersonList, openThungRac } from './person-list.js';
 import { openReview, closeReview } from './review.js';
 import { openSettings, closeSettings } from './settings.js';
@@ -807,6 +807,16 @@ function moThungRac() {
   openThungRac({
     onKhoiPhucNguoi: (id) => khoiPhucNguoi(id, { onDaLuu: moLai }),
     onKhoiPhucCap:   (id) => khoiPhucCap(id,   { onDaLuu: moLai }),
+
+    // ⚠ Dọn xong thì KHÔNG mở lại thùng rác, khác hẳn hai đường trên. Hai lý
+    // do, và lý do thứ hai mới là lý do thật:
+    //
+    //   · thùng rác vừa dọn là thùng rác rỗng, nên mở lại chỉ để hiện một câu
+    //     "Thùng rác trống";
+    //   · hộp kết quả của việc này còn phải kể tên BẢN SAO LƯU và số file ảnh
+    //     đã dọn. Bật một màn hình khác đè lên là cắt mất đúng dòng chữ mà
+    //     người dùng cần đọc — mà nó là dòng chữ duy nhất nói ra đường lùi.
+    onDonThungRac: () => donThungRac({ onDaLuu: () => refresh() }),
   });
 }
 

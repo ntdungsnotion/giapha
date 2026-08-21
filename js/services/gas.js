@@ -4,7 +4,7 @@
 //            Bọc google.script.run thành hàm Promise dùng await được.
 // Lớp      : services — được gọi bởi: services/repo, pages/settings · gọi: (không)
 // Phụ thuộc: (không)
-// Phiên bản: 0.5.0 · Cập nhật: 20/08/2026 11:51
+// Phiên bản: 0.6.0 · Cập nhật: 21/08/2026 22:10
 // ============================================================
 //
 // ĐÂY LÀ RANH GIỚI GIỮA TRÌNH DUYỆT VÀ MÁY CHỦ.
@@ -111,6 +111,20 @@ export function moQuyenXemAnh(fileId) {
 /** Cho một file ảnh vào thùng rác. Dùng để dọn ảnh của phép thử. */
 export function xoaAnhThu(fileId) {
   return goi('xoaAnhThu', fileId);
+}
+
+/**
+ * DỌN ẢNH RÁC — bước 4 của một lần *Dọn thùng rác*. Nhận CẢ LOẠT mã file.
+ *
+ * ⚠ Không phải `xoaAnhThu` gọi nhiều lần. Gọi SAU khi máy chủ đã gật cho lần
+ * ghi — bản ghi mất rồi thì file mới chắc chắn không còn ai trỏ tới. Hàm luôn
+ * chạy hết cả loạt: một tấm hỏng không được làm hỏng chín tấm còn lại.
+ *
+ * @param {string[]} dsFileId
+ * @returns {Promise<{ok:boolean, soXoa:number, soHong:number, chiTiet:object[]}>}
+ */
+export function xoaAnhThat(dsFileId) {
+  return goi('xoaAnhThat', dsFileId);
 }
 
 /** Danh sách bản sao lưu để khôi phục. */

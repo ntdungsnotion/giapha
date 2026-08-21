@@ -1,7 +1,7 @@
 // ============================================================
 // giapha · gas/Code.gs   (đặt trong Apps Script)
 // Vai trò  : API máy chủ. Trình duyệt gọi qua google.script.run.
-// Phiên bản: 0.6.0 · Cập nhật: 20/08/2026 11:51
+// Phiên bản: 0.7.0 · Cập nhật: 21/08/2026 22:10
 // ============================================================
 //
 // Triển khai BẮT BUỘC đặt:
@@ -12,12 +12,18 @@
 // trả về email thật và Drive thực thi phân quyền theo danh sách chia sẻ.
 // Đã kiểm chứng ba vòng ở phép thử 3 — xem NK-B03. ĐỪNG ĐỔI.
 //
-// TRẠNG THÁI (20/08/2026, bước 28):
+// TRẠNG THÁI (21/08/2026, việc 6B):
 //   doGet · layPhien · layCay · trangThaiCaiDat  → đã viết thật
 //   luuCay + sao lưu tự động                     → đã viết thật (chat 2.1)
 //   taiAnh · layAnhBase64 · trangThaiQuyenAnh ·
 //     moQuyenXemAnh · xoaAnhThu                  → đã viết thật (bước 28)
+//   xoaAnhThat                                   → đã viết thật (việc 6B)
 //   layDanhSachSaoLuu · taoFileDuLieuMoi         → còn khung
+//
+// ⚠ VIỆC 6B ĐỔI HAI THỨ TRONG `luuCay`, và cả hai đều là chỗ nguy hiểm:
+//   · `action: 'purge'` là đường DUY NHẤT được phép làm số bản ghi ít đi. Nó
+//     không được miễn kiểm — nó đổi sang `raSoatDonRac_`, chặt hơn.
+//   · với đường ấy, SAO LƯU LÀ ĐIỀU KIỆN: không cất được bản cũ thì không dọn.
 //
 // ⚠ SỬA FILE NÀY XONG PHẢI TRIỂN KHAI LẠI, không thì web app vẫn chạy bản cũ:
 //   Triển khai → Quản lý các bản triển khai → bút chì →
@@ -408,21 +414,63 @@ function luuCay(cay, revisionDaBiet, moTa) {
     // App không bao giờ xoá cứng — xoá là đặt cờ `deleted`. Nên số bản ghi chỉ
     // có tăng. Ít đi nghĩa là cây gửi lên bị cắt cụt ở đâu đó, và cái giá của
     // việc ghi nhầm là mất dữ liệu thật.
-    var soCu  = demBanGhi_(cayCu);
-    var soMoi = demBanGhi_(cay);
-    if (soMoi.persons < soCu.persons || soMoi.unions < soCu.unions) {
-      kq.lyDo = 'matdulieu';
-      kq.loi  = 'Bản gửi lên có ít bản ghi hơn bản trên Drive (' +
-                soMoi.persons + '/' + soMoi.unions + ' so với ' +
-                soCu.persons + '/' + soCu.unions + ' người/hôn nhân). ' +
-                'App không xoá cứng bao giờ, nên đây là dấu hiệu hỏng — ' +
-                'đã từ chối ghi. Tải lại trang rồi thử lại.';
-      return kq;
+    //
+    // ⚠ ĐÚNG MỘT ĐƯỜNG được phép làm số bản ghi ÍT ĐI: lệnh *Dọn thùng rác*,
+    // mang `action: 'purge'`. Nhưng nó KHÔNG được miễn kiểm — nó đổi sang một
+    // phép kiểm CHẶT HƠN: mọi bản ghi biến mất phải là bản ghi đã mang cờ
+    // `deleted` **trong bản trên Drive**. Máy chủ tự đọc lấy cờ ấy từ bản cũ,
+    // không tin một chữ nào trong lời khai của trình duyệt — cùng lý lẽ đã
+    // dùng cho quyền ở bước 1.
+    var laDonRac = !!(moTa && moTa.action === 'purge');
+
+    if (laDonRac) {
+      var loiDonRac = raSoatDonRac_(cayCu, cay);
+      if (loiDonRac) {
+        kq.lyDo = 'matdulieu';
+        kq.loi  = loiDonRac;
+        return kq;
+      }
+    } else {
+      var soCu  = demBanGhi_(cayCu);
+      var soMoi = demBanGhi_(cay);
+      if (soMoi.persons < soCu.persons || soMoi.unions < soCu.unions) {
+        kq.lyDo = 'matdulieu';
+        kq.loi  = 'Bản gửi lên có ít bản ghi hơn bản trên Drive (' +
+                  soMoi.persons + '/' + soMoi.unions + ' so với ' +
+                  soCu.persons + '/' + soCu.unions + ' người/hôn nhân). ' +
+                  'App không xoá cứng bao giờ, nên đây là dấu hiệu hỏng — ' +
+                  'đã từ chối ghi. Tải lại trang rồi thử lại.';
+        return kq;
+      }
     }
 
     // --- 6. SAO LƯU BẢN CŨ, RỒI GHI BẢN MỚI ------------------------------
     // Sao lưu chạy TRƯỚC khi ghi đè, vì thứ cần cứu là bản sắp mất.
-    kq.saoLuu = saoLuuNeuDenHan_(cayCu);
+    //
+    // Dọn rác thì sao lưu là BẮT BUỘC, không đợi đến hạn: đây là lần ghi duy
+    // nhất của cả app mà bản cũ chứa thứ bản mới không còn.
+    kq.saoLuu = saoLuuNeuDenHan_(cayCu, laDonRac);
+
+    // ⚠ VÀ VỚI LỆNH DỌN RÁC, SAO LƯU LÀ ĐIỀU KIỆN, KHÔNG PHẢI THỨ ĐI KÈM.
+    //
+    // Với mọi lần ghi khác, sao lưu hỏng thì kệ nó — bản cũ vẫn còn nguyên
+    // trên Drive dưới dạng phiên bản file, và hàm sao lưu đã được viết để
+    // không bao giờ làm hỏng việc lưu. Dọn rác thì ngược hẳn: bản cũ là thứ
+    // DUY NHẤT còn giữ những bản ghi sắp mất hẳn. Không cất được nó thì thà
+    // không dọn.
+    //
+    // Ca thật sẽ gặp: thư mục Sao_luu chỉ chia sẻ cho chủ dự án
+    // (`PHAN-QUYEN_V03`), mà script chạy bằng danh tính người đang truy cập.
+    // Nên **người biên tập khác sẽ bị chặn ở đúng dòng này** — đó là hệ quả cố
+    // ý của cách chia sẻ, và câu lỗi phải nói thẳng ra thế.
+    if (laDonRac && !laTenFileSaoLuu_(kq.saoLuu)) {
+      kq.lyDo = 'khongsaoluuduoc';
+      kq.loi  = 'CHƯA dọn gì cả. Máy chủ không cất được bản sao lưu trước khi ' +
+                'xoá (' + kq.saoLuu + '), mà dọn thùng rác thì bản sao lưu ấy ' +
+                'là đường lùi duy nhất. Thư mục Sao_luu chỉ chia sẻ cho ' +
+                NGUOI_QUAN_LY + ', nên việc này phải do chính người ấy làm.';
+      return kq;
+    }
 
     var luc = bayGio_();
     if (!cay.tree || typeof cay.tree !== 'object') cay.tree = {};
@@ -503,6 +551,109 @@ function raSoatTruocKhiGhi_(cay) {
     if (p.daAnChiTiet === true) {
       return 'Bản gửi lên là bản ĐÃ BỊ LỌC chi tiết người còn sống. ' +
              'Ghi đè bản này lên bản gốc sẽ xoá mất dữ liệu thật. Đã từ chối ghi.';
+    }
+  }
+  return null;
+}
+
+/**
+ * Rà soát riêng cho lệnh DỌN THÙNG RÁC. Trả câu lỗi, hoặc null nếu sạch.
+ *
+ * Đây là chốt chặn ở phía máy chủ cho đường xoá thật, và nó phải đứng đây chứ
+ * không đứng ở trình duyệt: `domains/purge.js` đã tính đúng, nhưng cái chạy
+ * trong tay người dùng thì không có gì bảo đảm là bản `purge.js` ta viết. Máy
+ * chủ đọc lấy cờ `deleted` **từ bản đang nằm trên Drive** rồi tự đối chiếu.
+ *
+ * Một câu hỏi duy nhất, hỏi cho cả ba mảng: *thứ vừa biến mất có phải thứ đã
+ * nằm trong thùng rác không?* Bất cứ bản ghi nào biến mất mà bản cũ không mang
+ * cờ `deleted` đều làm cả lần ghi bị từ chối — không xoá một phần, không đoán.
+ *
+ * ⚠ `media` được phép biến mất theo CHỦ THỂ của nó, dù chính nó chưa mang cờ:
+ * ảnh của một người vừa bị xoá hẳn thì `subjectId` của nó trỏ vào hư không.
+ * Đó là ngoại lệ DUY NHẤT, và nó vẫn được kiểm — chủ thể ấy phải thật sự nằm
+ * trong số vừa bị xoá.
+ */
+function raSoatDonRac_(cayCu, cayMoi) {
+  var loi = null;
+
+  var maNguoiMat = maBienMat_(cayCu.persons, cayMoi.persons);
+  var maCapMat   = maBienMat_(cayCu.unions,  cayMoi.unions);
+
+  loi = doiChieuCoDeleted_(cayCu.persons, maNguoiMat, 'người');
+  if (loi) return loi;
+  loi = doiChieuCoDeleted_(cayCu.unions, maCapMat, 'cặp');
+  if (loi) return loi;
+
+  // Ảnh: hoặc chính nó mang cờ, hoặc chủ thể của nó vừa bị xoá hẳn.
+  var daMat = {};
+  var i;
+  for (i = 0; i < maNguoiMat.length; i++) daMat[maNguoiMat[i]] = true;
+  for (i = 0; i < maCapMat.length;   i++) daMat[maCapMat[i]]   = true;
+
+  var cuTheoMa = theoMa_(cayCu.media);
+  var maAnhMat = maBienMat_(cayCu.media, cayMoi.media);
+  for (i = 0; i < maAnhMat.length; i++) {
+    var m = cuTheoMa[maAnhMat[i]];
+    if (!m) continue;
+    if (m.deleted === true) continue;
+    if (daMat[m.subjectId] === true) continue;
+    return 'Lệnh dọn thùng rác đòi xoá bản ghi ảnh ' + maAnhMat[i] +
+           ', nhưng tấm ấy không nằm trong thùng rác và chủ thể của nó vẫn ' +
+           'còn trong gia phả. Đã từ chối ghi.';
+  }
+
+  // Nhật ký không bao giờ được ngắn đi: nó là thứ duy nhất kể lại chuyện đã
+  // xảy ra sau khi bản ghi đã mất.
+  var logCu  = (cayCu.changeLog  && cayCu.changeLog.length)  || 0;
+  var logMoi = (cayMoi.changeLog && cayMoi.changeLog.length) || 0;
+  if (logMoi < logCu) {
+    return 'Bản gửi lên có ít mục nhật ký hơn bản trên Drive (' + logMoi +
+           ' so với ' + logCu + '). Dọn thùng rác không được đụng vào ' +
+           'changeLog. Đã từ chối ghi.';
+  }
+  return null;
+}
+
+/** Mã có trong mảng CŨ mà không còn trong mảng MỚI. */
+function maBienMat_(dsCu, dsMoi) {
+  var con = {};
+  var i;
+  if (dsMoi && dsMoi.length) {
+    for (i = 0; i < dsMoi.length; i++) {
+      if (dsMoi[i] && dsMoi[i].id) con[dsMoi[i].id] = true;
+    }
+  }
+  var ra = [];
+  if (dsCu && dsCu.length) {
+    for (i = 0; i < dsCu.length; i++) {
+      var x = dsCu[i];
+      if (x && x.id && con[x.id] !== true) ra.push(x.id);
+    }
+  }
+  return ra;
+}
+
+/** Bản ghi theo mã, tra nhanh. */
+function theoMa_(ds) {
+  var ra = {};
+  if (ds && ds.length) {
+    for (var i = 0; i < ds.length; i++) {
+      if (ds[i] && ds[i].id) ra[ds[i].id] = ds[i];
+    }
+  }
+  return ra;
+}
+
+/** Mọi mã trong `maMat` phải mang cờ `deleted` ở bản CŨ. */
+function doiChieuCoDeleted_(dsCu, maMat, loai) {
+  var cu = theoMa_(dsCu);
+  for (var i = 0; i < maMat.length; i++) {
+    var x = cu[maMat[i]];
+    if (!x || x.deleted !== true) {
+      return 'Lệnh dọn thùng rác đòi xoá ' + loai + ' ' + maMat[i] +
+             ', nhưng bản ghi ấy KHÔNG nằm trong thùng rác của bản đang trên ' +
+             'Drive. Đã từ chối ghi — không xoá một phần nào cả. Tải lại ' +
+             'trang rồi mở lại thùng rác.';
     }
   }
   return null;
@@ -778,6 +929,53 @@ function xoaAnhThu(fileId) {
 }
 
 /**
+ * DỌN ẢNH RÁC — bước 4 của một lần *Dọn thùng rác*.
+ *
+ * --- Vì sao KHÔNG dùng lại `xoaAnhThu` ở trên -----------------------------
+ *
+ * Hai hàm cùng gọi `setTrashed(true)`, nên nhìn qua thì hàm này thừa. Ba khác
+ * biệt, và cái thứ nhất là lý do thật:
+ *
+ * 1. **Nhận CẢ LOẠT, trả về từng cái.** Dọn một thùng rác có mười tấm ảnh mà
+ *    gọi `xoaAnhThu` mười lần là mười vòng mạng nối tiếp nhau, mỗi vòng vài
+ *    giây, trong lúc người dùng ngồi nhìn một cái hộp không nhúc nhích.
+ * 2. **Không tấm nào hỏng được cả loạt.** Ảnh đã bị ai đó xoá tay trên Drive
+ *    từ trước là chuyện thường; ném lỗi vì nó là bắt người dùng gánh hậu quả
+ *    của một việc đã xong. Mỗi tấm một dòng kết quả, hàm luôn chạy hết.
+ * 3. **Gọi SAU khi máy chủ đã gật cho lần ghi.** Bản ghi đã mất rồi, nên tấm
+ *    ảnh này chắc chắn không còn ai trỏ tới — điều mà `xoaAnhThu` không dám
+ *    giả định, vì nó dọn ảnh vừa tải lên hỏng giữa chừng.
+ *
+ * ⚠ `setTrashed` chứ KHÔNG xoá hẳn, và đây là chỗ chữ *"xoá thật"* dừng lại:
+ * file vào thùng rác Drive và nằm đó thêm 30 ngày. Nhận nhầm một tấm ảnh cụ
+ * ông chụp năm 1950 là mất vĩnh viễn — 30 ngày ấy là lớp lùi cuối cùng, và nó
+ * nằm ngoài app nên không lệnh nào trong app xoá qua được.
+ *
+ * @param {string[]} dsFileId
+ * @returns {{ok:boolean, soXoa:number, soHong:number, chiTiet:object[]}}
+ */
+function xoaAnhThat(dsFileId) {
+  var kq = { ok: true, soXoa: 0, soHong: 0, chiTiet: [] };
+  var ds = (dsFileId && dsFileId.length) ? dsFileId : [];
+
+  for (var i = 0; i < ds.length; i++) {
+    var ma = String(ds[i] || '');
+    if (!ma) continue;
+    try {
+      DriveApp.getFileById(ma).setTrashed(true);
+      kq.soXoa++;
+      kq.chiTiet.push({ fileId: ma, ok: true, loi: null });
+    } catch (e) {
+      kq.soHong++;
+      kq.chiTiet.push({ fileId: ma, ok: false, loi: e.message });
+    }
+  }
+  // `ok` nói *hàm có chạy hết không*, không nói *có tấm nào hỏng không*. Nơi
+  // gọi đọc `soHong` để quyết định có kể ra hay không.
+  return kq;
+}
+
+/**
  * Tên file an toàn: bỏ dấu gạch chéo và ký tự lạ, luôn có đuôi `.jpg`.
  * Trống thì tự đặt theo dấu thời gian, không để Drive sinh ra "Untitled".
  */
@@ -809,9 +1007,17 @@ function layDanhSachSaoLuu() { /* TODO — giai đoạn 3, màn hình khôi ph�
  * Vì vậy toàn bộ hàm nằm trong try/catch và KHÔNG BAO GIỜ được làm hỏng việc
  * lưu: sao lưu là thứ đi kèm, không phải điều kiện để ghi.
  *
- * @returns {string} 'da-luu' · 'chua-den-han' · 'tat' · 'khong-cau-hinh' · 'loi'
+ * @param {object}  cayCu
+ * @param {boolean} [batBuoc]  bỏ qua hạn giờ — lệnh dọn thùng rác cần cái này
+ * @returns {string} TÊN FILE vừa cất, hoặc
+ *                   'chua-den-han' · 'tat' · 'khong-cau-hinh' · 'loi'
+ *
+ * ⚠ Trả về TÊN FILE chứ không phải chữ 'da-luu': màn hình dọn rác phải nói ra
+ * được *"bản sao lưu trước khi xoá tên là gì"*, không thì câu "đã sao lưu" chỉ
+ * là một lời hứa không tra lại được. Nơi duy nhất đọc giá trị này là dòng
+ * `console.log` của `repo.js` và màn hình ấy — không chỗ nào so bằng chuỗi.
  */
-function saoLuuNeuDenHan_(cayCu) {
+function saoLuuNeuDenHan_(cayCu, batBuoc) {
   if (!SAO_LUU || !SAO_LUU.bat) return 'tat';
   if (!THU_MUC_SAO_LUU_ID || THU_MUC_SAO_LUU_ID.indexOf('DAN_ID_') === 0) {
     return 'khong-cau-hinh';
@@ -821,7 +1027,7 @@ function saoLuuNeuDenHan_(cayCu) {
     var thuMuc = DriveApp.getFolderById(THU_MUC_SAO_LUU_ID);
     var ds     = dsSaoLuuMoiTruoc_(thuMuc);
 
-    if (ds.length) {
+    if (ds.length && batBuoc !== true) {
       var cachNhauGio =
         (new Date().getTime() - ds[0].getDateCreated().getTime()) / 3600000;
       if (cachNhauGio < SAO_LUU.cachNhauGio) return 'chua-den-han';
@@ -836,10 +1042,26 @@ function saoLuuNeuDenHan_(cayCu) {
 
     thuMuc.createFile(ten, JSON.stringify(cayCu, null, 2), 'application/json');
     donBanSaoLuuCu_(thuMuc);
-    return 'da-luu';
+    return ten;
   } catch (e) {
     return 'loi';
   }
+}
+
+/**
+ * `saoLuuNeuDenHan_` có cất được file thật không.
+ *
+ * Hàm ấy trả về TÊN FILE khi thành công, và một trong bốn chữ báo trạng thái
+ * khi không. Kể tên cả bốn chữ ra đây chứ không đoán bằng dấu chấm hay bằng độ
+ * dài: thêm một trạng thái mới mà quên sửa chỗ này thì nó bị nhận nhầm thành
+ * một cái tên file, và lệnh dọn rác chạy tiếp trong lúc không có bản lùi nào.
+ */
+function laTenFileSaoLuu_(kq) {
+  var chu = String(kq || '');
+  return chu !== '' &&
+         chu !== 'tat' && chu !== 'loi' &&
+         chu !== 'chua-den-han' && chu !== 'khong-cau-hinh' &&
+         chu !== 'khong-chay';
 }
 
 /** File trong thư mục sao lưu, MỚI NHẤT ĐỨNG TRƯỚC. */

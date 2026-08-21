@@ -2,11 +2,11 @@
 // giapha · js/pages/person-edit.js
 // Vai trò  : Form thêm/sửa người và SỬA CẶP, ảnh đại diện, thêm quan hệ,
 //            SỬA QUAN HỆ ĐÃ CÓ, SẮP THỨ TỰ ANH CHỊ EM, xoá · hoàn tác ·
-//            đưa trở lại từ thùng rác
+//            đưa trở lại từ thùng rác, và DỌN THÙNG RÁC (xoá thật)
 // Lớp      : pages — được phép gọi mọi lớp dưới
-// Phụ thuộc: state, domains/{person,union,validate,media,render},
+// Phụ thuộc: state, domains/{person,union,validate,media,purge,render},
 //            services/{repo,gas}, utils/{graph,text,date,image}, config
-// Phiên bản: 1.17.0 · Cập nhật: 21/08/2026 16:55
+// Phiên bản: 1.18.0 · Cập nhật: 21/08/2026 22:10
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -141,9 +141,10 @@ import { createUnion, addChild, addPartner, removeChild, removePartner,
 import { validateAll, checkOrphanNode } from '../domains/validate.js';
 import { attachMedia, detachMedia, setPortrait, clearPortrait,
          getMediaFor, getPortrait } from '../domains/media.js';
+import { planPurge, applyPurge, moTaKePurge } from '../domains/purge.js';
 import { mauVien } from '../domains/render.js';
 import { luuCay, suaDuoc } from '../services/repo.js';
-import { taiAnh } from '../services/gas.js';
+import { taiAnh, xoaAnhThat } from '../services/gas.js';
 import { buildIndex } from '../utils/graph.js';
 import { fullName, coGiaTri } from '../utils/text.js';
 import { formatDate, parseLooseDate, stampNow, mocNgay } from '../utils/date.js';
@@ -2952,14 +2953,24 @@ async function ghiMotNguoi(nguoiMoi, moTa) {
   }
 }
 
-/** Lời báo khi máy chủ từ chối. `hienTrang` nói rõ dữ liệu đang ở trạng thái nào. */
+/**
+ * Lời báo khi máy chủ từ chối. `hienTrang` nói rõ dữ liệu đang ở trạng thái nào.
+ *
+ * ⚠ `hienTrang` LUÔN được ghép vào, kể cả khi máy chủ đã có câu giải thích
+ * riêng. Bản cũ chỉ dùng nó ở nhánh "không nói rõ vì sao", và đó là một lỗ:
+ * câu của máy chủ giải thích *vì sao hỏng*, còn `hienTrang` trả lời câu hỏi
+ * khác hẳn — *bây giờ dữ liệu đang ra sao*. Với đường xoá thật thì câu thứ hai
+ * mới là câu người dùng cần: họ vừa bấm một nút không lùi được và phải biết
+ * ngay là nó đã chạy hay chưa.
+ */
 function hienLoiGhi(ketQua, hienTrang) {
   if (ketQua && ketQua.lyDo === 'xungdot') {
     hienNhan('Người khác vừa sửa gia phả trong lúc hộp này đang mở, nên app KHÔNG ' +
              'ghi đè lên bản của họ. ' + hienTrang + ' Tải lại trang rồi làm lại.', true);
     return;
   }
-  hienNhan((ketQua && ketQua.loi) || 'Máy chủ không nói rõ vì sao. ' + hienTrang, true);
+  const cua = (ketQua && ketQua.loi) || 'Máy chủ không nói rõ vì sao.';
+  hienNhan(hienTrang + ' ' + cua, true);
 }
 
 /** Nút của hộp xoá. `nguyHiem` = nút màu đỏ, chỉ dùng cho đúng nút xoá. */
@@ -5223,9 +5234,220 @@ async function chayKhoiPhucCap(unionId) {
   baoXongMotViec('Đã đưa cặp ' + unionId + ' trở lại gia phả.');
 }
 
+// ============================================================
+// DỌN THÙNG RÁC — XOÁ THẬT (việc 6B)
+// ============================================================
+//
+// --- Vì sao chỉ có ĐÚNG MỘT CỬA ------------------------------------------
+//
+// Yêu cầu *"cần có chức năng xoá thật, nếu không sau này db sẽ tràn ngập rác"*
+// đi ngược một luật đã chốt từ đầu dự án: *không xoá cứng, xoá là đặt cờ*.
+// Hai thứ hoà được, và cách hoà quyết định toàn bộ chỗ đứng của mã dưới đây:
+//
+//   > Đường xoá THƯỜNG giữ nguyên xoá mềm. Xoá thật CHỈ có một cửa: nút
+//   > *Dọn thùng rác* trong chính màn hình Thùng rác.
+//
+// Người bấm *"Xoá khỏi gia phả"* giữa lúc đang xem sơ đồ KHÔNG ở tâm thế dọn
+// dẹp — họ đang sửa một bản ghi. Đặt một thao tác không lùi được vào giữa dòng
+// công việc bình thường là cách chắc chắn nhất để có ngày mất dữ liệu thật.
+//
+// --- BỐN BƯỚC, KHÔNG ĐẢO THỨ TỰ ------------------------------------------
+//
+//   1. Sao lưu TRƯỚC       — MÁY CHỦ làm, không hỏi, và với lệnh này nó là
+//                            ĐIỀU KIỆN: không cất được bản cũ thì không dọn
+//   2. Gỡ mã khỏi unions   — `applyPurge`, hàm thuần
+//   3. Xoá bản ghi         — cùng `applyPurge`, cùng một lần `luuCay`
+//   4. Xoá FILE ẢNH Drive  — SAU khi máy chủ đã gật, không bao giờ trước
+//
+// ⚠ Bước 4 phải đứng sau bước 3, và đây là chỗ dễ làm ngược nhất. Xoá file
+// trước rồi lần ghi hỏng thì ảnh mất mà bản ghi vẫn còn trỏ vào nó — hỏng theo
+// kiểu tệ nhất, vì màn hình vẫn nói mọi thứ bình thường.
+
+/**
+ * Hộp xác nhận dọn thùng rác. Nói ra CON SỐ trước khi người dùng bấm.
+ *
+ * @param {{onDaLuu?:function()}} [xuLy]
+ */
+export function donThungRac(xuLy = {}) {
+  if (!state.tree) {
+    moHopBao('Chưa mở được gia phả',
+             'Chưa nạp được gia phả nên chưa dọn được gì. Tải lại trang rồi thử lại.',
+             true);
+    return;
+  }
+
+  const ke = planPurge(state.tree);
+  if (ke.trong) {
+    moHopBao('Thùng rác trống',
+             'Không có gì để dọn. Thùng rác chỉ chứa thứ đã bị xoá, mà hiện ' +
+             'chưa có bản ghi nào mang cờ ấy.', false);
+    return;
+  }
+
+  const chan = moHopTrang('chon', xuLy, 'Dọn thùng rác',
+                          'Xoá vĩnh viễn  ·  ' + moTaKePurge(ke));
+  hienNhan('Xoá vĩnh viễn ' + moTaKePurge(ke) + '. KHÔNG hoàn tác được từ ' +
+           'trong app.', true, cauKeKhiDonRac(ke));
+
+  chan.append(
+    nutChanXoa('Xoá vĩnh viễn', true, () => chayDonThungRac(xuLy)),
+    nutChanXoa('Huỷ', false, () => closePersonForm()),
+  );
+}
+
+/**
+ * Những gì người dùng phải biết TRƯỚC khi bấm. **BỐN dòng, không hơn.**
+ *
+ * Kể TÊN chứ không chỉ kể số. Người ta nhớ mình vừa xoá ai, không nhớ mình vừa
+ * xoá mấy bản ghi — và cái tên là thứ duy nhất cho họ nhận ra mình đang sắp
+ * xoá nhầm.
+ *
+ * ⚠ CON SỐ BỐN LÀ MỘT RÀNG BUỘC BỐ CỤC, KHÔNG PHẢI SỞ THÍCH. Bản đầu của hàm
+ * này kể SÁU dòng, mỗi ý một dòng — đọc mã thì thấy đầy đủ và chu đáo. Ảnh
+ * chụp khung 390px cho thấy sáu dòng ấy đẩy nút *Xoá vĩnh viễn* xuống quá mép
+ * dưới: người dùng phải cuộn đi tìm nút, và người đi tìm nút thì không đọc
+ * dòng nào cả. Tức là hộp càng kể kỹ thì càng ít người đọc — đúng ngược lại
+ * điều nó sinh ra để làm.
+ *
+ * Nên ba cặp ý được gộp lại: cặp phải gỡ + cặp thành thừa, file ảnh + ảnh mất
+ * theo chủ. Thêm ý mới vào đây thì phải gộp bớt chỗ khác, và **chụp lại
+ * `xem-don-rac.mjs` mà nhìn**, không kết luận bằng cách đọc mã.
+ */
+function cauKeKhiDonRac(ke) {
+  const ra = [];
+
+  if (ke.personIds.length > 0) {
+    const ten = ke.personIds.slice(0, 4)
+      .map((id) => tenTrongCay(state.tree, id) || id);
+    ra.push(ten.join(', ') +
+            (ke.personIds.length > 4 ? ' và ' + (ke.personIds.length - 4) + ' người nữa' : '') +
+            '.');
+  }
+
+  if (ke.capPhaiGo.length > 0) {
+    ra.push(ke.capPhaiGo.length + ' cặp còn trong gia phả đang giữ mã của họ; ' +
+            'mã ấy được gỡ đi, sơ đồ không đổi.' +
+            (ke.capHetLyDo.length > 0
+              ? ' ' + ke.capHetLyDo.length + ' cặp thành cặp thừa (' +
+                ke.capHetLyDo.join(', ') + ') — dọn nốt ở màn hình Rà soát.'
+              : ''));
+  }
+
+  if (ke.fileIds.length > 0) {
+    ra.push(ke.fileIds.length + ' file ảnh vào thùng rác Drive, nằm đó thêm 30 ngày.' +
+            (ke.anhLacChu.length > 0
+              ? ' ' + ke.anhLacChu.length + ' tấm mất theo chủ, dù chưa ai gỡ.'
+              : ''));
+  }
+
+  ra.push('Máy chủ tự cất bản sao lưu trước khi xoá. Không cất được thì không dọn.');
+  return ra;
+}
+
+async function chayDonThungRac(xuLy) {
+  if (dangLuu) return;
+
+  const ke = planPurge(state.tree);
+  if (ke.trong) {
+    hienNhan('Thùng rác vừa trống — có thể người khác đã dọn. Không còn gì để làm.',
+             false);
+    return;
+  }
+
+  dangLuu = true;
+  hienNhan('Đang sao lưu rồi dọn…', false);
+
+  // BƯỚC 2 + 3, trong MỘT lần lưu. `applyPurge` chạy lại trên BẢN NHÁP chứ
+  // không dùng cây đã tính lúc mở hộp: bản nháp là bản mới nhất, và tính lại
+  // trên chính nó là cách duy nhất để không ghi xuống một kết quả cũ. Người
+  // khác vừa đổi gì thì dấu vân tay của `luuCay()` chặn cả lần ghi.
+  let ketQua;
+  try {
+    ketQua = await luuCay((cay) => {
+      const kq = applyPurge(cay);
+      if (!kq) {
+        throw new Error('Bản trên Drive không còn gì trong thùng rác. ' +
+                        'Tải lại trang rồi mở lại thùng rác.');
+      }
+      cay.persons = kq.tree.persons;
+      cay.unions  = kq.tree.unions;
+      cay.media   = kq.tree.media;
+    }, {
+      action: 'purge',
+      target: '',
+      note:   'Dọn thùng rác: xoá vĩnh viễn ' + moTaKePurge(ke) + '.',
+      diff:   { persons: [state.tree.persons.length, state.tree.persons.length - ke.personIds.length],
+                unions:  [state.tree.unions.length,  state.tree.unions.length  - ke.unionIds.length] },
+    });
+  } catch (e) {
+    ketQua = { ok: false, loi: e && e.message ? e.message : String(e) };
+  }
+
+  dangLuu = false;
+  if (!lopPhu) return;
+
+  if (!(ketQua && ketQua.ok)) {
+    hienLoiGhi(ketQua, 'CHƯA xoá gì cả — mọi thứ vẫn nằm nguyên trong thùng rác.');
+    return;
+  }
+
+  // BƯỚC 4 — và chỉ tới đây mới được chạm vào file trên Drive.
+  const anh = await donAnhTrenDrive(ke.fileIds);
+
+  if (xuLy && xuLy.onDaLuu) xuLy.onDaLuu();
+  if (!lopPhu) return;
+
+  baoXongMotViec('Đã xoá vĩnh viễn ' + moTaKePurge(ke) + '.',
+                 cauKetQuaDonRac(ketQua, ke, anh));
+}
+
+/**
+ * Bước 4. Trả về `null` khi không có ảnh nào phải dọn — nơi gọi phải phân biệt
+ * *"không có ảnh nào"* với *"có ảnh mà xoá hỏng"*.
+ *
+ * ⚠ Hỏng ở đây KHÔNG làm hỏng cả việc dọn. Bản ghi đã xoá xong và đã ghi
+ * xuống Drive rồi; một file ảnh còn nằm lại chỉ tốn vài chục KB, còn báo đỏ
+ * lên màn hình lúc này sẽ khiến người dùng tưởng cả lần dọn đã hỏng.
+ */
+async function donAnhTrenDrive(fileIds) {
+  if (!fileIds || fileIds.length === 0) return null;
+  try {
+    return await xoaAnhThat(fileIds);
+  } catch (e) {
+    return { ok: false, soXoa: 0, soHong: fileIds.length,
+             loi: e && e.message ? e.message : String(e) };
+  }
+}
+
+/** Mấy dòng kể lại việc vừa xong. Bản sao lưu đứng đầu — nó là đường lùi. */
+function cauKetQuaDonRac(ketQua, ke, anh) {
+  const ra = [];
+
+  if (ketQua && ketQua.saoLuu) {
+    ra.push('Bản sao lưu trước khi xoá: ' + ketQua.saoLuu +
+            ' — nằm trong thư mục Sao_luu trên Drive.');
+  }
+
+  if (anh === null) {
+    // Không có ảnh nào: không kể ra hàng đó. Trường trống thì không vẽ.
+  } else if (anh && anh.soHong === 0) {
+    ra.push(anh.soXoa + ' file ảnh đã vào thùng rác Drive, giữ thêm 30 ngày.');
+  } else if (anh) {
+    ra.push(anh.soXoa + ' file ảnh đã vào thùng rác Drive; ' + anh.soHong +
+            ' file không xoá được (có thể đã bị xoá tay từ trước). Bản ghi ' +
+            'trong gia phả thì đã sạch — chỗ này chỉ còn là file thừa trên Drive.');
+  }
+
+  if (ke.capHetLyDo.length > 0) {
+    ra.push('Còn ' + ke.capHetLyDo.length + ' cặp không còn lý do tồn tại. ' +
+            'Mở Danh sách người → Rà soát để dọn nốt.');
+  }
+  return ra;
+}
+
 /** Báo xong, và để lại đúng một nút Đóng — cùng khuôn với đường hoàn tác. */
-function baoXongMotViec(cau) {
-  hienNhan(cau, false);
+function baoXongMotViec(cau, dong) {
+  hienNhan(cau, false, dong);
   const hang = document.createElement('div');
   hang.style.cssText = 'margin-top:10px';
   hang.append(nutChon('Đóng', true, () => closePersonForm()));
