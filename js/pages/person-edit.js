@@ -2,11 +2,11 @@
 // giapha · js/pages/person-edit.js
 // Vai trò  : Form thêm/sửa người và SỬA CẶP, ảnh đại diện, thêm quan hệ,
 //            SỬA QUAN HỆ ĐÃ CÓ, SẮP THỨ TỰ ANH CHỊ EM, xoá · hoàn tác ·
-//            đưa trở lại từ thùng rác, và DỌN THÙNG RÁC (xoá thật)
+//            thùng rác: khôi phục · xoá thật · gom rác, cả loạt một lần
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate,media,purge,render},
 //            services/{repo,gas}, utils/{graph,text,date,image}, config
-// Phiên bản: 1.18.0 · Cập nhật: 21/08/2026 22:10
+// Phiên bản: 1.19.0 · Cập nhật: 21/08/2026 23:10
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
