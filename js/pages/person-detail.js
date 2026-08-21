@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
 //            utils/{text,date,image}, config
-// Phiên bản: 1.12.0 · Cập nhật: 21/08/2026 14:45
+// Phiên bản: 1.13.0 · Cập nhật: 21/08/2026 18:20
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -69,7 +69,7 @@ import { mauVien } from '../domains/render.js';
 import { fullName, coGiaTri, doiSongNguoi, ngayGio } from '../utils/text.js';
 import { formatDate, calcAge } from '../utils/date.js';
 import { driveThumbUrl, anhMacDinhUri } from '../utils/image.js';
-import { nhanLoaiTenPhu } from '../config.js';
+import { nhanLoaiTenPhu, chuThichQuanHe } from '../config.js';
 
 let lopPhu = null;   // lớp phủ đang mở, hoặc null
 
@@ -447,9 +447,16 @@ function veQuanHe(index, p, xuLy) {
     if (!u) continue;
     const muc = (Array.isArray(u.children) ? u.children : [])
       .find((c) => c && c.personId === p.id);
-    const nuoi = muc && muc.relation === 'adopted';
+    // ⚠ Đọc CẢ NĂM mã, không riêng `'adopted'` (sửa 21/08/2026, việc 3). Bản
+    // cũ chỉ nhận ra con nuôi; `step` · `foster` · `thua_tu` rơi vào nhánh
+    // rỗng và biến mất khỏi thẻ — người ta đánh dấu "con riêng" trong form rồi
+    // mở thẻ ra thấy y hệt con đẻ. Lỗi ấy nằm im được vì tới trước việc 3 chưa
+    // đường nào ghi nổi ba mã kia, đúng hình dạng của lỗi tên phụ ở bước 33.
+    //
+    // `chuThichQuanHe` tự trả chuỗi rỗng cho `birth` — xem ghi chú của nó.
+    const ghiChu = chuThichQuanHe((muc && muc.relation) || 'birth', 'chaMe');
     for (const id of Array.isArray(u.partners) ? u.partners : []) {
-      themNguoi(chaMe, index, id, nuoi ? 'cha mẹ nuôi' : '');
+      themNguoi(chaMe, index, id, ghiChu);
     }
   }
 
@@ -461,7 +468,7 @@ function veQuanHe(index, p, xuLy) {
     }
     for (const c of Array.isArray(u.children) ? u.children : []) {
       themNguoi(con, index, c && c.personId,
-                c && c.relation === 'adopted' ? 'con nuôi' : '');
+                chuThichQuanHe((c && c.relation) || 'birth', 'con'));
     }
   }
 

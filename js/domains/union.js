@@ -2,8 +2,8 @@
 // giapha · js/domains/union.js
 // Vai trò  : Nghiệp vụ hôn nhân và quan hệ cha mẹ – con
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
-// Phụ thuộc: utils/id.js, utils/date.js
-// Phiên bản: 1.4.0 · Cập nhật: 20/08/2026 21:10
+// Phụ thuộc: utils/id.js, utils/date.js, config.js
+// Phiên bản: 1.5.0 · Cập nhật: 21/08/2026 18:20
 // ============================================================
 //
 // NHẮC LẠI HAI ĐIỀU HAY BỊ LẪN:
@@ -35,7 +35,7 @@
 //   addChild   ↔ removeChild        con của một cặp
 //   addPartner ↔ removePartner      vợ/chồng của một cặp
 //   createUnion ↔ softDeleteUnion   ( ↔ restoreUnion để hoàn tác )
-//   reorderChildren · swapPartnerOrder · updateUnion
+//   reorderChildren · swapPartnerOrder · updateUnion · updateChildRelation
 //   listDeletedUnions              kể tên cặp trong THÙNG RÁC (bước 29)
 //
 // Sau MỌI lần gỡ, nơi gọi phải hỏi thêm một câu mà không hàm gỡ nào tự trả lời:
@@ -46,9 +46,17 @@
 
 import { nextId } from '../utils/id.js';
 import { mocNgay, parseLooseDate } from '../utils/date.js';
+import { QUAN_HE_CON_NHAN } from '../config.js';
 
-/** Những quan hệ cha mẹ – con mà dữ liệu chấp nhận. */
-export const QUAN_HE_CON = ['birth', 'adopted', 'step', 'foster', 'thua_tu'];
+/**
+ * Những quan hệ cha mẹ – con mà dữ liệu chấp nhận.
+ *
+ * ⚠ DẪN XUẤT từ bảng nhãn ở `config.js`, không gõ lại lần thứ hai. Hai danh
+ * sách song song thì tới ngày ai đó thêm một mã, một bên nhận nó là hợp lệ còn
+ * bên kia hiện trơ cái mã ra giữa thẻ — đúng cái lỗi mà `LOAI_TEN_PHU` đã
+ * tránh được bằng cách chỉ có MỘT bảng.
+ */
+export const QUAN_HE_CON = QUAN_HE_CON_NHAN.map((x) => x.ma);
 
 /**
  * Tạo một hôn nhân mới.
@@ -159,6 +167,61 @@ export function addChild(tree, unionId, personId, relation) {
   ];
 
   return { tree: cayMoi, union: moi, diff };
+}
+
+/**
+ * Sửa quan hệ đẻ/nuôi của MỘT người con đã có trong cặp.
+ *
+ * @param {object} tree
+ * @param {string} unionId
+ * @param {string} personId  người con — phải đã nằm trong `union.children[]`
+ * @param {string} relation  một mã trong `QUAN_HE_CON`
+ * @returns {{tree:object, union:object, diff:object, thayDoi:boolean}|null}
+ *          null khi thiếu cặp, hoặc người ấy KHÔNG phải con của cặp này.
+ *
+ * --- Vì sao chữ ký nhận `personId`, không nhận cả mảng -------------------
+ *
+ * Bước 33 sửa `names[]` bằng cách gửi CẢ mảng, vì mục trong `names[]` không
+ * có mã nào để khớp — hai mục cùng loại, cùng chữ thì không phân biệt được.
+ * `children[]` KHÁC ở đúng chỗ ấy: mỗi mục mang `personId`. Có mã thì khớp
+ * được từng mục, và gửi cả mảng chỉ tổ mở thêm một cửa đi vòng qua
+ * `addChild`/`removeChild` — hai hàm duy nhất được phép làm mảng này dài ra
+ * hay ngắn đi, và là hai chỗ duy nhất hỏi tiếp câu `conLyDoTonTai()`.
+ *
+ * ⚠ HÀM NÀY KHÔNG THÊM, KHÔNG BỚT NGƯỜI. Nó đổi một chữ trong một mục đã có.
+ * `order` giữ nguyên: đổi từ con đẻ sang con nuôi không làm ai đổi chỗ trong
+ * hàng anh chị em.
+ *
+ * ⚠ MÃ LẠ RƠI VỀ 'birth', cùng lối với `addChild` và cùng một lý do:
+ * `validate.js` bỏ qua phép rà tuổi sinh học với mọi quan hệ KHÁC `'birth'`,
+ * nên một chữ gõ sai phải làm phép rà CHẶT hơn, không phải lỏng hơn.
+ */
+export function updateChildRelation(tree, unionId, personId, relation) {
+  if (!tree || !Array.isArray(tree.unions) || !unionId || !personId) return null;
+
+  const cu = tree.unions.find((u) => u && u.id === unionId);
+  if (!cu) return null;
+
+  const cacCon = Array.isArray(cu.children) ? cu.children : [];
+  const i = cacCon.findIndex((c) => c && c.personId === personId);
+  if (i < 0) return null;
+
+  const truoc = cacCon[i].relation || 'birth';
+  const sau   = QUAN_HE_CON.indexOf(relation) >= 0 ? relation : 'birth';
+
+  const moi = JSON.parse(JSON.stringify(cu));
+  moi.children[i].relation = sau;
+
+  const cayMoi = Object.assign({}, tree, {
+    unions: tree.unions.map((u) => (u && u.id === unionId ? moi : u)),
+  });
+
+  const diff = {};
+  if (truoc !== sau) {
+    diff[unionId + '.children.' + personId + '.relation'] = [truoc, sau];
+  }
+
+  return { tree: cayMoi, union: moi, diff, thayDoi: truoc !== sau };
 }
 
 /**

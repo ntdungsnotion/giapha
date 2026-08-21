@@ -3,7 +3,7 @@
 // Vai trò  : Hằng số hiển thị phía trình duyệt.
 // Lớp      : config — không gọi file nào khác
 // Phụ thuộc: (không)
-// Phiên bản: 0.10.0 · Cập nhật: 21/08/2026 14:10
+// Phiên bản: 0.11.0 · Cập nhật: 21/08/2026 18:20
 // ============================================================
 //
 // LƯU Ý: từ khi chuyển sang kiến trúc Apps Script, file này KHÔNG còn
@@ -190,4 +190,72 @@ export function nhanLoaiTenPhu(ma) {
   if (m === '') return '';
   const muc = LOAI_TEN_PHU.find((x) => x.ma === m);
   return muc ? muc.chu : m;
+}
+
+// ============================================================
+// QUAN HỆ CHA MẸ – CON (việc 3, 21/08/2026)
+// ============================================================
+//
+// ⚠ **Bảng này ở `config` chứ không nằm trong `domains/union.js`, cùng đúng lý
+// lẽ đã dùng cho `LOAI_TEN_PHU`:** form GHI mã `thua_tu` xuống dữ liệu, thẻ ĐỌC
+// mã ấy lên để kể quan hệ. Hai bên giữ hai bảng riêng thì tới ngày ai đó thêm
+// một loại quan hệ, một bên biết còn bên kia hiện trơ cái mã ra giữa thẻ.
+//
+// ⚠ **`union.QUAN_HE_CON` — danh sách mã hợp lệ — DẪN XUẤT từ bảng này**, nên
+// hai thứ không thể trôi lệch nhau. Thêm một hàng ở đây là thêm luôn một mã hợp
+// lệ; bỏ một hàng là bỏ luôn. Đừng dựng bảng mã thứ hai ở bất cứ đâu.
+//
+// ⚠ **HAI cột nhãn, không phải một.** Cùng một mã `adopted` đọc từ phía người
+// con là *"con nuôi"*, đọc từ phía cha mẹ là *"cha mẹ nuôi"*. Thẻ thông tin kể
+// cả hai chiều — nhóm *Cha mẹ* và nhóm *Con* — nên một cột nhãn là chắc chắn có
+// một chiều đọc lên sai.
+//
+// ⚠ **`birth` có nhãn, và nhãn ấy KHÔNG được in ra thẻ.** Form cần chữ "Con đẻ"
+// để có cái mà bày trong danh sách chọn; thẻ thì im lặng với `birth` — ghi "con
+// đẻ" cạnh mọi người con là bắt người đọc lọc lấy thứ khác thường giữa một rừng
+// chữ bình thường. Chỗ quyết định điều đó là nơi GỌI, xem `person-detail.js`.
+export const QUAN_HE_CON_NHAN = [
+  { ma: 'birth',   con: 'Con đẻ',         chaMe: 'Cha mẹ đẻ' },
+  { ma: 'adopted', con: 'Con nuôi',       chaMe: 'Cha mẹ nuôi' },
+  { ma: 'step',    con: 'Con riêng',      chaMe: 'Cha dượng / mẹ kế' },
+  { ma: 'foster',  con: 'Con nuôi dưỡng', chaMe: 'Cha mẹ nuôi dưỡng' },
+  { ma: 'thua_tu', con: 'Con thừa tự',    chaMe: 'Cha mẹ thừa tự' },
+];
+
+/**
+ * Nhãn tiếng Việt của một mã quan hệ.
+ *
+ * @param {string} ma
+ * @param {'con'|'chaMe'} [phia]  đọc từ phía nào; mặc định là phía người con
+ * @returns {string} mã lạ trả về CHÍNH CÁI MÃ — cùng lối với `nhanLoaiTenPhu`:
+ *          thấy `sealed` giữa thẻ thì còn biết đường mà tra, thấy khoảng trống
+ *          thì tưởng dữ liệu hỏng.
+ */
+export function nhanQuanHeCon(ma, phia) {
+  const m = String(ma || '').trim();
+  if (m === '') return '';
+  const muc = QUAN_HE_CON_NHAN.find((x) => x.ma === m);
+  return muc ? muc[phia === 'chaMe' ? 'chaMe' : 'con'] : m;
+}
+
+/**
+ * Cùng cái nhãn ấy, nhưng ở dạng CHÚ THÍCH — thứ đứng nép bên cạnh một cái tên
+ * trên thẻ, chứ không phải một mục trong danh sách chọn.
+ *
+ * Khác `nhanQuanHeCon` đúng hai điều, và cả hai đều là chuyện hiển thị:
+ *
+ * - **`birth` trả về CHUỖI RỖNG.** Ghi "con đẻ" cạnh mọi người con là bắt
+ *   người đọc lọc lấy thứ khác thường giữa một rừng chữ bình thường. Chú thích
+ *   chỉ có nghĩa khi nó nói một điều KHÁC lệ thường.
+ * - **Chữ đầu viết thường.** Nó nằm giữa câu, sau một cái tên — "Nguyễn Bá
+ *   Thục (con nuôi)". Viết hoa ở đó đọc lên như một cái tên riêng thứ hai.
+ *
+ * Ba nơi cần đúng phép này — thẻ thông tin (hai nhóm) và hộp Gỡ nối — nên nó
+ * là một hàm, không phải ba lần gõ lại cùng một điều kiện.
+ */
+export function chuThichQuanHe(ma, phia) {
+  const m = String(ma || '').trim();
+  if (m === '' || m === 'birth') return '';
+  const chu = nhanQuanHeCon(m, phia);
+  return chu ? chu.charAt(0).toLowerCase() + chu.slice(1) : '';
 }

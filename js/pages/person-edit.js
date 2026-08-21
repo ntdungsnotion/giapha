@@ -1,11 +1,12 @@
 // ============================================================
 // giapha · js/pages/person-edit.js
 // Vai trò  : Form thêm/sửa người và SỬA CẶP, ảnh đại diện, thêm quan hệ,
-//            SẮP THỨ TỰ ANH CHỊ EM, xoá · hoàn tác · đưa trở lại từ thùng rác
+//            SỬA QUAN HỆ ĐÃ CÓ, SẮP THỨ TỰ ANH CHỊ EM, xoá · hoàn tác ·
+//            đưa trở lại từ thùng rác
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate,media,render},
 //            services/{repo,gas}, utils/{graph,text,date,image}, config
-// Phiên bản: 1.12.0 · Cập nhật: 21/08/2026 14:40
+// Phiên bản: 1.13.0 · Cập nhật: 21/08/2026 18:20
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -103,13 +104,39 @@
 //    khi làm khi câu trả lời là không — vì lúc ấy cả cặp bị xoá mềm theo, và đó
 //    là một việc lớn hơn nhiều so với thứ người dùng vừa bấm. Cùng đúng tinh
 //    thần của luật 8: một lần bấm không được gây ra thứ gì mà hộp chưa kể tên.
+//
+// --- SỬA QUAN HỆ: luật thứ mười một (21/08/2026, việc 3) ----------------
+//
+// 11. FORM NÀY SỬA QUAN HỆ ĐÃ CÓ, KHÔNG THÊM VÀ KHÔNG BỚT QUAN HỆ NÀO. Ranh
+//    giới ấy là thứ giữ cho luật 9 và 10 còn nguyên giá trị: thêm hay gỡ một
+//    mối nối là chạm vào `partners`/`children`, và mỗi lần chạm còn phải hỏi
+//    tiếp câu *"cặp này còn lý do tồn tại không"*. Khối Quan hệ chỉ đổi CHỮ
+//    trong những mục đã có — `children[].relation`, `union.status`,
+//    `union.rank` — nên không lần nào phải hỏi câu ấy.
+//
+//    Hệ quả: `status` và `rank` bây giờ sửa được từ HAI CỬA — form Sửa cặp
+//    (bước 29) và khối này. Được, và chỉ được vì cả hai gọi ĐÚNG MỘT hàm
+//    `union.updateUnion()`. Chép logic so sánh sang đây là dựng bản thứ hai,
+//    và hai bản sẽ trôi lệch nhau đúng như chín luật rà soát sẽ trôi lệch nếu
+//    chép sang `Code.gs`.
+//
+//    ⚠ `relation` THUỘC VỀ CẶP, KHÔNG THUỘC VỀ NGƯỜI. Sửa *"đứa này là con
+//    nuôi"* từ phía người cha là sửa đúng cùng một trường mà thẻ của người con
+//    cũng đọc. Nên đổi ở đây thì thẻ của CẢ HAI người đổi theo — đó là đúng,
+//    không phải lỗi.
+//
+//    ⚠ VÀ ĐÁNH DẤU SAI Ở ĐÂY LÀ TẮT PHÉP RÀ, KHÔNG PHẢI BÁO LỖI.
+//    `validate.js` bỏ qua mọi phép rà tuổi sinh học với quan hệ khác
+//    `'birth'`. Ghi nhầm một người con đẻ thành con nuôi không hiện ra thành
+//    một lời nào — nó chỉ làm mấy phép rà im lặng. Vì thế mặc định của mọi ô
+//    chọn ở đây là thứ ĐANG LƯU, không bao giờ là một giá trị app tự đoán.
 
 import { state } from '../state.js';
 import { updatePerson, createPerson,
          softDeletePerson, restorePerson } from '../domains/person.js';
 import { createUnion, addChild, addPartner, removeChild, removePartner,
          softDeleteUnion, restoreUnion, conLyDoTonTai, reorderChildren,
-         thuTuConTheoTuoi, updateUnion, swapPartnerOrder,
+         thuTuConTheoTuoi, updateUnion, updateChildRelation, swapPartnerOrder,
          getParentUnions, getPartnerUnions, getSpouses, getChildren } from '../domains/union.js';
 import { validateAll, checkOrphanNode } from '../domains/validate.js';
 import { datAnhDaiDien, clearPortrait } from '../domains/media.js';
@@ -121,7 +148,8 @@ import { fullName, coGiaTri } from '../utils/text.js';
 import { formatDate, parseLooseDate, stampNow, mocNgay } from '../utils/date.js';
 import { compressImage, driveThumbUrl, anhMacDinhUri, dataUri, moTaCo }
   from '../utils/image.js';
-import { LOAI_TEN_PHU, nhanLoaiTenPhu } from '../config.js';
+import { LOAI_TEN_PHU, nhanLoaiTenPhu,
+         QUAN_HE_CON_NHAN, nhanQuanHeCon, chuThichQuanHe } from '../config.js';
 
 let lopPhu     = null;   // lớp phủ đang mở, hoặc null
 let o          = {};     // các ô nhập, tra theo tên trường
@@ -165,6 +193,10 @@ let sapKeo = null;   // { tu:number } — đang kéo thẻ thứ mấy, null là
 // tách hẳn khỏi cây: mỗi mục là { type, goc:{surname,middle,given}, chu }.
 let tenPhu    = [];
 let khoiTenPhu = null;   // khối chứa các hàng, để vẽ lại một mình nó
+
+// QUAN HỆ (việc 3). Cùng lối với `tenPhu`: form giữ RIÊNG một bản làm việc,
+// không đọc ngược từ DOM. Xem ghi chú đầu khối Quan hệ.
+let quanHe    = null;
 
 let khoiAnh = null;   // tham chiếu tới khối, để vẽ lại một mình nó
 let anhChon = null;   // { fileId, xemTruoc, ten, co } — vừa tải lên xong
@@ -288,6 +320,7 @@ export function closePersonForm() {
   sapKeo       = null;
   tenPhu       = [];
   khoiTenPhu   = null;
+  quanHe       = null;
   khoiAnh      = null;
   anhChon      = null;
   anhBo        = false;
@@ -520,6 +553,14 @@ function veCacO(nguoi) {
   ra.push(oNhieuDong('note', nguoi.note,
                      'Chuyện gia đình cần nhớ, điều không có ô riêng…'));
 
+  // QUAN HỆ đứng CUỐI CÙNG, cùng lý lẽ đã dùng cho bộ thông dụng ở bước 32:
+  // người đã quen form này tìm Tên · Giới tính · Sinh · Mất ở đúng chỗ cũ, còn
+  // thứ mọc thêm ở cuối thì không ai phải học lại gì.
+  //
+  // Chỉ có ở chế độ SỬA, cùng lý do với khối ảnh: ở các chế độ thêm người, bản
+  // ghi chưa có mã, mà quan hệ thì tra theo mã.
+  if (cheDo === 'sua') ra.push(...veKhoiQuanHe(nguoi));
+
   return ra;
 }
 
@@ -684,6 +725,327 @@ function phanTenPhu(muc) {
     return Object.assign({ type: muc.type }, muc.goc);
   }
   return { type: muc.type, surname: '', middle: '', given: chu };
+}
+
+// ============================================================
+// Khối QUAN HỆ — việc 3 (21/08/2026)
+// ============================================================
+//
+// Ba nhóm, đúng ba câu chủ dự án hỏi: quan hệ với CHA MẸ · trạng thái và thứ
+// bậc của từng cặp VỢ CHỒNG · quan hệ với từng người CON.
+//
+// --- Vì sao nhóm nào rỗng thì bỏ hẳn nhóm ấy ---------------------------
+//
+// Trái với luật "form HIỆN ĐỦ MỌI Ô" ở đầu file, và có chủ ý. Luật ấy nói về ô
+// trống — một câu hỏi chưa ai trả lời. Ở đây khác: người chưa nối với cha mẹ
+// nào thì KHÔNG CÓ câu hỏi nào để hỏi, và vẽ ra một nhóm rỗng là mời người
+// dùng đi tìm cái nút thêm cha mẹ ở một khối vốn không có nút nào như thế.
+// Cả ba nhóm cùng rỗng thì bỏ luôn cả khối.
+//
+// --- Vì sao giữ riêng một bản làm việc, không đọc ngược từ DOM ----------
+//
+// Cùng lý lẽ với `tenPhu` ở bước 33, cộng một lý do riêng: các ô ở đây tra
+// theo `unionId` và `personId`, mà DOM chỉ giữ được chỉ số hàng. Đọc ngược
+// là mỗi lần đọc một lần phải dựng lại phép khớp hàng → mã người, và đó đúng
+// là chỗ để lọt một cú ghi nhầm sang người bên cạnh.
+//
+// ⚠ `cu` giữ nguyên giá trị lúc MỞ form. Mọi so sánh "có đổi gì không" đều so
+// với `cu`, không so với cây — đúng tinh thần ghi chú của `handleSaveUnion`:
+// mở form rồi bấm Lưu ngay phải là một việc KHÔNG để lại dấu vết.
+
+function veKhoiQuanHe(nguoi) {
+  const index = state.index;
+  if (!index || !index.personById.has(nguoi.id)) return [];
+
+  quanHe = docQuanHe(index, nguoi.id);
+  if (quanHe.chaMe.length === 0 && quanHe.banDoi.length === 0 &&
+      quanHe.con.length === 0) {
+    quanHe = null;
+    return [];
+  }
+
+  const ra = [veNhan('Quan hệ')];
+
+  const nhac = document.createElement('div');
+  nhac.textContent =
+    'Ở đây chỉ SỬA những quan hệ đã có. Thêm hoặc gỡ một người nằm ở vòng ' +
+    'tròn — mục Kết nối và Gỡ nối.';
+  nhac.style.cssText = 'font-size:11px;line-height:1.45;color:#8a8078;margin-top:2px';
+  ra.push(nhac);
+
+  if (quanHe.chaMe.length > 0) {
+    ra.push(veNhanNhom('Cha mẹ'));
+    quanHe.chaMe.forEach((m, i) => ra.push(veHangChaMe(m, i)));
+  }
+
+  if (quanHe.banDoi.length > 0) {
+    ra.push(veNhanNhom('Vợ / chồng'));
+    quanHe.banDoi.forEach((m, i) => ra.push(veHangBanDoi(m, i)));
+    const nhacBac = document.createElement('div');
+    nhacBac.textContent =
+      'Ô số là THỨ BẬC: 1 là vợ cả / chồng đầu, 2 là vợ thứ hai… Không phải ' +
+      'chỗ đứng trái phải trên sơ đồ.';
+    nhacBac.style.cssText =
+      'font-size:11px;line-height:1.45;color:#8a8078;margin-top:4px';
+    ra.push(nhacBac);
+  }
+
+  if (quanHe.con.length > 0) {
+    ra.push(veNhanNhom('Con'));
+    quanHe.con.forEach((m, i) => ra.push(veHangCon(m, i)));
+  }
+
+  return ra;
+}
+
+/**
+ * Bản làm việc của khối, đọc từ chỉ mục.
+ *
+ * ⚠ ĐÂY KHÔNG PHẢI MỘT PHÉP DUYỆT ĐỒ THỊ, nên không cần tập `visited`: nó đi
+ * đúng MỘT bước từ người đang sửa — sang các cặp cha mẹ, các cặp của chính họ,
+ * các người con — rồi DỪNG, không đi tiếp từ những người tìm được. Ai sửa hàm
+ * này mà cho nó đi sâu thêm một bậc (ví dụ "sửa luôn quan hệ của các cháu")
+ * thì phải thêm `visited` — gia phả là đồ thị có vòng, và bản dữ liệu làm việc
+ * đang có sẵn hai vòng.
+ *
+ * ⚠ Đọc qua bốn hàm `get*` của `domains/union.js` chứ không tự duyệt
+ * `u.partners`: bốn hàm ấy lọc người mang cờ `deleted` ra, còn mã họ thì vẫn
+ * nằm nguyên trong `partners`/`children` (xoá mềm cố ý không dọn hai mảng
+ * ấy). Tự duyệt là bày ra một ô chọn cho một người đã nằm trong thùng rác.
+ */
+function docQuanHe(index, personId) {
+  const ra = { mocId: personId, chaMe: [], banDoi: [], con: [] };
+
+  for (const u of getParentUnions(index, personId)) {
+    const muc = (Array.isArray(u.children) ? u.children : [])
+      .find((c) => c && c.personId === personId);
+    const cu = (muc && muc.relation) || 'birth';
+    ra.chaMe.push({ unionId: u.id, ten: keTenPartner(u.id), cu, moi: cu });
+  }
+
+  for (const u of getPartnerUnions(index, personId)) {
+    // Cùng phép chuẩn hoá với `handleSaveUnion`: thiếu `status` thì coi là
+    // 'married', nhưng một mã khác hai mã quen thì GIỮ NGUYÊN chứ không ép về
+    // 'married' — cùng lối với mã loại tên lạ ở bước 33.
+    const ttCu = u.status === 'divorced' ? 'divorced' : (u.status || 'married');
+    ra.banDoi.push({
+      unionId: u.id,
+      ten:     tenBanDoiTrongCap(index, u, personId),
+      ttCu, ttMoi: ttCu,
+      bacCu:  thuBacHienTai(u),
+      bacMoi: String(thuBacHienTai(u)),
+    });
+  }
+
+  for (const m of getChildren(index, personId)) {
+    ra.con.push({
+      unionId:  m.unionId,
+      personId: m.personId,
+      ten:      tenNguoi(m.personId),
+      cu:       m.relation,
+      moi:      m.relation,
+    });
+  }
+
+  return ra;
+}
+
+/**
+ * Tên người kia trong cặp. Cặp MỘT NGƯỜI (`U0024` là ca thật) thì không có
+ * người kia — nói thẳng ra thay vì để trống, vì một hàng không tên trông y hệt
+ * một lỗi nạp dữ liệu.
+ */
+function tenBanDoiTrongCap(index, u, personId) {
+  const ds = (Array.isArray(u.partners) ? u.partners : [])
+    .filter((id) => id && id !== personId && index.personById.has(id))
+    .map(tenNguoi);
+  return ds.length > 0 ? ds.join('  và  ') : '(cặp mới có một người)';
+}
+
+/**
+ * Nhãn của một NHÓM trong khối Quan hệ — Cha mẹ · Vợ/chồng · Con.
+ *
+ * Không mượn `veNhanO`: nhãn ấy là nhãn của MỘT Ô (11px, xám rất nhạt, sát
+ * ngay trên ô của nó). Ba chữ này là đầu đề của cả một nhóm, và ở bản đầu mượn
+ * `veNhanO` thì ảnh `qh-0.png` cho thấy chúng chìm nghỉm giữa các hàng — mắt
+ * không tìm ra đâu là chỗ nhóm Vợ/chồng bắt đầu.
+ */
+function veNhanNhom(chu) {
+  const d = document.createElement('div');
+  d.textContent = chu;
+  d.style.cssText =
+    'margin-top:16px;margin-bottom:2px;font-size:11px;font-weight:600;' +
+    'letter-spacing:.04em;color:#8a8078';
+  return d;
+}
+
+/**
+ * Một mục trong khối Quan hệ: TÊN một dòng, các ô một dòng dưới.
+ *
+ * ⚠ HAI DÒNG CỐ ĐỊNH, không phải một hàng ngang biết tự xuống dòng. Bản đầu
+ * xếp tên và ô trên cùng một hàng `flex-wrap` — cùng lối với hàng tên phụ —
+ * và ảnh `qh-0.png` cho thấy vì sao lối ấy không dùng lại được ở đây:
+ *
+ *   · tên người Việt đủ ba phần dài hơn hẳn một cái tên huý, nên hàng gãy ngay
+ *     ở khổ 360px chứ không đợi tới 280px — tức là nó gãy LÚC NÀO là tuỳ vào
+ *     tên ai đang đứng đó, và hai mục cạnh nhau trông không giống nhau;
+ *   · hàng Vợ/chồng có BA thứ, nên khi gãy thì ô số thứ bậc rơi xuống một dòng
+ *     riêng, đứng lơ lửng một mình bên trái, không còn nói lên nó là thứ bậc
+ *     của cặp nào.
+ *
+ * Hai dòng cố định thì mọi mục trông như nhau ở mọi khổ, và hai ô của một cặp
+ * luôn dính nhau.
+ */
+function veMucQuanHe(ten, cacO) {
+  const boc = document.createElement('div');
+  boc.style.cssText = 'margin-top:12px';
+
+  const d = document.createElement('div');
+  d.textContent = ten;
+  d.style.cssText =
+    'font-size:13px;line-height:1.4;color:#2a2622;margin-bottom:4px;' +
+    'overflow-wrap:anywhere';
+
+  const hang = document.createElement('div');
+  hang.style.cssText = 'display:flex;gap:6px;align-items:center';
+  hang.append(...cacO);
+
+  boc.append(d, hang);
+  return boc;
+}
+
+/**
+ * Ô chọn quan hệ đẻ/nuôi.
+ *
+ * ⚠ Mã lạ — dữ liệu cũ, hoặc file GEDCOM nhập từ phần mềm khác — được THÊM vào
+ * danh sách chứ không bị thay bằng một mã trong bảng. Đúng bài học của bước 33:
+ * không thêm thì `<select>` tự nhảy về mục đầu tiên, và người dùng chỉ mở form
+ * ra xem cũng đủ biến một quan hệ lạ thành 'birth' — mà 'birth' là quan hệ BẬT
+ * lại bốn phép rà tuổi sinh học.
+ */
+function oChonQuanHe(nhan, maCu, phia, khiDoi) {
+  const chon = document.createElement('select');
+  chon.setAttribute('aria-label', nhan);
+  chon.style.cssText = KIEU_O + 'width:auto;flex:1 1 auto;min-width:0;padding-right:6px';
+
+  const ds = QUAN_HE_CON_NHAN.slice();
+  if (!ds.some((x) => x.ma === maCu)) ds.push({ ma: maCu, con: maCu, chaMe: maCu });
+
+  for (const q of ds) {
+    const op = document.createElement('option');
+    op.value = q.ma;
+    op.textContent = nhanQuanHeCon(q.ma, phia);
+    if (q.ma === maCu) op.selected = true;
+    chon.append(op);
+  }
+  chon.addEventListener('change', () => khiDoi(chon.value));
+  return chon;
+}
+
+function veHangChaMe(m, i) {
+  return veMucQuanHe(m.ten, [
+    oChonQuanHe('Quan hệ với cha mẹ ' + (i + 1), m.cu, 'chaMe',
+                (ma) => { m.moi = ma; }),
+  ]);
+}
+
+function veHangCon(m, i) {
+  return veMucQuanHe(m.ten, [
+    oChonQuanHe('Quan hệ với con ' + (i + 1), m.cu, 'con', (ma) => { m.moi = ma; }),
+  ]);
+}
+
+function veHangBanDoi(m, i) {
+  const chon = document.createElement('select');
+  chon.setAttribute('aria-label', 'Cặp ' + (i + 1) + ' bây giờ');
+  chon.style.cssText = KIEU_O + 'width:auto;flex:1 1 auto;min-width:0;padding-right:6px';
+
+  const CAC = [
+    { ma: 'married',  chu: 'Đang là vợ chồng' },
+    { ma: 'divorced', chu: 'Đã ly hôn' },
+  ];
+  if (!CAC.some((x) => x.ma === m.ttCu)) CAC.push({ ma: m.ttCu, chu: m.ttCu });
+
+  for (const c of CAC) {
+    const op = document.createElement('option');
+    op.value = c.ma;
+    op.textContent = c.chu;
+    if (c.ma === m.ttCu) op.selected = true;
+    chon.append(op);
+  }
+  chon.addEventListener('change', () => { m.ttMoi = chon.value; });
+
+  const bac = document.createElement('input');
+  bac.type = 'text';
+  bac.inputMode = 'numeric';
+  bac.value = m.bacMoi;
+  bac.setAttribute('aria-label', 'Thứ bậc của cặp ' + (i + 1));
+  bac.style.cssText = KIEU_O + 'flex:0 0 56px;width:56px;min-width:0;text-align:center';
+  bac.addEventListener('input', () => { m.bacMoi = bac.value; });
+
+  return veMucQuanHe(m.ten, [chon, bac]);
+}
+
+/**
+ * Áp mọi thay đổi quan hệ lên cây, NỐI ĐUÔI nhau.
+ *
+ * @param {object} cay  cây mà `updatePerson` (và phép áp ảnh) vừa trả về
+ * @returns {{tree:object, diff:object, capDoi:object[]}}
+ *
+ * ⚠ NỐI ĐUÔI là bắt buộc, không phải cho gọn: mỗi hàm trả về một CÂY MỚI, nên
+ * chạy hai hàm trên cùng một cây cũ là cây gửi lên chỉ mang một trong hai thay
+ * đổi. Cùng cái bẫy mà `handleSaveUnion` đã gặp với `swapPartnerOrder`.
+ *
+ * ⚠ Một cặp có thể bị đụng HAI LẦN (đổi quan hệ một người con, rồi đổi luôn
+ * trạng thái của chính cặp ấy). Gom theo mã cặp, bản sau đè bản trước — mà bản
+ * sau chạy trên cây đã mang thay đổi trước, nên nó là bản ĐỦ CẢ HAI.
+ */
+function apThayDoiQuanHe(cay) {
+  const ra = { tree: cay, diff: {}, capDoi: [] };
+  if (!quanHe) return ra;
+
+  const theoMa = new Map();
+  const nhan = (kq) => {
+    if (!kq || !kq.thayDoi) return;
+    ra.tree = kq.tree;
+    Object.assign(ra.diff, kq.diff);
+    theoMa.set(kq.union.id, kq.union);
+  };
+
+  for (const m of quanHe.chaMe) {
+    if (m.moi === m.cu) continue;
+    nhan(updateChildRelation(ra.tree, m.unionId, quanHe.mocId, m.moi));
+  }
+
+  for (const m of quanHe.con) {
+    if (m.moi === m.cu) continue;
+    nhan(updateChildRelation(ra.tree, m.unionId, m.personId, m.moi));
+  }
+
+  for (const m of quanHe.banDoi) {
+    // Chỉ gửi thứ THẬT SỰ khác bản đang lưu — đúng ghi chú của
+    // `handleSaveUnion`: `updateUnion` so với giá trị đã chuẩn hoá, nên cặp
+    // chưa có `status` mà gửi 'married' xuống là một dòng changeLog cho một
+    // việc chẳng ai làm.
+    const changes = {};
+    if (m.ttMoi !== m.ttCu) changes.status = m.ttMoi;
+
+    const n = Number(String(m.bacMoi).trim());
+    if (Number.isFinite(n) && n > 0 && n !== m.bacCu) changes.rank = n;
+
+    if (Object.keys(changes).length === 0) continue;
+    nhan(updateUnion(ra.tree, m.unionId, changes));
+  }
+
+  ra.capDoi = [...theoMa.values()];
+  return ra;
+}
+
+/** Một câu kể những gì khối Quan hệ vừa đổi, để đưa vào `changeLog`. */
+function keThayDoiQuanHe(qh) {
+  if (!qh || qh.capDoi.length === 0) return '';
+  const n = qh.capDoi.length;
+  return ' Sửa quan hệ ở ' + n + ' cặp.';
 }
 
 // ============================================================
@@ -1192,14 +1554,20 @@ async function handleSave(nguoi) {
   // Ảnh áp SAU hồ sơ, trên chính cây mà `updatePerson` vừa trả về — xem
   // `apThayDoiAnh()`. Từ đây trở xuống chỉ dùng bốn biến `…Cuoi`.
   const anh       = apThayDoiAnh(kq.tree, nguoi.id, { boi, luc });
-  const cayCuoi   = anh ? anh.tree   : kq.tree;
+  const sauAnh    = anh ? anh.tree   : kq.tree;
   const nguoiCuoi = anh ? anh.person : kq.person;
-  const diffCuoi  = anh ? Object.assign({}, kq.diff, anh.diff) : kq.diff;
+
+  // Khối QUAN HỆ nối đuôi vào cây mà hai bước trên vừa trả về — xem
+  // `apThayDoiQuanHe`. Nó KHÔNG đụng bản ghi người, chỉ đụng các cặp.
+  const qh        = apThayDoiQuanHe(sauAnh);
+  const cayCuoi   = qh.tree;
+  const diffCuoi  = Object.assign({}, kq.diff, anh ? anh.diff : null, qh.diff);
 
   // ⚠ Đổi MỖI ảnh cũng là một thay đổi. Xét `kq.thayDoi` một mình thì bấm Lưu
   // sau khi chọn ảnh sẽ nghe câu "chưa có gì thay đổi" — mà ảnh thì đã nằm
   // trên Drive rồi, nên người dùng có mọi lý do để tin là mình vừa mất nó.
-  if (!kq.thayDoi && !anh) {
+  // Cùng lý lẽ cho quan hệ: đổi MỖI một ô chọn cũng là một thay đổi.
+  if (!kq.thayDoi && !anh && qh.capDoi.length === 0) {
     hienNhan('Chưa có gì thay đổi so với bản đang lưu, nên không cần lưu lại.', false);
     return;
   }
@@ -1238,6 +1606,7 @@ async function handleSave(nguoi) {
   // không có trong kho.
   const nguoiMoi = nguoiCuoi;
   const anhMoi   = anh && anh.media ? anh.media : null;
+  const capMoi   = qh.capDoi;
   let ketQua;
   try {
     ketQua = await luuCay(
@@ -1245,6 +1614,16 @@ async function handleSave(nguoi) {
         const ds = Array.isArray(cay.persons) ? cay.persons : [];
         const i = ds.findIndex((p) => p && p.id === nguoi.id);
         if (i >= 0) ds[i] = JSON.parse(JSON.stringify(nguoiMoi));
+
+        // Các cặp bị khối Quan hệ đụng tới. THAY THẾ chứ không thêm mới: mọi
+        // cặp ở đây đều đã có sẵn trong cây — `updateChildRelation` và
+        // `updateUnion` đều trả về null khi không tìm ra cặp, nên không mục
+        // nào tới được đây mà chưa tồn tại.
+        for (const u of capMoi) {
+          if (!Array.isArray(cay.unions)) cay.unions = [];
+          const j = cay.unions.findIndex((x) => x && x.id === u.id);
+          if (j >= 0) cay.unions[j] = JSON.parse(JSON.stringify(u));
+        }
 
         if (anhMoi) {
           if (!Array.isArray(cay.media)) cay.media = [];
@@ -1263,7 +1642,8 @@ async function handleSave(nguoi) {
         action: 'update',
         target: nguoi.id,
         note:   'Sửa hồ sơ ' + fullName(nguoiMoi) + ' bằng form nhập liệu.' +
-                (anhChon ? ' Đổi ảnh đại diện.' : (anhBo ? ' Bỏ ảnh đại diện.' : '')),
+                (anhChon ? ' Đổi ảnh đại diện.' : (anhBo ? ' Bỏ ảnh đại diện.' : '')) +
+                keThayDoiQuanHe(qh),
         diff:   diffCuoi,
       }
     );
@@ -3006,10 +3386,14 @@ export function goNoiNguoi(personId, xuLy = {}) {
   }
 
   for (const m of getChildren(index, personId)) {
+    // Cùng phép sửa với thẻ thông tin (21/08/2026): đọc CẢ NĂM mã, không riêng
+    // 'adopted'. Bản cũ để `step` · `foster` · `thua_tu` rơi vào nhánh rỗng,
+    // và hộp Gỡ nối kể một đứa con riêng y hệt một đứa con đẻ.
+    const chuThich = chuThichQuanHe(m.relation, 'con');
     cacMuc.push({
       ma: 'child:' + m.personId,
       chu: 'Con: ' + tenNguoi(m.personId),
-      phu: (m.relation === 'adopted' ? 'con nuôi  ·  ' : '') + m.unionId,
+      phu: (chuThich ? chuThich + '  ·  ' : '') + m.unionId,
       nguyHiem: true,
       chay: () => unlink(personId, m.personId, 'child',
                          Object.assign({ unionId: m.unionId }, xuLy)),

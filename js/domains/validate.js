@@ -3,7 +3,7 @@
 // Vai trò  : Rà soát dữ liệu gia phả — chặn cái sai chắc chắn, cảnh báo cái đáng ngờ
 // Lớp      : domains — được gọi bởi: pages · được phép gọi: utils, config
 // Phụ thuộc: utils/date.js, utils/graph.js, utils/text.js
-// Phiên bản: 1.2.0 · Cập nhật: 18/08/2026 15:40
+// Phiên bản: 1.3.0 · Cập nhật: 21/08/2026 18:20
 // ============================================================
 //
 // HÀM THUẦN. Không gọi services, không chạm DOM, không đọc state.
@@ -119,16 +119,26 @@ export function checkDeathAfterBirth(person) {
  * - **Ngưỡng 55 tuổi CHỈ áp cho mẹ** (`sex === 'M'` hay `'U'` thì bỏ). Đàn ông
  *   sinh con ở tuổi 70 là chuyện có thật và không hiếm trong gia phả cũ. Với
  *   `sex: 'U'` thì ta không biết ai mang thai, nên không đoán.
- * - **CON NUÔI được bỏ qua hoàn toàn.** Quan hệ `adopted` không mang ràng buộc
- *   sinh học nào; cha mẹ nuôi trẻ hơn con nuôi là hợp lệ.
+ * - **MỌI quan hệ KHÁC `'birth'` được bỏ qua hoàn toàn** — con nuôi, con
+ *   riêng, con nuôi dưỡng, con thừa tự. Không quan hệ nào trong số ấy mang ràng
+ *   buộc sinh học; cha mẹ nuôi trẻ hơn con nuôi là hợp lệ.
+ *
+ *   ⚠ **Nới từ riêng `'adopted'` ra cả bốn mã, ngày 21/08/2026 (việc 3).**
+ *   Bản cũ chỉ bỏ qua đúng chữ `'adopted'`, và điều đó KHÔNG lộ ra được chừng
+ *   nào chưa có đường nào ghi nổi ba mã kia: form chỉ có một ô đánh dấu "con
+ *   nuôi". Việc 3 mở đường ghi cả năm mã, nên để nguyên là đánh dấu một đứa
+ *   con riêng rồi nhận về một lời cảnh báo tuổi tác không có nghĩa gì.
  */
 export function checkParentAge(index, parentId, childId) {
   const cha = layNguoi(index, parentId);
   const con = layNguoi(index, childId);
   if (!cha || !con) return boQua('thiếu bản ghi của cha/mẹ hoặc con');
 
-  if (quanHeChaCon(index, parentId, childId) === 'adopted') {
-    return boQua('quan hệ cha mẹ nuôi — không xét tuổi sinh học');
+  const quanHe = quanHeChaCon(index, parentId, childId);
+  // `null` nghĩa là hai người KHÔNG nối với nhau — không phải một quan hệ nuôi.
+  // Bỏ qua ở đó là bỏ qua nhầm, nên chỉ bỏ khi có quan hệ và quan hệ ấy khác đẻ.
+  if (quanHe && quanHe !== 'birth') {
+    return boQua('quan hệ ' + quanHe + ' — không xét tuổi sinh học');
   }
 
   const cach = chenhNam(cha.birth, con.birth);
@@ -225,8 +235,10 @@ export function checkBirthAfterMotherDeath(index, personId) {
   if (!nguoi) return boQua('thiếu bản ghi người');
   if (!mocNgay(nguoi.birth)) return boQua('không có năm sinh');
 
+  // Chỉ mẹ ĐẺ. `quanHeTrongUnion` trả 'birth' khi thiếu `relation`, nên so
+  // bằng `=== 'birth'` bắt đủ cả bốn mã không sinh học — xem `checkParentAge`.
   const cacMe = chaMeCua(index, personId)
-    .filter((ch) => ch.relation !== 'adopted')
+    .filter((ch) => ch.relation === 'birth')
     .map((ch) => layNguoi(index, ch.parentId))
     .filter((me) => me && me.sex === 'F' && mocNgay(me.death));
 
@@ -587,7 +599,8 @@ function quanHeTrongUnion(union, personId) {
 }
 
 /**
- * Quan hệ giữa một cặp cha–con cụ thể: 'birth' · 'adopted' · null nếu không nối.
+ * Quan hệ giữa một cặp cha–con cụ thể: một mã trong `QUAN_HE_CON`, hoặc null
+ * nếu hai người không nối với nhau.
  *
  * Cần thiết vì `P0020` có HAI bộ cha mẹ — một bộ đẻ (`U0013`), một bộ nuôi
  * (`U0025`). Cùng một người con, hai quan hệ khác nhau, và phép rà tuổi chỉ
