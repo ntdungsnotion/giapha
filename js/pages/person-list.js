@@ -4,7 +4,7 @@
 //            + MÀN HÌNH THÙNG RÁC — đường quay lại của người và cặp đã xoá
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/person, domains/union, utils/text, config
-// Phiên bản: 1.4.0 · Cập nhật: 21/08/2026 22:10
+// Phiên bản: 1.5.0 · Cập nhật: 21/08/2026 23:10
 // ============================================================
 //
 // --- Vì sao màn hình này phải có (bước 24) ------------------------------
@@ -98,6 +98,15 @@ let ngheBanPhim = null;
 let cheDo    = 'danhSach';   // 'danhSach' | 'thungRac'
 
 /**
+ * Mã đang được đánh dấu trong thùng rác. Người (`P…`) và cặp (`U…`) chung một
+ * tập: hai nút chân làm việc trên cả hai loại cùng lúc, và người dùng không
+ * phải nhớ thứ mình vừa đánh dấu thuộc loại nào.
+ */
+let daChon = new Set();
+let nutKhoiPhuc = null;
+let nutXoaHan   = null;
+
+/**
  * Mở danh sách người.
  *
  * @param {{onXemHoSo?:function(string), onChonNguoi?:function(string),
@@ -119,14 +128,18 @@ export function openPersonList(xuLy = {}) {
 /**
  * Mở THÙNG RÁC — người và cặp đang mang cờ `deleted`.
  *
- * @param {{onKhoiPhucNguoi?:function(string), onKhoiPhucCap?:function(string),
- *          onDonThungRac?:function()}} [xuLy]
- *        Cả ba đều là CỬA, không phải việc: hộp xác nhận và đường ghi xuống
+ * @param {{onKhoiPhuc?:function(string[]), onXoaHan?:function(Array|null)}} [xuLy]
+ *        Cả hai đều là CỬA, không phải việc: hộp xác nhận và đường ghi xuống
  *        Drive nằm ở `person-edit.js`, cùng chỗ với mọi đường ghi khác. Màn
  *        hình này tự đóng trước khi gọi — hộp xác nhận mở ra sau nó, và hai lớp
  *        phủ chồng nhau thì cái mở sau lại nằm dưới (xem `moKetNoi` ở
  *        `tree-view.js`).
- *        `onDonThungRac` — XOÁ THẬT. Nút chỉ mọc ra khi thùng rác có thứ gì.
+ *
+ *        ⚠ `onXoaHan` nhận **`null` khi người dùng đã chọn TẤT CẢ**, chứ không
+ *        nhận danh sách đầy đủ. Hai thứ ấy khác nhau ở đúng một chỗ, và chỗ ấy
+ *        quan trọng: **ảnh đã gỡ khỏi kho không có mặt trong thùng rác** nên
+ *        không dòng nào chọn tới chúng được. Chỉ đường *chọn tất cả* mới dọn
+ *        luôn chúng — xem ghi chú dài ở `domains/purge.js`.
  */
 export function openThungRac(xuLy = {}) {
   moManHinh('thungRac', xuLy);
@@ -144,6 +157,7 @@ function moManHinh(che, xuLy) {
   closePersonList();
   xuLyNgoai = xuLy || {};
   cheDo     = che;
+  daChon    = new Set();
 
   lopPhu = document.createElement('div');
   lopPhu.style.cssText =
@@ -180,7 +194,7 @@ function moManHinh(che, xuLy) {
   const nhac = document.createElement('div');
   nhac.textContent = laThungRac
     ? 'Người và cặp đã xoá vẫn nằm nguyên trong file, chỉ mang một cái cờ. ' +
-      'Bấm một dòng để đưa trở lại gia phả.'
+      'Đánh dấu những dòng cần xử lý, rồi chọn Khôi phục hay Xoá hẳn.'
     : 'Tìm được cả người chưa nối với ai — những người không sơ đồ nào vẽ ra.';
   nhac.style.cssText =
     'font-size:13px;line-height:1.5;color:#8a8078;margin-top:4px;flex:0 0 auto';
@@ -269,27 +283,66 @@ function veChan(laThungRac, laChonNguoi) {
     chan.append(ra);
   }
 
-  // XOÁ THẬT — quyết định 5 ở đầu file. Nút này KHÁC ba nút kia ở hai chỗ, và
-  // cả hai đều cố ý:
+  // HAI NÚT VIỆC CỦA THÙNG RÁC — quyết định 5 và 6 ở đầu file.
   //
-  //   · nó MẤT ĐI khi thùng rác trống, ngược hẳn luật của nút *Thùng rác (n)*
-  //     ở màn hình bên cạnh. Nút kia phải luôn hiện vì nó là CỬA đi tới một chỗ;
-  //     nút này là một VIỆC, mà một cái nút mời bấm rồi trả lời "không có gì để
-  //     làm" thì lần sau người ta thôi không tin nó nữa;
-  //   · nó mang màu đỏ. Đây là nút duy nhất trong cả hai màn hình làm một việc
-  //     không lùi được.
-  if (laThungRac && xuLyNgoai.onDonThungRac && !thungRacTrong()) {
-    const don = nutChan('Dọn thùng rác', () => {
-      const chay = xuLyNgoai.onDonThungRac;
-      closePersonList();
-      chay();
-    }, true);
-    don.dataset.viec = 'don-thung-rac';
-    chan.append(don);
+  // Chúng KHÁC ba nút kia ở hai chỗ, và cả hai đều cố ý:
+  //
+  //   · chúng chỉ mọc ra khi thùng rác có thứ gì, ngược hẳn luật của nút
+  //     *Thùng rác (n)* ở màn hình bên cạnh. Nút kia phải luôn hiện vì nó là
+  //     CỬA đi tới một chỗ; hai nút này là VIỆC, mà một cái nút mời bấm rồi trả
+  //     lời "không có gì để làm" thì lần sau người ta thôi không tin nó nữa;
+  //   · chúng **mờ đi khi chưa chọn dòng nào**. Đó không phải nút chết theo
+  //     nghĩa bước 26 cấm — nút chết là nút không bao giờ dùng được. Cái mờ ở
+  //     đây dạy đúng một điều, và dạy ngay tại chỗ: *chọn gì đó trước đã*.
+  if (laThungRac && !thungRacTrong()) {
+    nutKhoiPhuc = nutChan('Khôi phục', () => chayViecTrenLuaChon(false));
+    nutKhoiPhuc.dataset.viec = 'khoi-phuc';
+    chan.append(nutKhoiPhuc);
+
+    // ⚠ Nhãn NGẮN là quyết định của ảnh chụp, không phải của mã: *"Xoá vĩnh
+    // viễn (2)"* vỡ thành hai dòng bên trong nút trên khung 390px, khi đứng
+    // cạnh hai nút kia. Chữ đầy đủ vẫn còn nguyên ở đúng chỗ nó cần nặng nhất
+    // — tiêu đề và thân hộp xác nhận.
+    nutXoaHan = nutChan('Xoá hẳn', () => chayViecTrenLuaChon(true), true);
+    nutXoaHan.dataset.viec = 'xoa-han';
+    chan.append(nutXoaHan);
   }
 
   chan.append(nutChan('Đóng', () => closePersonList()));
   return chan;
+}
+
+/**
+ * Bấm một trong hai nút việc.
+ *
+ * ⚠ **Chọn TẤT CẢ thì gửi ra `null`, không gửi danh sách đầy đủ** — và đây là
+ * chỗ dễ "dọn cho gọn" thành sai. Ảnh đã gỡ khỏi kho không có mặt trong thùng
+ * rác, nên danh sách đầy đủ của màn hình này vẫn thiếu chúng; chỉ `null` mới
+ * nói được *"dọn sạch, kể cả thứ màn hình này không kể ra"*. Xem ghi chú ở
+ * `domains/purge.js`.
+ */
+function chayViecTrenLuaChon(laXoaHan) {
+  if (daChon.size === 0) return;
+
+  const ds = [...daChon];
+  const chay = laXoaHan ? xuLyNgoai.onXoaHan : xuLyNgoai.onKhoiPhuc;
+  if (!chay) return;
+
+  const chonHet = daChon.size === demThungRac();
+  closePersonList();
+  chay(laXoaHan && chonHet ? null : ds);
+}
+
+/** Nhãn hai nút việc chạy theo số đang chọn, và mờ đi khi chưa chọn gì. */
+function capNhatChan() {
+  const n = daChon.size;
+  for (const [nut, chu] of [[nutKhoiPhuc, 'Khôi phục'], [nutXoaHan, 'Xoá hẳn']]) {
+    if (!nut) continue;
+    nut.textContent = n > 0 ? chu + ' (' + n + ')' : chu;
+    nut.disabled = n === 0;
+    nut.style.opacity = n === 0 ? '.4' : '1';
+    nut.style.cursor = n === 0 ? 'default' : 'pointer';
+  }
 }
 
 function nutChan(chu, chay, nguyHiem) {
@@ -325,6 +378,9 @@ export function closePersonList() {
   khoiDong  = null;
   xuLyNgoai = {};
   cheDo     = 'danhSach';
+  daChon    = new Set();
+  nutKhoiPhuc = null;
+  nutXoaHan   = null;
 }
 
 /** Danh sách có đang mở hay không — nơi gọi hỏi trước khi đóng cho đúng lúc. */
@@ -402,16 +458,21 @@ function veThungRac() {
     .ket.filter((m) => m.deleted);
   const dsCap = listDeletedUnions(state.tree);
 
-  khoiDem.textContent = 'Thùng rác có ' + dsNguoi.length + ' người và ' +
-                        dsCap.length + ' cặp.';
+  khoiDem.textContent = daChon.size > 0
+    ? 'Đang chọn ' + daChon.size + ' trên ' + (dsNguoi.length + dsCap.length) + '.'
+    : 'Thùng rác có ' + dsNguoi.length + ' người và ' + dsCap.length +
+      ' cặp. Bấm một dòng để chọn.';
 
   if (dsNguoi.length === 0 && dsCap.length === 0) {
     khoiDong.append(loiNhan(
       'Thùng rác trống.',
       'Chưa ai bị xoá khỏi gia phả này. Xoá một người là đặt cờ chứ không mất ' +
       'bản ghi, nên bất cứ thứ gì đã xoá đều quay lại được từ đây.'));
+    capNhatChan();
     return;
   }
+
+  khoiDong.append(veDongChonTatCa(dsNguoi.length + dsCap.length));
 
   if (dsNguoi.length > 0) {
     khoiDong.append(nhanNhom('Người đã xoá'));
@@ -422,6 +483,68 @@ function veThungRac() {
     khoiDong.append(nhanNhom('Cặp đã xoá'));
     for (const muc of dsCap) khoiDong.append(veDongCapDaXoa(muc));
   }
+
+  capNhatChan();
+}
+
+/**
+ * Hàng *Chọn tất cả* — một dòng bấm được, đứng trên đầu danh sách.
+ *
+ * Nó là một DÒNG chứ không phải một nút ở chân, vì nó làm cùng một việc với
+ * mọi dòng dưới nó: đổi tập đang chọn. Đặt xuống chân cạnh hai nút *việc* thì
+ * ba nút cạnh nhau mà một cái làm việc khác hẳn hai cái kia.
+ */
+function veDongChonTatCa(tong) {
+  const het = tong > 0 && daChon.size === tong;
+  const nut = document.createElement('button');
+  nut.type = 'button';
+  nut.dataset.viec = 'chon-tat-ca';
+  nut.style.cssText =
+    'display:flex;align-items:center;gap:9px;width:100%;text-align:left;' +
+    'padding:10px 8px;background:none;border:none;border-bottom:1px solid #f0ece5;' +
+    'font-family:inherit;color:inherit;font-size:13px;cursor:pointer;' +
+    'touch-action:manipulation';
+  nut.append(oDanhDau(het), chuTrong(het ? 'Bỏ chọn tất cả' : 'Chọn tất cả'));
+
+  nut.addEventListener('click', () => {
+    if (het) {
+      daChon.clear();
+    } else {
+      const ds = searchPersons(state.tree, '', { gomDaXoa: true, toiDa: 0 })
+        .ket.filter((m) => m.deleted);
+      for (const m of ds) daChon.add(m.id);
+      for (const u of listDeletedUnions(state.tree)) daChon.add(u.id);
+    }
+    veLaiDanhSach();
+  });
+  return nut;
+}
+
+/**
+ * Ô đánh dấu vẽ bằng một ký tự, KHÔNG dùng `<input type="checkbox">`.
+ *
+ * Ô thật là một đích chạm THỨ HAI nằm trong cùng một dòng cao 44px, và luật đã
+ * chốt ở bước 24 cấm đúng điều đó: hai đích sát nhau trong một dòng là mời bấm
+ * nhầm. Ở đây cả dòng là một đích duy nhất, còn ô chỉ để NHÌN — nên nó không
+ * cần là một phần tử bấm được. Trạng thái thật nằm ở `aria-pressed` của dòng.
+ */
+function oDanhDau(dangChon) {
+  const o = document.createElement('span');
+  o.textContent = dangChon ? '✓' : '';
+  o.setAttribute('aria-hidden', 'true');
+  o.style.cssText =
+    'flex:0 0 auto;width:20px;height:20px;line-height:19px;text-align:center;' +
+    'font-size:13px;border-radius:5px;' +
+    (dangChon
+      ? 'background:#2a2622;color:#fffdf9;border:1px solid #2a2622'
+      : 'background:#fff;border:1px solid #d8d2c8');
+  return o;
+}
+
+function chuTrong(chu) {
+  const d = document.createElement('span');
+  d.textContent = chu;
+  return d;
 }
 
 function nhanNhom(chu) {
@@ -436,17 +559,12 @@ function nhanNhom(chu) {
 function veDongNguoiDaXoa(muc) {
   const coTen = muc.ten !== '';
   const nut = veDongTrong(
+    muc.id,
     coTen ? muc.ten : '(chưa có tên)',
     [muc.id, muc.doiSong].filter(coGiaTri).join('  ·  '),
     coTen,
   );
   nut.setAttribute('data-ma', muc.id);
-  nut.addEventListener('click', () => {
-    const chay = xuLyNgoai.onKhoiPhucNguoi;
-    if (!chay) return;
-    closePersonList();
-    chay(muc.id);
-  });
   return nut;
 }
 
@@ -461,17 +579,12 @@ function veDongCapDaXoa(muc) {
   const soCon = muc.childIds.length;
 
   const nut = veDongTrong(
+    muc.id,
     moTaCapDaXoa(ten),
     [muc.id, soCon > 0 ? soCon + ' con' : 'chưa có con'].join('  ·  '),
     ten.length > 0,
   );
   nut.setAttribute('data-cap', muc.id);
-  nut.addEventListener('click', () => {
-    const chay = xuLyNgoai.onKhoiPhucCap;
-    if (!chay) return;
-    closePersonList();
-    chay(muc.id);
-  });
   return nut;
 }
 
@@ -489,14 +602,29 @@ function moTaCapDaXoa(ten) {
   return ten.join('  ↔  ');
 }
 
-/** Khuôn chung của một dòng thùng rác: hàng trên là tên, hàng dưới là chi tiết. */
-function veDongTrong(hangTren, hangDuoi, coTen) {
+/**
+ * Khuôn chung của một dòng thùng rác: ô đánh dấu, tên, rồi hàng chi tiết.
+ *
+ * **Cả dòng là MỘT đích chạm, và bấm nó là ĐÁNH DẤU** — không phải đưa trở
+ * lại. Đó là chỗ bước 38 đổi quyết định 2 của bước 29, và lý do đổi nằm ở chỗ
+ * thùng rác nay có HAI việc chứ không còn một: khôi phục và xoá hẳn. Một cú
+ * bấm không nói được người dùng muốn việc nào, nên nó chỉ nói *"dòng này"*,
+ * còn việc thì hai nút ở chân trả lời.
+ */
+function veDongTrong(ma, hangTren, hangDuoi, coTen) {
+  const dangChon = daChon.has(ma);
+
   const nut = document.createElement('button');
   nut.type = 'button';
+  nut.setAttribute('aria-pressed', dangChon ? 'true' : 'false');
   nut.style.cssText =
-    'display:block;width:100%;text-align:left;padding:10px 8px;background:none;' +
-    'border:none;border-bottom:1px solid #f0ece5;font-family:inherit;color:inherit;' +
-    'cursor:pointer;touch-action:manipulation';
+    'display:flex;align-items:center;gap:9px;width:100%;text-align:left;' +
+    'padding:10px 8px;border:none;border-bottom:1px solid #f0ece5;' +
+    'font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulation;' +
+    'background:' + (dangChon ? '#f5f1ea' : 'none');
+
+  const khoi = document.createElement('div');
+  khoi.style.cssText = 'flex:1 1 auto;min-width:0';
 
   const t = document.createElement('div');
   t.textContent = hangTren;
@@ -504,10 +632,17 @@ function veDongTrong(hangTren, hangDuoi, coTen) {
     (coTen ? '' : 'color:#8a8078;font-style:italic');
 
   const d = document.createElement('div');
-  d.textContent = hangDuoi + '  ·  Đưa trở lại';
+  d.textContent = hangDuoi;
   d.style.cssText = 'margin-top:2px;font-size:12px;color:#8a8078';
 
-  nut.append(t, d);
+  khoi.append(t, d);
+  nut.append(oDanhDau(dangChon), khoi);
+
+  nut.addEventListener('click', () => {
+    if (dangChon) daChon.delete(ma);
+    else          daChon.add(ma);
+    veLaiDanhSach();
+  });
   return nut;
 }
 

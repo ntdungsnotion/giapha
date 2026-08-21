@@ -1,9 +1,9 @@
 // ============================================================
 // giapha · js/domains/purge.js
-// Vai trò  : XOÁ THẬT — tính toàn bộ hệ quả của một lần "Dọn thùng rác"
+// Vai trò  : XOÁ THẬT — tính hệ quả của một lần dọn, cả tất lẫn từng dòng
 // Lớp      : domains — HÀM THUẦN, được gọi bởi: pages · được phép gọi: utils, domains
 // Phụ thuộc: domains/union.js (conLyDoTonTai)
-// Phiên bản: 1.0.0 · Cập nhật: 21/08/2026 22:10
+// Phiên bản: 1.1.0 · Cập nhật: 21/08/2026 23:10
 // ============================================================
 //
 // --- Vì sao file này tồn tại RIÊNG ---------------------------------------
@@ -56,6 +56,20 @@ import { conLyDoTonTai } from './union.js';
  * ĐẾM trước, không đụng vào gì.
  *
  * @param {object} tree
+ * @param {string[]|null} [chiNhung]
+ *        `null` (mặc định) = dọn MỌI thứ đang mang cờ `deleted`.
+ *        Một mảng mã = **chỉ dọn đúng những mã ấy**, thứ còn lại nằm nguyên
+ *        trong thùng rác.
+ *
+ *        ⚠ Hai đường này KHÔNG chỉ khác nhau ở số lượng, và đây là chỗ dễ làm
+ *        sai nhất của cả file: **ảnh đã gỡ khỏi kho không có mặt trong thùng
+ *        rác**, vì thùng rác chỉ kể người và cặp. Nên chọn từng dòng thì không
+ *        cách nào chọn tới chúng, và chúng phải được để yên — dọn kèm là xoá
+ *        một thứ người dùng không hề thấy mình đang xoá. Chỉ đường *Chọn tất
+ *        cả* (`chiNhung === null`) mới dọn cả ảnh rác, và hộp xác nhận kể ra
+ *        con số ấy.
+ *
+ *        Ngoại lệ giữ nguyên ở cả hai đường: ảnh mất theo CHỦ THỂ vừa bị xoá.
  * @returns {{
  *   personIds: string[],   người sẽ mất hẳn khỏi `persons`
  *   unionIds:  string[],   cặp sẽ mất hẳn khỏi `unions`
@@ -68,27 +82,35 @@ import { conLyDoTonTai } from './union.js';
  *   trong: boolean         thùng rác rỗng, không có gì để dọn
  * }}
  */
-export function planPurge(tree) {
+export function planPurge(tree, chiNhung) {
   const persons = mang(tree && tree.persons);
   const unions  = mang(tree && tree.unions);
   const media   = mang(tree && tree.media);
 
-  const personIds = persons.filter(daXoa).map((p) => p.id).filter(Boolean);
-  const unionIds  = unions.filter(daXoa).map((u) => u.id).filter(Boolean);
+  // `null` là *"dọn tất"*, mảng RỖNG là *"chưa chọn gì"* — hai điều khác hẳn
+  // nhau. Gộp chúng lại (`!chiNhung || chiNhung.length === 0`) thì người dùng
+  // bấm *Xoá vĩnh viễn* khi chưa chọn dòng nào sẽ xoá sạch cả thùng rác.
+  const loc = Array.isArray(chiNhung) ? new Set(chiNhung) : null;
+  const nhan = (id) => loc === null || loc.has(id);
+
+  const personIds = persons.filter(daXoa).map((p) => p.id).filter(nhan);
+  const unionIds  = unions.filter(daXoa).map((u) => u.id).filter(nhan);
 
   const boNguoi = new Set(personIds);
   const boCap   = new Set(unionIds);
 
   // Ảnh phải xoá theo ba đường, và đường thứ hai là đường dễ quên nhất:
-  //   · chính nó mang cờ `deleted` — người dùng đã gỡ nó khỏi kho;
+  //   · chính nó mang cờ `deleted` — người dùng đã gỡ nó khỏi kho. ⚠ CHỈ khi
+  //     dọn tất: ảnh đã gỡ không có mặt trong thùng rác nên không ai chọn tới
+  //     chúng được, và dọn kèm là xoá thứ người dùng không thấy mình đang xoá;
   //   · CHỦ THỂ của nó sắp biến mất, dù bản thân tấm ảnh còn "sống". Để lại là
   //     để lại một `subjectId` trỏ vào hư không — đúng thứ mà cả file này sinh
-  //     ra để chặn.
+  //     ra để chặn. Đường này chạy ở CẢ HAI kiểu dọn.
   const anhLacChu = [];
   const mediaIds  = [];
   for (const m of media) {
     if (!m || !m.id) continue;
-    if (daXoa(m)) { mediaIds.push(m.id); continue; }
+    if (daXoa(m)) { if (nhan(m.id)) mediaIds.push(m.id); continue; }
     if (boNguoi.has(m.subjectId) || boCap.has(m.subjectId)) {
       mediaIds.push(m.id);
       anhLacChu.push(m.id);
@@ -143,11 +165,12 @@ export function planPurge(tree) {
  * ra được điều đó.
  *
  * @param {object} tree
+ * @param {string[]|null} [chiNhung]  xem `planPurge`
  * @returns {{tree:object, ke:object, diff:object}|null}
  */
-export function applyPurge(tree) {
+export function applyPurge(tree, chiNhung) {
   if (!tree) return null;
-  const ke = planPurge(tree);
+  const ke = planPurge(tree, chiNhung);
   if (ke.trong) return null;
 
   const boNguoi = new Set(ke.personIds);

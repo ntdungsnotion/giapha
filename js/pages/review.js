@@ -4,7 +4,7 @@
 //            mỗi dòng dẫn thẳng tới việc sửa được nó
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/validate, utils/text, config
-// Phiên bản: 1.0.0 · Cập nhật: 21/08/2026 20:30
+// Phiên bản: 1.1.0 · Cập nhật: 21/08/2026 23:10
 // ============================================================
 //
 // --- Vì sao màn hình này phải có, và vì sao nó KHÔNG quay lại Cài đặt ----
@@ -49,6 +49,28 @@
 // còn lỗi nào. Ai rút gọn nó thành *"Không có lỗi nào"* là làm hỏng đúng thứ
 // bước 17 cất công dựng ra.
 //
+// --- HAI CHẾ ĐỘ, và vì sao không gộp làm một (bước 38) -------------------
+//
+// Bước 38 thêm đường *gom rác vào thùng rác*: đánh dấu nhiều dòng rác rồi cho
+// cả nắm vào thùng rác bằng một cú bấm, và ngồi xem lại từng dòng ở đó trước
+// khi xoá hẳn.
+//
+// Cám dỗ là cho mỗi dòng rác một ô đánh dấu ngay bên trái, giữ nguyên phần còn
+// lại của dòng để mở hồ sơ. **Đừng.** Đó là hai đích chạm nằm trong một dòng
+// cao 44px — đúng điều luật của bước 24 cấm, và cấm vì trên điện thoại nó là
+// lời mời bấm nhầm. Ở đây bấm nhầm nghĩa là ném một người thật vào thùng rác
+// trong lúc chỉ định mở hồ sơ họ.
+//
+// Nên màn hình có HAI CHẾ ĐỘ, và mỗi lúc chỉ một chế độ sống:
+//
+//   · **XEM** (mặc định) — bấm một dòng là mở hồ sơ. Y như bước 36.
+//   · **CHỌN** — chỉ hai nhóm RÁC hiện ra, bấm một dòng là đánh dấu, chân màn
+//     hình đổi thành *Chọn tất cả* · *Cho vào thùng rác (n)* · *Xong*.
+//
+// Chế độ CHỌN cố ý **giấu hai nhóm dưới** (*Phải sửa*, *Đáng ngờ*): năm mất
+// trước năm sinh là chỗ phải SỬA, không phải rác — cho nó vào thùng rác là vứt
+// một người thật đi vì họ gõ nhầm một con số.
+//
 // --- Hai file `pages` không import lẫn nhau ------------------------------
 //
 // Màn hình này không tự mở hồ sơ ai. Nó báo ra ngoài bằng callback, đúng luật
@@ -60,23 +82,42 @@ import { validateAll } from '../domains/validate.js';
 import { fullName, coGiaTri } from '../utils/text.js';
 import { rongHop, caoHop, leLopPhu, RONG_NUT_TOI_DA } from '../config.js';
 
+const LOI_NHAC_XEM =
+  'Bấm một dòng để mở hồ sơ của người có vấn đề — sửa hay xoá đều làm được ' +
+  'ngay ở đó.';
+const LOI_NHAC_CHON =
+  'Đánh dấu những dòng muốn dọn, rồi cho cả nắm vào thùng rác. Chưa mất gì — ' +
+  'lấy lại được từ thùng rác bất cứ lúc nào.';
+
 let lopPhu      = null;
 let khoiTomTat  = null;
 let khoiDong    = null;
+let khoiChan    = null;
 let xuLyNgoai   = {};
 let ngheBanPhim = null;
+
+/** `false` = chế độ XEM · `true` = chế độ CHỌN. Xem ghi chú đầu file. */
+let dangChonRac = false;
+
+/** Mã rác đang đánh dấu — người (`P…`) và cặp (`U…`) chung một tập. */
+let daChon = new Set();
 
 /**
  * Mở màn hình Rà soát và chạy phép rà ngay.
  *
- * @param {{onXemHoSo?:function(string), onXemCap?:function(string)}} [xuLy]
- *        Cả hai đều là CỬA, không phải việc: màn hình tự đóng trước khi gọi,
+ * @param {{onXemHoSo?:function(string), onXemCap?:function(string),
+ *          onGomRac?:function(string[])}} [xuLy]
+ *        Cả ba đều là CỬA, không phải việc: màn hình tự đóng trước khi gọi,
  *        vì thẻ thông tin mở ra sau nó và hai lớp phủ chồng nhau thì cái mở
  *        sau lại nằm dưới (bẫy đã trả giá một vòng ở `moKetNoi`).
+ *        `onGomRac` — cho những dòng đã đánh dấu vào thùng rác (XOÁ MỀM).
+ *        Không truyền thì chế độ CHỌN không mọc ra.
  */
 export function openReview(xuLy = {}) {
   closeReview();
-  xuLyNgoai = xuLy || {};
+  xuLyNgoai   = xuLy || {};
+  dangChonRac = false;
+  daChon      = new Set();
 
   lopPhu = document.createElement('div');
   lopPhu.style.cssText =
@@ -101,9 +142,8 @@ export function openReview(xuLy = {}) {
   tieuDe.style.cssText = 'font-size:19px;font-weight:600;flex:0 0 auto';
 
   const nhac = document.createElement('div');
-  nhac.textContent =
-    'Bấm một dòng để mở hồ sơ của người có vấn đề — sửa hay xoá đều làm được ' +
-    'ngay ở đó.';
+  nhac.id = 'giapha-ra-soat-nhac';
+  nhac.textContent = LOI_NHAC_XEM;
   nhac.style.cssText =
     'font-size:13px;line-height:1.5;color:#8a8078;margin-top:4px;flex:0 0 auto';
 
@@ -115,7 +155,8 @@ export function openReview(xuLy = {}) {
   khoiDong = document.createElement('div');
   khoiDong.style.cssText = 'flex:1 1 auto;overflow-y:auto;margin-top:10px';
 
-  hop.append(tieuDe, nhac, khoiTomTat, khoiDong, veChan());
+  khoiChan = veChan();
+  hop.append(tieuDe, nhac, khoiTomTat, khoiDong, khoiChan);
   lopPhu.append(hop);
 
   // Bấm ra ngoài hộp là đóng — nhưng chỉ khi bấm trúng chính lớp phủ, không
@@ -133,10 +174,13 @@ export function closeReview() {
   if (ngheBanPhim) document.removeEventListener('keydown', ngheBanPhim);
   ngheBanPhim = null;
   if (lopPhu) lopPhu.remove();
-  lopPhu     = null;
-  khoiTomTat = null;
-  khoiDong   = null;
-  xuLyNgoai  = {};
+  lopPhu      = null;
+  khoiTomTat  = null;
+  khoiDong    = null;
+  khoiChan    = null;
+  xuLyNgoai   = {};
+  dangChonRac = false;
+  daChon      = new Set();
 }
 
 /** Màn hình có đang mở hay không — nơi gọi hỏi trước khi đóng cho đúng lúc. */
@@ -182,6 +226,32 @@ function chayRaSoat() {
       'Không tìm thấy chỗ nào đáng ngờ.',
       'Những phép không rà được là do bản ghi chưa có đủ mốc ngày tháng — đó ' +
       'không phải lỗi, và con số ấy nằm ngay ở dòng trên.'));
+    veLaiChan();
+    return;
+  }
+
+  // CHẾ ĐỘ CHỌN chỉ vẽ hai nhóm RÁC. Lý do giấu hai nhóm dưới ghi ở đầu file:
+  // năm mất trước năm sinh là chỗ phải SỬA, không phải rác.
+  if (dangChonRac) {
+    const rac = moCoi.concat(capThua);
+    if (rac.length === 0) {
+      khoiDong.append(loiNhan(
+        'Không có rác nào để gom.',
+        'Hai nhóm "Chưa nối với ai" và "Cặp thừa" đều trống. Bấm Xong để quay ' +
+        'lại xem cả bản rà soát.'));
+      veLaiChan();
+      return;
+    }
+    khoiDong.append(veDongChonTatCa(rac));
+    if (moCoi.length > 0) {
+      khoiDong.append(nhanNhom('Chưa nối với ai (' + moCoi.length + ')'));
+      for (const muc of moCoi) khoiDong.append(veMotDong(muc));
+    }
+    if (capThua.length > 0) {
+      khoiDong.append(nhanNhom('Cặp thừa (' + capThua.length + ')'));
+      for (const muc of capThua) khoiDong.append(veMotDong(muc));
+    }
+    veLaiChan();
     return;
   }
 
@@ -214,6 +284,59 @@ function chayRaSoat() {
       'chúng chỉ nhắc để người biết chuyện xem lại.'));
     for (const muc of conLai) khoiDong.append(veMotDong(muc));
   }
+
+  veLaiChan();
+}
+
+/** Mã của một dòng lỗi — người hay cặp. */
+function maCuaDong(muc) {
+  return muc.personId || muc.unionId || '';
+}
+
+/** Hàng *Chọn tất cả* của chế độ CHỌN — cùng khuôn với thùng rác. */
+function veDongChonTatCa(rac) {
+  const ma  = rac.map(maCuaDong).filter(Boolean);
+  const het = ma.length > 0 && ma.every((id) => daChon.has(id));
+
+  const nut = document.createElement('button');
+  nut.type = 'button';
+  nut.dataset.viec = 'chon-tat-ca';
+  nut.style.cssText =
+    'display:flex;align-items:center;gap:9px;width:100%;text-align:left;' +
+    'padding:10px 8px;background:none;border:none;border-bottom:1px solid #f0ece5;' +
+    'font-family:inherit;color:inherit;font-size:13px;cursor:pointer;' +
+    'touch-action:manipulation';
+  nut.append(oDanhDau(het), chuTrong(het ? 'Bỏ chọn tất cả' : 'Chọn tất cả'));
+
+  nut.addEventListener('click', () => {
+    if (het) daChon.clear();
+    else for (const id of ma) daChon.add(id);
+    chayRaSoat();
+  });
+  return nut;
+}
+
+/**
+ * Ô đánh dấu vẽ bằng một ký tự — cùng lý do với `person-list.js`: ô thật là
+ * một đích chạm thứ hai trong cùng một dòng, và luật bước 24 cấm điều đó.
+ */
+function oDanhDau(dangChon) {
+  const o = document.createElement('span');
+  o.textContent = dangChon ? '✓' : '';
+  o.setAttribute('aria-hidden', 'true');
+  o.style.cssText =
+    'flex:0 0 auto;width:20px;height:20px;line-height:19px;text-align:center;' +
+    'font-size:13px;border-radius:5px;' +
+    (dangChon
+      ? 'background:#2a2622;color:#fffdf9;border:1px solid #2a2622'
+      : 'background:#fff;border:1px solid #d8d2c8');
+  return o;
+}
+
+function chuTrong(chu) {
+  const d = document.createElement('span');
+  d.textContent = chu;
+  return d;
 }
 
 /**
@@ -256,17 +379,23 @@ function moTaBaConSo(counts) {
 function veMotDong(muc) {
   const laCap = !muc.personId && !!muc.unionId;
   const ma    = muc.personId || muc.unionId || '';
+  const chon  = dangChonRac && daChon.has(ma);
 
   const nut = document.createElement('button');
   nut.type = 'button';
   nut.style.cssText =
-    'display:block;width:100%;text-align:left;padding:10px 8px;background:none;' +
-    'border:none;border-bottom:1px solid #f0ece5;font-family:inherit;color:inherit;' +
-    'cursor:pointer;touch-action:manipulation';
+    'display:flex;align-items:flex-start;gap:9px;width:100%;text-align:left;' +
+    'padding:10px 8px;border:none;border-bottom:1px solid #f0ece5;' +
+    'font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulation;' +
+    'background:' + (chon ? '#f5f1ea' : 'none');
   if (ma) nut.setAttribute('data-ma', ma);
   nut.dataset.phep = muc.check || '';
+  if (dangChonRac) nut.setAttribute('aria-pressed', chon ? 'true' : 'false');
 
   const coTen = !laCap && coGiaTri(tenNguoi(muc.personId));
+
+  const khoi = document.createElement('div');
+  khoi.style.cssText = 'flex:1 1 auto;min-width:0';
 
   const t = document.createElement('div');
   t.textContent = laCap
@@ -280,12 +409,28 @@ function veMotDong(muc) {
   d.textContent = boTienToTen(muc.message, ma);
   d.style.cssText = 'margin-top:2px;font-size:12px;line-height:1.5;color:#8a8078';
 
-  const v = document.createElement('div');
-  v.textContent = laCap ? 'Bấm để mở thẻ gia đình' : 'Bấm để mở hồ sơ';
-  v.style.cssText = 'margin-top:4px;font-size:12px;color:#a89a86';
+  khoi.append(t, d);
 
-  nut.append(t, d, v);
+  // Hàng nhắc chỉ có ở chế độ XEM. Ở chế độ CHỌN, ô đánh dấu đã nói hết —
+  // thêm một hàng "Bấm để chọn" dưới mỗi dòng là lặp lại cùng một câu N lần.
+  if (!dangChonRac) {
+    const v = document.createElement('div');
+    v.textContent = laCap ? 'Bấm để mở thẻ gia đình' : 'Bấm để mở hồ sơ';
+    v.style.cssText = 'margin-top:4px;font-size:12px;color:#a89a86';
+    khoi.append(v);
+  }
+
+  if (dangChonRac) nut.append(oDanhDau(chon), khoi);
+  else             nut.append(khoi);
+
   nut.addEventListener('click', () => {
+    if (dangChonRac) {
+      if (!ma) return;
+      if (chon) daChon.delete(ma);
+      else      daChon.add(ma);
+      chayRaSoat();
+      return;
+    }
     const chay = laCap ? xuLyNgoai.onXemCap : xuLyNgoai.onXemHoSo;
     if (!chay || !ma) return;
     closeReview();
@@ -374,23 +519,91 @@ function loiNhan(dong1, dong2) {
 function veChan() {
   const chan = document.createElement('div');
   chan.style.cssText =
-    'display:flex;gap:8px;margin-top:14px;flex:0 0 auto;justify-content:center';
-
-  const raLai = nutChan('Rà lại', () => chayRaSoat());
-  raLai.dataset.viec = 'ra-lai';
-  chan.append(raLai, nutChan('Đóng', () => closeReview()));
+    'display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;flex:0 0 auto;' +
+    'justify-content:center';
   return chan;
 }
 
-function nutChan(chu, chay) {
+/**
+ * Vẽ lại chân theo chế độ đang chạy. Gọi sau MỖI lần `chayRaSoat()`, vì nhãn
+ * *Cho vào thùng rác (n)* chạy theo số đang đánh dấu.
+ */
+function veLaiChan() {
+  if (!khoiChan) return;
+  khoiChan.innerHTML = '';
+
+  const nhac = document.getElementById('giapha-ra-soat-nhac');
+  if (nhac) nhac.textContent = dangChonRac ? LOI_NHAC_CHON : LOI_NHAC_XEM;
+
+  if (dangChonRac) {
+    const gom = nutChan('Cho vào thùng rác', () => gomRacDaChon(), true);
+    gom.dataset.viec = 'gom-rac';
+    gom.textContent = daChon.size > 0
+      ? 'Cho vào thùng rác (' + daChon.size + ')'
+      : 'Cho vào thùng rác';
+    gom.disabled = daChon.size === 0;
+    gom.style.opacity = daChon.size === 0 ? '.4' : '1';
+    gom.style.cursor = daChon.size === 0 ? 'default' : 'pointer';
+
+    const xong = nutChan('Xong', () => {
+      dangChonRac = false;
+      daChon = new Set();
+      chayRaSoat();
+    });
+    xong.dataset.viec = 'xong-chon';
+    khoiChan.append(gom, xong);
+    return;
+  }
+
+  const raLai = nutChan('Rà lại', () => chayRaSoat());
+  raLai.dataset.viec = 'ra-lai';
+  khoiChan.append(raLai);
+
+  // Nút vào chế độ CHỌN chỉ mọc khi có rác thật. Cùng luật với nút *Dọn* của
+  // thùng rác: một cái nút mời bấm rồi trả lời "không có gì để làm" thì lần
+  // sau người ta thôi không tin nó nữa.
+  if (xuLyNgoai.onGomRac && coRacDeGom()) {
+    const chon = nutChan('Chọn để dọn', () => {
+      dangChonRac = true;
+      daChon = new Set();
+      chayRaSoat();
+    });
+    chon.dataset.viec = 'chon-de-don';
+    khoiChan.append(chon);
+  }
+
+  khoiChan.append(nutChan('Đóng', () => closeReview()));
+}
+
+/** Bản rà soát vừa chạy có dòng rác nào không — đọc thẳng DOM đã vẽ. */
+function coRacDeGom() {
+  if (!khoiDong) return false;
+  return [...khoiDong.querySelectorAll('button[data-phep]')].some(
+    (b) => b.dataset.phep === 'checkOrphanNode' ||
+           b.dataset.phep === 'checkUnionPointless');
+}
+
+/** Bấm *Cho vào thùng rác*. Màn hình tự đóng trước khi gọi ra ngoài. */
+function gomRacDaChon() {
+  if (daChon.size === 0) return;
+  const ds = [...daChon];
+  const chay = xuLyNgoai.onGomRac;
+  if (!chay) return;
+  closeReview();
+  chay(ds);
+}
+
+function nutChan(chu, chay, nhanManh) {
   const nut = document.createElement('button');
   nut.type = 'button';
   nut.textContent = chu;
   nut.style.cssText =
-    'flex:1 1 0;height:42px;font-size:14px;font-family:inherit;color:inherit;' +
+    'flex:1 1 0;height:42px;font-size:14px;font-family:inherit;' +
     'max-width:' + RONG_NUT_TOI_DA + ';' +
-    'border:1px solid #e6e0d8;border-radius:9px;background:#faf8f5;' +
-    'cursor:pointer;touch-action:manipulation';
+    'border-radius:9px;cursor:pointer;touch-action:manipulation;' +
+    (nhanManh
+      ? 'color:#fffdf9;background:#2a2622;border:1px solid #2a2622;font-weight:600'
+      : 'color:inherit;background:#faf8f5;border:1px solid #e6e0d8');
   nut.addEventListener('click', chay);
   return nut;
 }

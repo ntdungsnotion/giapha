@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{bloodline,layout,render,union}, utils/text,
 //            pages/{person-detail,person-edit,person-list,review,settings}
-// Phiên bản: 1.21.0 · Cập nhật: 21/08/2026 22:10
+// Phiên bản: 1.22.0 · Cập nhật: 21/08/2026 23:10
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -71,7 +71,8 @@ import { openPersonMenu, openPersonDetail, openUnionDetail,
 import { openPersonForm, closePersonForm, quickAddChild, quickAddParent,
          quickAddSpouse, linkExisting, goNoiNguoi, xoaNguoi,
          openUnionForm, openSapThuTu,
-         khoiPhucNguoi, khoiPhucCap, donThungRac } from './person-edit.js';
+         khoiPhucNhieu, donThungRac,
+         chuyenVaoThungRac } from './person-edit.js';
 import { openPersonList, closePersonList, openThungRac } from './person-list.js';
 import { openReview, closeReview } from './review.js';
 import { openSettings, closeSettings } from './settings.js';
@@ -805,18 +806,20 @@ function moFormSuaCap(personId, unionId) {
 function moThungRac() {
   const moLai = () => { refresh(); moThungRac(); };
   openThungRac({
-    onKhoiPhucNguoi: (id) => khoiPhucNguoi(id, { onDaLuu: moLai }),
-    onKhoiPhucCap:   (id) => khoiPhucCap(id,   { onDaLuu: moLai }),
+    // KHÔI PHỤC thì mở lại thùng rác sau khi xong: xoá nhầm thường xoá nhầm
+    // vài thứ liền nhau — người bị xoá kéo theo cặp của họ — nên bắt người
+    // dùng bấm 🔍 → Thùng rác lại từ đầu cho mỗi lượt là bắt làm thừa.
+    onKhoiPhuc: (ids) => khoiPhucNhieu(ids, { onDaLuu: moLai }),
 
-    // ⚠ Dọn xong thì KHÔNG mở lại thùng rác, khác hẳn hai đường trên. Hai lý
-    // do, và lý do thứ hai mới là lý do thật:
+    // ⚠ XOÁ VĨNH VIỄN thì KHÔNG mở lại, khác hẳn đường trên. Hai lý do, và lý
+    // do thứ hai mới là lý do thật:
     //
-    //   · thùng rác vừa dọn là thùng rác rỗng, nên mở lại chỉ để hiện một câu
-    //     "Thùng rác trống";
+    //   · thứ vừa xoá đã biến mất, nên mở lại chỉ để nhìn một danh sách ngắn
+    //     đi — không ai cần xác nhận điều đó bằng mắt;
     //   · hộp kết quả của việc này còn phải kể tên BẢN SAO LƯU và số file ảnh
     //     đã dọn. Bật một màn hình khác đè lên là cắt mất đúng dòng chữ mà
     //     người dùng cần đọc — mà nó là dòng chữ duy nhất nói ra đường lùi.
-    onDonThungRac: () => donThungRac({ onDaLuu: () => refresh() }),
+    onXoaHan: (ids) => donThungRac({ onDaLuu: () => refresh() }, ids),
   });
 }
 
@@ -843,6 +846,15 @@ function moRaSoat() {
   openReview({
     onXemHoSo: (id) => openPersonDetail(id, xuLyThe()),
     onXemCap:  (id) => openUnionDetail(id, xuLyThe()),
+
+    // Gom rác xong thì MỞ LẠI bản rà soát: người đang dọn kho thường dọn vài
+    // lượt liền nhau, và lượt sau phải nhìn được kết quả lượt trước — gom hai
+    // người mồ côi vào thùng rác có thể làm một cặp thành cặp thừa. Đây là chỗ
+    // nó khác đường "bấm một dòng lỗi": đường ấy dẫn sang một thẻ thông tin
+    // với mười việc, còn đường này quay về đúng chỗ vừa đứng.
+    onGomRac: (ids) => chuyenVaoThungRac(ids, {
+      onDaLuu: () => { refresh(); moRaSoat(); },
+    }),
   });
 }
 

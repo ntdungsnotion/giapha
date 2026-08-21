@@ -5268,7 +5268,7 @@ async function chayKhoiPhucCap(unionId) {
  *
  * @param {{onDaLuu?:function()}} [xuLy]
  */
-export function donThungRac(xuLy = {}) {
+export function donThungRac(xuLy = {}, chiNhung = null) {
   if (!state.tree) {
     moHopBao('Chưa mở được gia phả',
              'Chưa nạp được gia phả nên chưa dọn được gì. Tải lại trang rồi thử lại.',
@@ -5276,21 +5276,25 @@ export function donThungRac(xuLy = {}) {
     return;
   }
 
-  const ke = planPurge(state.tree);
+  const ke = planPurge(state.tree, chiNhung);
   if (ke.trong) {
-    moHopBao('Thùng rác trống',
-             'Không có gì để dọn. Thùng rác chỉ chứa thứ đã bị xoá, mà hiện ' +
-             'chưa có bản ghi nào mang cờ ấy.', false);
+    moHopBao('Không có gì để xoá',
+             Array.isArray(chiNhung)
+               ? 'Những dòng vừa chọn không còn nằm trong thùng rác — có thể ' +
+                 'người khác vừa dọn. Tải lại trang rồi mở lại thùng rác.'
+               : 'Thùng rác trống. Nó chỉ chứa thứ đã bị xoá, mà hiện chưa có ' +
+                 'bản ghi nào mang cờ ấy.', false);
     return;
   }
 
-  const chan = moHopTrang('chon', xuLy, 'Dọn thùng rác',
+  const chan = moHopTrang('chon', xuLy,
+                          Array.isArray(chiNhung) ? 'Xoá vĩnh viễn' : 'Dọn cả thùng rác',
                           'Xoá vĩnh viễn  ·  ' + moTaKePurge(ke));
   hienNhan('Xoá vĩnh viễn ' + moTaKePurge(ke) + '. KHÔNG hoàn tác được từ ' +
            'trong app.', true, cauKeKhiDonRac(ke));
 
   chan.append(
-    nutChanXoa('Xoá vĩnh viễn', true, () => chayDonThungRac(xuLy)),
+    nutChanXoa('Xoá vĩnh viễn', true, () => chayDonThungRac(xuLy, chiNhung)),
     nutChanXoa('Huỷ', false, () => closePersonForm()),
   );
 }
@@ -5344,10 +5348,10 @@ function cauKeKhiDonRac(ke) {
   return ra;
 }
 
-async function chayDonThungRac(xuLy) {
+async function chayDonThungRac(xuLy, chiNhung) {
   if (dangLuu) return;
 
-  const ke = planPurge(state.tree);
+  const ke = planPurge(state.tree, chiNhung);
   if (ke.trong) {
     hienNhan('Thùng rác vừa trống — có thể người khác đã dọn. Không còn gì để làm.',
              false);
@@ -5364,9 +5368,9 @@ async function chayDonThungRac(xuLy) {
   let ketQua;
   try {
     ketQua = await luuCay((cay) => {
-      const kq = applyPurge(cay);
+      const kq = applyPurge(cay, chiNhung);
       if (!kq) {
-        throw new Error('Bản trên Drive không còn gì trong thùng rác. ' +
+        throw new Error('Bản trên Drive không còn thứ nào trong số vừa chọn. ' +
                         'Tải lại trang rồi mở lại thùng rác.');
       }
       cay.persons = kq.tree.persons;
@@ -5375,7 +5379,9 @@ async function chayDonThungRac(xuLy) {
     }, {
       action: 'purge',
       target: '',
-      note:   'Dọn thùng rác: xoá vĩnh viễn ' + moTaKePurge(ke) + '.',
+      note:   (Array.isArray(chiNhung) ? 'Thùng rác: xoá vĩnh viễn '
+                                       : 'Dọn cả thùng rác: xoá vĩnh viễn ') +
+              moTaKePurge(ke) + '.',
       diff:   { persons: [state.tree.persons.length, state.tree.persons.length - ke.personIds.length],
                 unions:  [state.tree.unions.length,  state.tree.unions.length  - ke.unionIds.length] },
     });
@@ -5443,6 +5449,198 @@ function cauKetQuaDonRac(ketQua, ke, anh) {
             'Mở Danh sách người → Rà soát để dọn nốt.');
   }
   return ra;
+}
+
+// ============================================================
+// CHỌN NHIỀU DÒNG — khôi phục hàng loạt, và gom rác vào thùng rác (bước 38)
+// ============================================================
+//
+// Thùng rác từ bước 38 làm việc theo lối quen thuộc của mọi thùng rác: **chọn
+// một, chọn nhiều, hoặc chọn tất cả**, rồi mới quyết định *Khôi phục* hay *Xoá
+// vĩnh viễn*. Hai hàm dưới đây là chỗ đến của hai nút ấy.
+//
+// ⚠ **Chọn ĐÚNG MỘT dòng thì đi lại đường cũ của bước 29**, chứ không dùng hộp
+// gộp. Hộp cũ kể được những thứ hộp gộp không kể nổi: *"mọi cặp của người này
+// cũng đang trong thùng rác, đưa mỗi họ trở lại thì sơ đồ vẫn chưa vẽ ra"*, hay
+// *"3 người con sẽ có lại cha mẹ"*. Gộp hết vào một hộp chung là đánh đổi mất
+// những câu ấy để lấy một nhánh mã ít hơn — đổi sai chiều.
+
+/**
+ * Đưa NHIỀU người và cặp trở lại gia phả trong MỘT lần lưu.
+ *
+ * @param {string[]} ids  mã người (`P…`) và mã cặp (`U…`) lẫn lộn
+ * @param {{onDaLuu?:function()}} [xuLy]
+ */
+export function khoiPhucNhieu(ids, xuLy = {}) {
+  const ds = locMaDaXoa(ids);
+  if (ds.length === 0) {
+    moHopBao('Không còn gì để đưa trở lại',
+             'Những dòng vừa chọn không còn nằm trong thùng rác. Tải lại trang ' +
+             'rồi mở lại thùng rác.', false);
+    return;
+  }
+
+  // Một dòng thì trả về đúng hộp của bước 29 — xem ghi chú ở đầu khối.
+  if (ds.length === 1) {
+    if (ds[0][0] === 'U') khoiPhucCap(ds[0], xuLy);
+    else                  khoiPhucNguoi(ds[0], xuLy);
+    return;
+  }
+
+  const soNguoi = ds.filter((id) => id[0] !== 'U').length;
+  const soCap   = ds.length - soNguoi;
+
+  const chan = moHopTrang('chon', xuLy, 'Đưa trở lại gia phả', moTaSoLuong(soNguoi, soCap));
+  hienNhan('Cả ' + ds.length + ' bản ghi sẽ hiện lại đúng chỗ cũ — xoá mềm ' +
+           'không gỡ một mối nối nào, nên không có gì phải nối lại.',
+           false, keTenVaiDong(ds));
+
+  chan.append(
+    nutChanDam('Đưa trở lại', () => chayNhieuBanGhi(ds, xuLy, false)),
+    nutChanXoa('Huỷ', false, () => closePersonForm()),
+  );
+}
+
+/**
+ * Gom rác vào thùng rác: XOÁ MỀM nhiều bản ghi trong MỘT lần lưu.
+ *
+ * Đây là chỗ đến của nút *Cho vào thùng rác* ở màn hình Rà soát. Nó **không
+ * xoá thật** — thùng rác mới là nơi quyết định điều đó, và đó chính là lý do
+ * quy trình này an toàn: người dùng gom cả nắm rác bằng một cú bấm, rồi ngồi
+ * xem lại từng dòng ở thùng rác trước khi xoá hẳn.
+ *
+ * @param {string[]} ids
+ * @param {{onDaLuu?:function()}} [xuLy]
+ */
+export function chuyenVaoThungRac(ids, xuLy = {}) {
+  const ds = locMaConSong(ids);
+  if (ds.length === 0) {
+    moHopBao('Không còn gì để cho vào thùng rác',
+             'Những dòng vừa chọn đã nằm trong thùng rác, hoặc không còn trong ' +
+             'gia phả. Bấm *Rà lại* để xem bản mới nhất.', false);
+    return;
+  }
+
+  const soNguoi = ds.filter((id) => id[0] !== 'U').length;
+  const soCap   = ds.length - soNguoi;
+
+  const chan = moHopTrang('chon', xuLy, 'Cho vào thùng rác', moTaSoLuong(soNguoi, soCap));
+  hienNhan('Xoá mềm: bản ghi vẫn nằm nguyên trong file, chỉ mang thêm một cái ' +
+           'cờ, và sơ đồ thôi vẽ ra chúng. Lấy lại được bất cứ lúc nào từ ' +
+           'thùng rác.', false,
+           keTenVaiDong(ds).concat([
+             'Muốn xoá hẳn thì vào thùng rác chọn rồi bấm Xoá vĩnh viễn — đó là ' +
+             'cửa duy nhất xoá được thật.',
+           ]));
+
+  chan.append(
+    nutChanDam('Cho vào thùng rác', () => chayNhieuBanGhi(ds, xuLy, true)),
+    nutChanXoa('Huỷ', false, () => closePersonForm()),
+  );
+}
+
+/**
+ * Lật cờ `deleted` cho cả loạt trong MỘT lần lưu — luật 4 của đường ghi.
+ *
+ * ⚠ Bốn hàm `softDelete*`/`restore*` đều trả về CÂY MỚI, nên phải nối đuôi
+ * nhau: cây ra của bản ghi này là cây vào của bản ghi kế. Chạy từng cái trên
+ * `cay` gốc rồi gán lần lượt thì chỉ bản ghi cuối cùng sống sót — mà máy chủ
+ * vẫn gật, `revision` vẫn tăng, và màn hình vẫn báo "đã xong" cho một việc làm
+ * được đúng một phần.
+ *
+ * @param {boolean} vaoThungRac  true = xoá mềm · false = đưa trở lại
+ */
+async function chayNhieuBanGhi(ds, xuLy, vaoThungRac) {
+  if (dangLuu) return;
+
+  dangLuu = true;
+  hienNhan(vaoThungRac ? 'Đang cho vào thùng rác…' : 'Đang đưa trở lại…', false);
+
+  const luc = stampNow();
+  const boi = (state.phien && state.phien.email) || '';
+
+  let ketQua;
+  try {
+    ketQua = await luuCay((cay) => {
+      let t = cay;
+      let daLam = 0;
+      for (const id of ds) {
+        const kq = id[0] === 'U'
+          ? (vaoThungRac ? softDeleteUnion(t, id)  : restoreUnion(t, id))
+          : (vaoThungRac ? softDeletePerson(t, id, { boi, luc })
+                         : restorePerson(t, id, { boi, luc }));
+        if (kq) { t = kq.tree; daLam++; }
+      }
+      if (daLam === 0) {
+        throw new Error('Bản trên Drive không còn bản ghi nào trong số vừa chọn ' +
+                        'ở đúng trạng thái ấy. Tải lại trang rồi làm lại.');
+      }
+      cay.persons = t.persons;
+      cay.unions  = t.unions;
+    }, {
+      action: vaoThungRac ? 'delete' : 'restore',
+      target: '',
+      note:   (vaoThungRac ? 'Cho vào thùng rác ' : 'Đưa trở lại từ thùng rác ') +
+              ds.length + ' bản ghi: ' + ds.join(' ') + '.',
+      diff:   {},
+    });
+  } catch (e) {
+    ketQua = { ok: false, loi: e && e.message ? e.message : String(e) };
+  }
+
+  dangLuu = false;
+  if (!lopPhu) return;
+
+  if (!(ketQua && ketQua.ok)) {
+    hienLoiGhi(ketQua, vaoThungRac
+      ? 'CHƯA cho gì vào thùng rác cả.'
+      : 'Mọi thứ VẪN đang nằm trong thùng rác.');
+    return;
+  }
+
+  if (xuLy && xuLy.onDaLuu) xuLy.onDaLuu();
+  baoXongMotViec(vaoThungRac
+    ? 'Đã cho ' + ds.length + ' bản ghi vào thùng rác.'
+    : 'Đã đưa ' + ds.length + ' bản ghi trở lại gia phả.');
+}
+
+/** Chỉ giữ mã đang MANG cờ `deleted` — thứ thùng rác làm việc trên đó. */
+function locMaDaXoa(ids) {
+  return locMa(ids, true);
+}
+
+/** Chỉ giữ mã đang CÒN trong gia phả — thứ màn hình Rà soát làm việc trên đó. */
+function locMaConSong(ids) {
+  return locMa(ids, false);
+}
+
+/**
+ * ⚠ Đọc thẳng `state.tree`, KHÔNG đọc `state.index`: `buildIndex()` bỏ qua mọi
+ * bản ghi mang cờ `deleted`, nên tra chỉ mục ở đây là luôn không thấy gì.
+ */
+function locMa(ids, mongDaXoa) {
+  const ds = Array.isArray(ids) ? ids : [];
+  return ds.filter((id) => {
+    const x = id && id[0] === 'U' ? timCapTrongCay(id) : timNguoiTrongCay(id);
+    return !!x && (x.deleted === true) === mongDaXoa;
+  });
+}
+
+/** "3 người và 2 cặp" — trường trống thì không kể ra hàng đó. */
+function moTaSoLuong(soNguoi, soCap) {
+  const phan = [];
+  if (soNguoi > 0) phan.push(soNguoi + ' người');
+  if (soCap > 0)   phan.push(soCap + ' cặp');
+  return phan.join(' và ');
+}
+
+/** Vài cái tên đầu, để người đọc nhận ra mình đang làm gì với ai. */
+function keTenVaiDong(ds) {
+  const ten = ds.slice(0, 4).map((id) => (id[0] === 'U'
+    ? 'Cặp ' + id
+    : (tenTrongCay(state.tree, id) || id)));
+  return [ten.join(', ') +
+          (ds.length > 4 ? ' và ' + (ds.length - 4) + ' bản ghi nữa' : '') + '.'];
 }
 
 /** Báo xong, và để lại đúng một nút Đóng — cùng khuôn với đường hoàn tác. */
