@@ -6,7 +6,7 @@
 //            utils/{text,glyph}, config,
 //            pages/{person-detail,person-edit,person-list,review,settings,
 //            backup}
-// Phiên bản: 1.25.0 · Cập nhật: 22/08/2026 09:40
+// Phiên bản: 1.26.0 · Cập nhật: 22/08/2026 15:40
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -72,7 +72,7 @@ import { openPersonMenu, openPersonDetail, openUnionDetail,
          closePersonDetail } from './person-detail.js';
 import { openPersonForm, closePersonForm, quickAddChild, quickAddParent,
          quickAddSpouse, linkExisting, goNoiNguoi, xoaNguoi,
-         openUnionForm, openSapThuTu,
+         openUnionForm, openSapThuTu, openSuaCon,
          khoiPhucNhieu, donThungRac,
          chuyenVaoThungRac } from './person-edit.js';
 import { openPersonList, closePersonList, openThungRac } from './person-list.js';
@@ -810,7 +810,7 @@ function moDanhSachNguoi() {
   // cặp. Không lời báo lỗi nào, chỉ là một câu hỏi thừa.
   const dongTruoc = (fn) => (...a) => { closePersonList(); fn(...a); };
 
-  // Bọc CẢ CHÍN, không bọc bốn rồi để những cái mới đi thẳng: bốn việc của bước 26
+  // Bọc CẢ MƯỜI MỘT, không bọc bốn rồi để những cái mới đi thẳng: bốn việc của bước 26
   // cũng mở hộp riêng của chúng, và cái danh sách còn nằm đè lên trên vẫn che
   // mất đúng kết quả người dùng vừa gây ra.
   //
@@ -832,6 +832,7 @@ function moDanhSachNguoi() {
       onXoaNguoi:   dongTruoc(goc.onXoaNguoi),
       onSuaCap:     dongTruoc(goc.onSuaCap),
       onSapThuTu:   dongTruoc(goc.onSapThuTu),
+      onSuaCon:     dongTruoc(goc.onSuaCon),
     }),
   });
 }
@@ -924,12 +925,18 @@ function moTheNguoiTrungTam() {
 }
 
 /**
- * CHÍN việc thẻ thông tin báo ngược ra ngoài. Gom một chỗ để hai nơi mở thẻ —
- * chạm giữ và nút ⓘ — không bao giờ mọc ra hai bộ nút khác nhau.
+ * MƯỜI MỘT việc thẻ thông tin báo ngược ra ngoài. Gom một chỗ để hai nơi mở
+ * thẻ — chạm giữ và nút ⓘ — không bao giờ mọc ra hai bộ nút khác nhau.
  *
- * ⚠ Sáu trong chín việc này là sáu mục của MENU VÒNG TRÒN, và cả sáu đều phải
- * có mặt ở đây. Thiếu một cái thì mục ấy vẫn mọc ra trên thẻ nhưng mờ đi và
- * không bấm được — tức một nút chết, đúng thứ điểm dừng của bước 26 cấm.
+ * ⚠ Sáu trong số ấy là sáu mục của MENU VÒNG TRÒN, và cả sáu đều phải có mặt
+ * ở đây. Thiếu một cái thì mục ấy vẫn mọc ra trên thẻ nhưng mờ đi và không bấm
+ * được — tức một nút chết, đúng thứ điểm dừng của bước 26 cấm.
+ *
+ * ⚠ Ba việc CUỐI — `onSuaCap` · `onSapThuTu` · `onSuaCon` — không phải việc
+ * của thẻ NGƯỜI mà của thẻ GIA ĐÌNH. Chúng vẫn nằm chung bộ này vì thẻ gia
+ * đình mở ra TỪ thẻ người (`nutXemGiaDinh`) và nhận đúng cái bộ ấy truyền
+ * xuống. Tách làm hai bộ thì một trong hai sẽ thiếu, và cái thiếu chỉ lộ ra
+ * bằng một nút không ăn.
  */
 function xuLyThe() {
   return {
@@ -943,7 +950,21 @@ function xuLyThe() {
     onXoaNguoi:   moHopXoa,
     onSuaCap:     moFormSuaCap,
     onSapThuTu:   moSapCacCon,
+    onSuaCon:     moSuaCon,
   };
+}
+
+/**
+ * Sửa một người con của một cặp — nửa sau việc 8.
+ *
+ * `refresh()` chứ không dời người trung tâm, và đó là một lựa chọn có chủ ý
+ * dù việc này ĐỔI HÌNH nhiều hơn mọi việc khác của thẻ gia đình: chuyển một
+ * đứa con sang nhà khác là nó rời khỏi chỗ đang đứng trên sơ đồ. Chính vì thế
+ * mà giữ nguyên tâm — người dùng cần nhìn thấy đứa bé RỜI ĐI khỏi chỗ cũ, mà
+ * dời tâm sang chỗ mới thì họ mất luôn cái khung hình để so.
+ */
+function moSuaCon(unionId) {
+  openSuaCon(unionId, { onDaLuu: () => refresh() });
 }
 
 /**

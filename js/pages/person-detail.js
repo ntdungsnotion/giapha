@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
 //            utils/{text,date,image,avatar,glyph}, config
-// Phiên bản: 1.23.0 · Cập nhật: 22/08/2026 09:40
+// Phiên bản: 1.24.0 · Cập nhật: 22/08/2026 15:40
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -437,7 +437,12 @@ function veLaiTheDangMo() {
  *
  * @param {string} unionId
  * @param {{onChonNguoi?:function(string), onSuaCap?:function(string,string),
- *          onThemCon?:function(string), onSapThuTu?:function(string)}} [xuLy]
+ *          onThemCon?:function(string), onSapThuTu?:function(string),
+ *          onSuaCon?:function(string)}} [xuLy]
+ *        `onSuaCon` nhận MÃ CẶP — nửa sau của việc 8 (22/08/2026). Nó là cửa
+ *        vào ba việc mà trước nay không có chỗ nào làm được từ phía một GIA
+ *        ĐÌNH: đổi quan hệ đẻ/nuôi/kế của một người con, chuyển người con ấy
+ *        sang gia đình khác, và gỡ họ khỏi gia đình này.
  *        `onSuaCap` nhận HAI tham số — mã người làm mốc và MÃ CẶP. Tham số thứ
  *        hai là thứ việc 4 thêm vào: từ đây ta đã biết đích xác cặp nào, nên
  *        `openUnionForm` không được hỏi lại *"cặp nào"* một lần nữa.
@@ -635,7 +640,8 @@ function veNguoiTrongCap(index, u, xuLy) {
   }
 
   ra.push(...veNhom('Vợ / chồng', banDoi, xuLy));
-  ra.push(...veNhom('Con', dsCon, xuLy, nutThemConVaoCap(u, xuLy)));
+  ra.push(...veNhom('Con', dsCon, xuLy,
+                    nutThemConVaoCap(u, xuLy), nutSuaConTrongCap(u, xuLy)));
 
   if (dsCon.length === 0) {
     const trong = document.createElement('div');
@@ -672,6 +678,52 @@ function nutThemConVaoCap(u, xuLy) {
   nut.addEventListener('click', () => {
     closePersonDetail();
     xuLy.onThemCon(u.id);
+  });
+  return nut;
+}
+
+/**
+ * Nút *"Sửa một người con"* — cửa vào NỬA SAU của việc 8 (22/08/2026).
+ *
+ * ⚠ **Đây là chỗ duy nhất trong app nhìn một người con TỪ PHÍA GIA ĐÌNH.** Lỗ
+ * hổng 3 đo được 21/08/2026: quan hệ cha mẹ – con nằm ở CẶP, mà mọi thao tác
+ * lại đi từ MỘT CON NGƯỜI. Hệ quả thật: thêm con trước rồi thêm vợ sau thì
+ * không có đường nào dời đứa con sang đúng gia đình, ngoài cách gỡ rồi nối lại
+ * — hai lần lưu, và giữa hai lần ấy dữ liệu thật trên Drive đang sai.
+ *
+ * ⚠ **Một nút RIÊNG một dòng, không phải một đích chạm thứ hai nhét vào dòng
+ * tên đứa bé.** Hai đích chạm sát nhau trong một dòng cao 44px là mời bấm nhầm
+ * — cùng luật đã chốt ở `pages/person-list.js` và nhắc lại ở `nutXemGiaDinh`.
+ * Dòng tên đứa bé giữ nguyên việc cũ của nó: mở hồ sơ người ấy.
+ *
+ * ⚠ **KHÔNG cho nó lên vành vòng tròn**, cùng lý lẽ đã viết ba lần trong file
+ * này: vành co từ tám mục xuống sáu ở bước 26 để mỗi mục có 60° thay vì 45°.
+ *
+ * @returns {HTMLElement|null} null khi cặp chưa có người con nào, hoặc người
+ *          đang xem chỉ có quyền đọc — không mọc nút chết nào.
+ */
+function nutSuaConTrongCap(u, xuLy) {
+  if (!xuLy || !xuLy.onSuaCon) return null;
+  if (!suaDuoc()) return null;
+
+  const soCon = (Array.isArray(u.children) ? u.children : [])
+    .filter((c) => c && c.personId && state.index.personById.has(c.personId)).length;
+  if (soCon === 0) return null;
+
+  const nut = document.createElement('button');
+  nut.type = 'button';
+  nut.dataset.viec = 'sua-con';
+  nut.style.cssText =
+    'display:block;width:100%;text-align:left;padding:9px 11px;font-family:inherit;' +
+    'font-size:13px;color:#8a8078;border:1px dashed #e6e0d8;border-radius:8px;' +
+    'background:none;cursor:pointer;touch-action:manipulation';
+  nut.textContent = soCon === 1
+    ? 'Sửa người con này — chuyển sang gia đình khác, đổi con đẻ / con nuôi'
+    : 'Sửa một người con — chuyển sang gia đình khác, đổi con đẻ / con nuôi';
+
+  nut.addEventListener('click', () => {
+    closePersonDetail();
+    xuLy.onSuaCon(u.id);
   });
   return nut;
 }
