@@ -374,7 +374,7 @@ function renderAnhTrongO(node, person, laBien, laTrungTam) {
   };
 
   g.append(tao('image', Object.assign({
-    href: anhMacDinhUri(person && person.sex),
+    href: anhMacDinhUri(person && person.sex, mauVien(person)),
   }, oAnh)));
 
   const anhThat = person && typeof person.photoFileId === 'string'

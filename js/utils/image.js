@@ -3,7 +3,7 @@
 // Vai trò  : Nén ảnh phía trình duyệt, đường dẫn Drive, bóng người mặc định
 // Lớp      : utils — được gọi bởi: pages · được phép gọi: config
 // Phụ thuộc: config (PHOTO)
-// Phiên bản: 1.2.0 · Cập nhật: 22/08/2026 09:40
+// Phiên bản: 1.2.1 · Cập nhật: 22/08/2026 10:30
 // ============================================================
 //
 // BA LUẬT CỦA FILE NÀY
@@ -133,11 +133,14 @@ export function dataUri(base64, mime = 'image/jpeg') {
 // ~18KB chuỗi ảnh không có việc gì trong một file tên là *image.js* — file này
 // nói về **NÉN ẢNH NGƯỜI DÙNG CHỌN**, một việc khác hẳn.
 //
-// ⚠ Ba điều của bản cũ **đã thôi đúng**, đừng chép lại:
-// tham số `mauNen` (hai ảnh mới tự mang nền của chúng) · hình riêng cho
-// `sex: "U"` (nay dùng ảnh nam, chủ dự án chốt) · và lời giải thích *"vì sao
-// là SVG chứ không phải PNG"* (nay là *vì sao nằm thẳng trong mã chứ không
-// thành file trong repo* — lý do khác, xem `avatar.js`).
+// ⚠ Hai điều của bản cũ **đã thôi đúng**, đừng chép lại: bộ khuôn hình NỮ và
+// hình `U` (hai ảnh thật đã thay hình nữ, còn `sex: "U"` nay dùng **bức NAM
+// CŨ** — chủ dự án giữ nó lại vì nó vốn không ra dáng đàn ông), và lời giải
+// thích *"vì sao là SVG chứ không phải PNG"* (nay là *vì sao nằm thẳng trong
+// mã chứ không thành file trong repo* — lý do khác hẳn, xem `avatar.js`).
+//
+// Tham số `mauNen` thì **vẫn còn**, và vẫn vì lý do cũ: ba màu sống ở bảng
+// `VE` của `domains/render.js`, chép sang chỗ khác là dựng bản thứ hai.
 
 /** Số byte thành chữ người thường đọc được: `142 KB`, `3,4 MB`. */
 export function moTaCo(soByte) {

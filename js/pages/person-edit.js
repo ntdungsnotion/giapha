@@ -1225,7 +1225,7 @@ function veXemTruocAnh(nguoi) {
   const im = document.createElement('img');
   im.alt = '';
   im.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
-  im.src = anhMacDinhUri(nguoi && nguoi.sex);
+  im.src = anhMacDinhUri(nguoi && nguoi.sex, mauVien(nguoi));
   boc.append(im);
 
   const dd = mucDaiDien();
@@ -1296,7 +1296,7 @@ function veTamAnh(muc, nguoi) {
   const im = document.createElement('img');
   im.alt = '';
   im.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
-  im.src = anhMacDinhUri(nguoi && nguoi.sex);
+  im.src = anhMacDinhUri(nguoi && nguoi.sex, mauVien(nguoi));
   datAnhKhiTaiXong(im, duongXemAnh(muc, co));
   nut.append(im);
 
@@ -4830,7 +4830,7 @@ function veTheCon(id, i) {
     'width:38px;height:38px;border-radius:50%;overflow:hidden;' +
     'box-shadow:0 0 0 2px #ffffff, 0 0 0 3px ' + mauVien(p) + '66';
   const im = document.createElement('img');
-  im.src = anhMacDinhUri(p && p.sex);
+  im.src = anhMacDinhUri(p && p.sex, mauVien(p));
   im.alt = '';
   im.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
   tron.append(im);

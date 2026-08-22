@@ -3,7 +3,7 @@
 // Vai trò  : Ảnh đại diện mặc định cho người CHƯA CÓ ẢNH
 // Lớp      : utils — được gọi bởi: pages, domains · được phép gọi: config
 // Phụ thuộc: (không)
-// Phiên bản: 1.0.0 · Cập nhật: 22/08/2026 09:10
+// Phiên bản: 1.1.0 · Cập nhật: 22/08/2026 10:30
 // ============================================================
 //
 // --- Vì sao hai bức ảnh nằm THẲNG TRONG MÃ ------------------------------
@@ -29,12 +29,27 @@
 // tức 0,05px. Đã chụp hai bản đặt cạnh nhau ở 200px để nhìn: **không phân biệt
 // được**.
 //
-// ⚠ **Người KHÔNG RÕ GIỚI (`sex: "U"`) dùng ảnh NAM** — chủ dự án chốt:
-// *"ảnh người trung tính lấy ảnh nam hiện nay."* Đừng "sửa" cho có ba hình.
+// --- BA hình, nhưng KHÔNG cùng một họ ------------------------------------
 //
-// ⚠ Hai bức ảnh **tự mang nền của chúng** (nam nền xanh, nữ nền hồng), nên
-// tham số `mauNen` của bản cũ đã bỏ. Màu theo giới tính nay chỉ còn ở VÀNH
-// quanh ảnh, do `domains/render.mauVien()` quyết định.
+// Hai ảnh thật thay hình NAM và hình NỮ. Hình **KHÔNG RÕ GIỚI** thì **giữ
+// nguyên bóng người vẽ bằng mã** — và cụ thể là **bức NAM của bộ cũ**, không
+// phải bức `U` của bộ cũ. Chủ dự án chốt 22/08/2026:
+//
+//   > *"ảnh người trung tính lấy ảnh nam hiện nay […] ảnh cũ, người nữ và
+//   > người trung tính quá xấu, ảnh người nam đẹp hơn nhưng nó không có đặc
+//   > điểm của nam mà có đặc điểm người trung tính."*
+//
+// Đọc kỹ câu ấy: bức nam CŨ được giữ lại **chính vì nó KHÔNG ra dáng đàn ông**
+// — nó đã là một hình trung tính từ đầu, chỉ bị gọi nhầm tên. Hai bức cũ kia
+// (nữ có tóc dài, và bức `U` vai thẳng) bỏ hẳn.
+//
+// ⚠ **Đừng cho `sex: "U"` dùng `SVG_NAM`.** Đã hiểu nhầm đúng điều này một lần
+// trong phiên: ảnh nam MỚI có áo vest, cà vạt, tóc ngắn kiểu nam — vẽ người
+// không rõ giới bằng nó là **khai một điều gia phả không biết**, đúng thứ luật
+// của bước 28 cấm.
+//
+// ⚠ Hai ảnh mới **tự mang nền của chúng** (nam nền xanh, nữ nền hồng) nên
+// không dùng `mauNen`. Bóng người thì vẫn cần — xem `anhMacDinhUri`.
 
 const SVG_NAM =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 464 464">' +
@@ -71,23 +86,87 @@ const SVG_NU =
     '<path d="M0 0 C4 2 6 4 8 7 C13 14 13 14 17 15 C17 15 17 15 19 15 C19 16 18 17 18 18 C19 18 19 19 20 19 C20 20 19 21 19 22 C5 9 5 9 0 2 C0 1 0 1 0 0 Z " fill="#ECCEB1" transform="translate(170,257)"/></svg>';
 
 /**
+ * BÓNG NGƯỜI của người KHÔNG RÕ GIỚI — hình duy nhất còn sót lại của bộ ba cũ.
+ *
+ * Chủ dự án chốt 22/08/2026, và lý lẽ nằm ở chỗ không ai đoán ra được nếu chỉ
+ * đọc mã:
+ *
+ *   > *"ảnh cũ, người nữ và người trung tính quá xấu, ảnh người nam đẹp hơn
+ *   > nhưng nó không có đặc điểm của nam mà có đặc điểm người trung tính."*
+ *
+ * Tức bức này được giữ lại **vì nó KHÔNG ra dáng đàn ông**, đúng thứ mà bức
+ * `U` cũ cố vẽ mà không đạt. Hai bức cũ kia bỏ hẳn.
+ *
+ * ⚠ Đây **không phải** bức nam của bộ mới. Đừng "dọn cho gọn" bằng cách cho
+ * `sex: "U"` dùng `SVG_NAM` — bộ mới có áo vest, cà vạt và tóc ngắn kiểu nam,
+ * đúng thứ luật *"đừng khai điều gia phả không biết"* cấm.
+ *
+ * Khuôn 60 × 60: đầu là một vòng tròn, thân là hai vai cong, cả hai màu trắng
+ * trên nền đặc.
+ *
+ * ⚠ **VAI DỪNG Ở y ≈ 47, KHÔNG chạm đáy khung.** Bước 28b đặt BẢNG TÊN NỀN
+ * TRẮNG đè lên đáy vòng ảnh, mà vai cũng màu trắng — hai mảng trắng dính vào
+ * nhau thành một khối, và cả vòng ảnh đọc ra thành **hình vòng cung** chứ
+ * không ra hình người. Chừa một dải nền màu giữa vai và bảng tên là hết.
+ * Đổi `deLenAnh` trong `VE` thì phải xem lại con số 47 này.
+ */
+const BONG_KHONG_RO = {
+  dau:  { cx: 30, cy: 20, r: 9.5 },
+  than: 'M 12 47 C 12 36 20 31 30 31 C 40 31 48 36 48 47 Z',
+};
+
+/**
  * Ảnh đại diện mặc định, dạng `data:` URI dùng được cho cả `<img src>` lẫn
  * `<image href>` trong SVG.
+ *
+ * BA nhánh, và nhánh thứ ba **không cùng họ với hai nhánh kia**:
+ *
+ * | `sex` | Hình | Nền |
+ * |---|---|---|
+ * | `'M'` | ảnh thật `avatar_nam.svg` | tự mang trong ảnh |
+ * | `'F'` | ảnh thật `avatar_nu.svg` | tự mang trong ảnh |
+ * | còn lại | bóng người vẽ bằng mã | **`mauNen` do nơi gọi đưa vào** |
+ *
+ * ⚠ **`mauNen` chỉ dùng cho nhánh thứ ba**, và nó vẫn phải là tham số chứ
+ * không được chép màu vào đây: ba màu ấy sống ở bảng `VE` trong
+ * `domains/render.js` (`vienNam` · `vienNu` · `vienKhongRo`) — cùng màu đang
+ * dùng cho viền ô. Chép sang đây là dựng bản thứ hai của cùng một sự thật, và
+ * một hôm nào đó đổi màu viền xong sẽ thấy bóng người vẫn màu cũ.
  *
  * `encodeURIComponent` chứ không phải base64: chuỗi ngắn hơn, đọc được khi soi
  * bằng công cụ của trình duyệt, và không cần `btoa` (`btoa` nghẹn với ký tự
  * ngoài Latin-1 — ở đây chưa có, nhưng đừng dựng sẵn một cái bẫy).
  *
  * Mã hoá một lần rồi nhớ lại: một sơ đồ 60 người gọi hàm này 60 lần, mà chuỗi
- * nguồn dài 10KB.
+ * nguồn dài 10KB. Nhánh thứ ba nhớ theo MÀU, vì cùng một hình có thể được hỏi
+ * với hai màu nền khác nhau.
  *
- * @param {string} [sex] `'M'` · `'F'` · `'U'` — thiếu hoặc lạ thì coi như nam
+ * @param {string} [sex]     `'M'` · `'F'` · còn lại coi là không rõ giới
+ * @param {string} [mauNen]  màu nền của bóng người — lấy từ `VE` của render.js
  * @returns {string}
  */
-export function anhMacDinhUri(sex) {
-  const k = sex === 'F' ? 'F' : 'M';
-  if (!daMa[k]) daMa[k] = 'data:image/svg+xml;utf8,' + encodeURIComponent(k === 'F' ? SVG_NU : SVG_NAM);
-  return daMa[k];
+export function anhMacDinhUri(sex, mauNen) {
+  if (sex === 'M' || sex === 'F') {
+    const k = sex;
+    if (!daMa[k]) {
+      daMa[k] = 'data:image/svg+xml;utf8,' +
+                encodeURIComponent(k === 'F' ? SVG_NU : SVG_NAM);
+    }
+    return daMa[k];
+  }
+
+  const nen = mauNen || '#8a8078';
+  if (!daMa[nen]) {
+    const b = BONG_KHONG_RO;
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60">' +
+      '<rect width="60" height="60" fill="' + nen + '"/>' +
+      '<circle cx="' + b.dau.cx + '" cy="' + b.dau.cy + '" r="' + b.dau.r + '" fill="#ffffff"/>' +
+      '<path d="' + b.than + '" fill="#ffffff"/>' +
+      '</svg>';
+    daMa[nen] = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+  }
+  return daMa[nen];
 }
 
-const daMa = { M: '', F: '' };
+const daMa = {};

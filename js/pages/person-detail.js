@@ -303,7 +303,7 @@ function veTamAnhThe(m, nguoiNen, subjectId) {
   const im = document.createElement('img');
   im.alt = '';
   im.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
-  im.src = anhMacDinhUri(nguoiNen && nguoiNen.sex);
+  im.src = anhMacDinhUri(nguoiNen && nguoiNen.sex, mauVien(nguoiNen));
   taiAnhVaoThe(im, driveThumbUrl(m.driveFileId, co * 2));
   nut.append(im);
 
@@ -342,7 +342,7 @@ function veAnhTo(m, nguoiNen) {
   im.style.cssText =
     'width:100%;max-height:52vh;object-fit:contain;display:block;' +
     'border-radius:10px;background:#faf8f5';
-  im.src = anhMacDinhUri(nguoiNen && nguoiNen.sex);
+  im.src = anhMacDinhUri(nguoiNen && nguoiNen.sex, mauVien(nguoiNen));
   taiAnhVaoThe(im, driveThumbUrl(m.driveFileId, 1200));
   boc.append(im);
 
@@ -775,7 +775,7 @@ function veAnhTron(p, co) {
     'overflow:hidden;box-shadow:0 0 0 1.5px #ffffff, 0 0 0 3px ' + mauVien(p) + '55';
 
   const im = document.createElement('img');
-  im.src = anhMacDinhUri(p && p.sex);
+  im.src = anhMacDinhUri(p && p.sex, mauVien(p));
   im.alt = '';
   im.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
   boc.append(im);
@@ -1470,7 +1470,7 @@ function nutTam(p, xuLy) {
     'box-shadow:0 0 0 2px #ffffff, 0 0 0 3.5px ' + mauVien(p) + '66';
 
   const im = document.createElement('img');
-  im.src = anhMacDinhUri(p && p.sex);
+  im.src = anhMacDinhUri(p && p.sex, mauVien(p));
   im.alt = '';
   im.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
   tron.append(im);
