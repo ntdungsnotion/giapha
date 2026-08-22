@@ -3,7 +3,7 @@
 // Vai trò  : Màn hình Sao lưu & khôi phục — cất bản phòng hờ, và quay về nó
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, services/gas, config
-// Phiên bản: 1.0.0 · Cập nhật: 22/08/2026 00:40
+// Phiên bản: 1.1.0 · Cập nhật: 22/08/2026 07:30
 // ============================================================
 //
 // Máy chủ đã tự cất bản phòng hờ từ bước 16 (`saoLuuNeuDenHan_`). Thứ thiếu là
@@ -87,10 +87,14 @@ export function openBackup() {
   tieuDe.textContent = 'Sao lưu & khôi phục';
   tieuDe.style.cssText = 'font-size:19px;font-weight:600';
 
+  // ⚠ Chữ đã RÚT GỌN 22/08/2026. Bản cũ mở đầu bằng *"Máy chủ tự cất bản phòng
+  // hờ mỗi lần lưu, nếu đã cách bản trước đủ lâu"* — đúng, nhưng là chuyện của
+  // người xây app. Người đang đứng ở màn hình này chỉ cần biết mình bấm được
+  // gì. Phần giải thích chuyển sang `tai-lieu/GHI-CHU-HUONG-DAN_V01.md`.
   const phu = document.createElement('div');
   phu.textContent =
-    'Máy chủ tự cất bản phòng hờ mỗi lần lưu, nếu đã cách bản trước đủ lâu. ' +
-    'Sắp làm việc lớn thì cất thêm một bản ngay ở đây.';
+    'App tự cất bản phòng hờ khi bạn lưu. Sắp sửa nhiều thì cất thêm một bản ' +
+    'ngay ở đây.';
   phu.style.cssText =
     'font-size:13px;line-height:1.55;color:#8a8078;margin-top:6px';
 
@@ -105,8 +109,8 @@ export function openBackup() {
 
   if (!coNoi) {
     khoiTin.append(loiNhan(
-      'Trang này đang mở thẳng từ GitHub Pages nên không nối được máy chủ. ' +
-      'Mở app qua địa chỉ web app của Apps Script thì mới sao lưu được.', false));
+      'Chưa nối được máy chủ nên chưa sao lưu được. Hãy mở gia phả bằng đúng ' +
+      'đường link thường dùng.', false));
   }
 
   // --- Danh sách bản sao lưu --------------------------------------------

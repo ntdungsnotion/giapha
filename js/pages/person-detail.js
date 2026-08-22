@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
 //            utils/{text,date,image}, config
-// Phiên bản: 1.21.0 · Cập nhật: 21/08/2026 16:55
+// Phiên bản: 1.22.0 · Cập nhật: 22/08/2026 07:10
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -1304,6 +1304,10 @@ const RONG_TRON   = 18.57;   // % — 52/280
 const RONG_GIUA   = 27.14;   // % — 76/280 (vòng tròn ảnh ở tâm)
 const TREN_GIUA   = 33.13;   // % — 106/320
 
+// Bề cao của biểu tượng, tính theo khung `viewBox` 100 của `veBieuTuong()` —
+// tức **phần trăm bề ngang vòng tròn bao quanh nó**. Chốt 22/08/2026: 90.
+const CO_BIEU_TUONG = 90;
+
 /**
  * SÁU việc quanh vành, cách đều 60°, bán kính 118px. `x` là % bề ngang, `top`
  * là % chiều cao — tính sẵn từ góc để khỏi phải chạy lượng giác trong lúc vẽ.
@@ -1515,14 +1519,14 @@ function nutVanh(m, p, xuLy, khoiChon, coQuyen) {
     'cursor:' + (bat ? 'pointer' : 'not-allowed') + ';opacity:' + (bat ? '1' : '.4') + ';';
 
   const tron = document.createElement('div');
-  tron.textContent = m.bieuTuong;
   tron.style.cssText =
     'width:' + (RONG_TRON / RONG_MUC * 100) + '%;aspect-ratio:1;border-radius:50%;' +
-    'display:flex;align-items:center;justify-content:center;font-size:20px;' +
+    'display:flex;align-items:center;justify-content:center;' +
     'box-sizing:border-box;' +
     (m.do
       ? 'color:#8a3a2a;background:#fbf0ec;border:1px solid #f0d8d0'
       : 'color:#2a2622;background:#fff;border:1px solid #e6e0d8');
+  tron.append(veBieuTuong(m.bieuTuong));
 
   const chu = document.createElement('div');
   chu.textContent = m.chu;
@@ -1533,6 +1537,50 @@ function nutVanh(m, p, xuLy, khoiChon, coQuyen) {
   nut.append(tron, chu);
   if (bat) nut.addEventListener('click', chay);
   return nut;
+}
+
+/**
+ * Biểu tượng của một mục quanh vành, vẽ sao cho nó **chiếm 90% bề ngang vòng
+ * tròn bao quanh** — chủ dự án chốt 22/08/2026 sau khi dùng app thật: *"các nút
+ * chức năng có vòng tròn tương đối ổn nhưng icon trong nó quá nhỏ"*.
+ *
+ * Bản cũ ghi thẳng `font-size:20px` vào ô. Hai chỗ hỏng:
+ *
+ * 1. **Quá nhỏ.** Vòng tròn rộng 52px trên điện thoại, nên chữ 20px chỉ chiếm
+ *    chừng 38% — nhìn ra một cái vòng rỗng có chấm nhỏ ở giữa.
+ * 2. **Không co giãn.** Vòng tròn là **phần trăm** của hộp (18,57%), mà hộp thì
+ *    co từ 280px tới 360px. Một con số px cố định thì cùng lúc vừa quá nhỏ ở
+ *    màn hình rộng vừa quá to ở màn hình hẹp — không có con số nào đúng cả.
+ *
+ * Nên biểu tượng vẽ bằng **SVG có `viewBox`**: `font-size` tính theo đơn vị
+ * trong `viewBox`, còn `viewBox` thì tự kéo giãn theo bề ngang thật của vòng
+ * tròn. Đặt `CO_BIEU_TUONG = 90` trên khung 100 là ra đúng 90%, ở mọi khổ màn
+ * hình, không phải đo lại lần nào.
+ *
+ * `fill:currentColor` để hai mục đỏ (*Gỡ nối* · *Xoá*) vẫn đỏ. Emoji thì hệ
+ * điều hành tự vẽ màu của nó, `fill` không đụng tới.
+ */
+function veBieuTuong(ky) {
+  const NS = 'http://www.w3.org/2000/svg';
+
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 100 100');
+  svg.setAttribute('width', '100%');
+  svg.setAttribute('height', '100%');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.style.display = 'block';
+
+  const chu = document.createElementNS(NS, 'text');
+  chu.setAttribute('x', '50');
+  chu.setAttribute('y', '50');
+  chu.setAttribute('text-anchor', 'middle');
+  chu.setAttribute('dominant-baseline', 'central');
+  chu.setAttribute('font-size', String(CO_BIEU_TUONG));
+  chu.setAttribute('fill', 'currentColor');
+  chu.textContent = ky;
+
+  svg.append(chu);
+  return svg;
 }
 
 /**

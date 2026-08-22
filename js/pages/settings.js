@@ -4,7 +4,7 @@
 //            đường sang màn hình Sao lưu & khôi phục
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, services/gas, utils/text
-// Phiên bản: 1.8.0 · Cập nhật: 22/08/2026 00:40
+// Phiên bản: 1.9.0 · Cập nhật: 22/08/2026 07:30
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
@@ -206,8 +206,8 @@ function veLaiKhoiMacDinh(loi) {
 
   if (!coNoi) {
     khoi.append(veLoiNhan(
-      'Trang này đang mở thẳng từ GitHub Pages nên không nối được máy chủ. ' +
-      'Mở app qua địa chỉ web app của Apps Script thì nút trên mới bấm được.',
+      'Chưa nối được máy chủ nên nút trên chưa bấm được. Hãy mở gia phả bằng ' +
+      'đúng đường link thường dùng.',
       false));
   }
   if (loi) khoi.append(veLoiNhan(loi, true));
@@ -289,13 +289,16 @@ function veKhoiHienThi(vao) {
   nhan.append(hopChon, chu);
   khoi.append(nhan);
 
-  // Công tắc này đổi CHIỀU CAO Ô, không chỉ đổi chữ — phải nói ra, vì bật lên
-  // là cả sơ đồ cao thêm một hàng, kể cả ô của người còn sống và người chưa ai
-  // điền ngày giỗ (luật "ô cao bằng nhau" không cho ô co theo nội dung).
+  // Công tắc này đổi CHIỀU CAO Ô, không chỉ đổi chữ — vẫn phải nói ra một câu,
+  // vì bật lên là cả sơ đồ dài thêm.
+  //
+  // ⚠ Chữ đã RÚT GỌN 22/08/2026. Bản cũ kể luôn cả *"sơ đồ dài thêm khoảng một
+  // phần tám"* và *"vì thế mặc định tắt"* — đó là lý lẽ THIẾT KẾ, viết cho
+  // người đang xây app chứ không cho người đang dùng. Phần ấy chuyển sang
+  // `tai-lieu/GHI-CHU-HUONG-DAN_V01.md`, chỗ dành cho bản hướng dẫn sử dụng.
   const nhac = document.createElement('div');
   nhac.textContent =
-    'Bật lên thì MỌI ô cao thêm một hàng, kể cả ô của người chưa ai điền ngày ' +
-    'giỗ — sơ đồ dài thêm khoảng một phần tám. Vì thế mặc định tắt.';
+    'Bật lên thì mọi ô cao thêm một hàng, kể cả ô chưa có ngày giỗ.';
   nhac.style.cssText = 'font-size:12px;line-height:1.5;color:#8a8078;margin-top:6px';
   khoi.append(nhac);
 

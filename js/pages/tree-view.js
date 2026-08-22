@@ -5,7 +5,7 @@
 // Phụ thuộc: state, domains/{bloodline,layout,render,union}, utils/text,
 //            pages/{person-detail,person-edit,person-list,review,settings,
 //            backup}
-// Phiên bản: 1.23.0 · Cập nhật: 22/08/2026 00:40
+// Phiên bản: 1.24.0 · Cập nhật: 22/08/2026 07:10
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -96,6 +96,10 @@ const TY_LE_NAC = 1.25;   // mỗi lần bấm nút phóng to / thu nhỏ
 let tyLe = 1;
 let padX = 0;   // lề căn giữa khi sơ đồ hẹp hơn khung
 let padY = 0;
+
+// Đường kính một nút tròn nổi trên sơ đồ, px. 44 là đích chạm tối thiểu của
+// ngón tay — `kiem-cum-nut.mjs` gác con số này, đừng hạ xuống.
+const CO_NUT_TRON = 44;
 
 /**
  * Dựng màn hình sơ đồ vào `containerEl` rồi vẽ lần đầu.
@@ -194,7 +198,7 @@ export function refresh() {
   layoutHT = layout;
 
   renderTree(svgEl, layout, index, {
-    onChonNguoi:  (personId) => setFocusPerson(personId),
+    onChonNguoi:  (personId) => bamVaoO(personId),
     onChonNotCut: (stub) => moNotCut(stub, visible),
   }, hienGio);
 
@@ -213,10 +217,41 @@ export function refresh() {
 }
 
 /**
+ * BẤM MỘT CÁI vào một ô trên sơ đồ — hai kết quả, tuỳ ô ấy là ai.
+ *
+ * Chốt 22/08/2026, do chủ dự án chỉ ra sau khi dùng app thật:
+ *
+ *   - ô của **người khác** → đưa người ấy ra giữa, vẽ lại sơ đồ (như cũ)
+ *   - ô của **chính người đang đứng giữa** → **mở MENU VÒNG TRÒN**
+ *
+ * Trước đó cú bấm thứ hai vào cùng một ô **không sinh ra gì cả**. Đó là một
+ * vùng chết ngay giữa màn hình, và ở đúng chỗ dễ trúng nhất — cùng loại lỗi
+ * mà bước 26 đã sửa ở TÂM vòng tròn. Người dùng bấm vào mặt một người rồi bấm
+ * lần nữa là đang hỏi *"còn làm được gì với người này?"*; câu trả lời là vành
+ * sáu việc.
+ *
+ * ⚠ Nó KHÔNG thay nút ⓘ, cũng không thay bấm chuột phải: cả ba nay dẫn về
+ * cùng một vòng tròn của cùng một người, nên học cửa nào cũng ra cùng chỗ.
+ *
+ * ⚠ Không phải "bấm đúp". Bấm đúp đã loại (`NK-B30` mục 10.2) vì nó buộc phải
+ * hoãn MỌI cú bấm đơn ~250ms. Đây là hai cú bấm ĐƠN rời nhau, mỗi cú xử lý
+ * ngay lúc nó xảy ra, không hoãn gì hết.
+ */
+function bamVaoO(personId) {
+  if (personId && personId === state.focusPersonId) {
+    moTheNguoiTrungTam();
+    return;
+  }
+  setFocusPerson(personId);
+}
+
+/**
  * Đổi người trung tâm rồi vẽ lại. Gọi khi chạm vào một người hoặc một nốt cụt.
  *
  * Bấm vào chính người trung tâm thì không làm gì — vẽ lại y hệt sơ đồ cũ chỉ
- * làm màn hình nháy một cái.
+ * làm màn hình nháy một cái. Cửa "bấm lại lần nữa để mở vòng tròn" nằm ở
+ * `bamVaoO()` phía trên, KHÔNG nằm ở đây: hàm này còn được nốt cụt, danh sách
+ * người và thẻ thông tin gọi tới, mà ba chỗ ấy không được mở vòng tròn.
  */
 export function setFocusPerson(personId) {
   if (!personId || personId === state.focusPersonId) return;
@@ -397,9 +432,14 @@ const NGUONG_KEO = 8;   // px — dưới mức này vẫn tính là một cú c
 // tròn do nút ⓘ đảm nhiệm; thao tác giữ tên hoặc ảnh để kích hoạt chế độ sắp
 // xếp"*.
 //
-// Vòng tròn KHÔNG mất cửa nào: bấm đơn đưa người ấy ra giữa, rồi nút ⓘ mở vòng
-// tròn của chính người đang đứng giữa — đường hai chạm ấy đã chạy sẵn từ bước
-// 26, không phải sửa dòng nào. Bấm chuột phải cũng vẫn mở vòng tròn như cũ.
+// Vòng tròn KHÔNG mất cửa nào — nay có BA cửa, cùng dẫn về một chỗ:
+//
+//   1. bấm ô của người đang đứng GIỮA  (thêm 22/08/2026, xem `bamVaoO`)
+//   2. nút ⓘ ở cụm dưới phải
+//   3. bấm chuột phải trên một ô
+//
+// Cửa 1 làm cho đường hai chạm *bấm ô người khác → bấm lại ô ấy* chạy được
+// bằng một ngón tay, không phải rời mắt đi tìm nút ⓘ ở góc màn hình.
 //
 // ⚠ **Bấm đúp đã LOẠI, đừng dựng lại.** `render.js` gắn `click` thẳng vào ô,
 // nên cú bấm thứ nhất đã gọi `setFocusPerson()` → `refresh()` vẽ lại cả sơ đồ
@@ -1067,10 +1107,18 @@ function nutTron(chu, nhan, chay) {
   nut.textContent = chu;
   nut.title = nhan;
   nut.setAttribute('aria-label', nhan);
+  // CO_NUT_TRON 44px là đích chạm tối thiểu, đừng hạ xuống — `kiem-cum-nut.mjs`
+  // gác con số này. Biểu tượng thì chiếm 90% bề ngang ấy (chốt 22/08/2026):
+  // bản cũ ghi 20px, tức 45%, nhìn ra một cái vòng rỗng có chấm nhỏ ở giữa.
+  //
+  // ⚠ Phải có `display:flex` + căn giữa hai chiều: chữ cao gần bằng cả cái nút
+  // thì cách căn mặc định của `<button>` đẩy nó lệch xuống thấy rõ.
   nut.style.cssText =
-    'width:44px;height:44px;font-size:20px;line-height:1;' +
+    'width:' + CO_NUT_TRON + 'px;height:' + CO_NUT_TRON + 'px;' +
+    'display:flex;align-items:center;justify-content:center;' +
+    'padding:0;font-size:' + (CO_NUT_TRON * 0.9) + 'px;line-height:1;' +
     'font-family:system-ui,sans-serif;color:#2a2622;' +
-    'border:1px solid #e6e0d8;border-radius:22px;background:#fffdf9;' +
+    'border:1px solid #e6e0d8;border-radius:' + (CO_NUT_TRON / 2) + 'px;background:#fffdf9;' +
     'box-shadow:0 1px 4px rgba(42,38,34,.12);cursor:pointer;touch-action:manipulation';
   nut.addEventListener('click', chay);
   return nut;
