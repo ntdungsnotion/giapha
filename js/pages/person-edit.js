@@ -5,8 +5,8 @@
 //            thùng rác: khôi phục · xoá thật · gom rác, cả loạt một lần
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate,media,purge,render},
-//            services/{repo,gas}, utils/{graph,text,date,image}, config
-// Phiên bản: 1.19.0 · Cập nhật: 21/08/2026 23:10
+//            services/{repo,gas}, utils/{graph,text,date,image,avatar}, config
+// Phiên bản: 1.20.0 · Cập nhật: 22/08/2026 09:40
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -148,8 +148,9 @@ import { taiAnh, xoaAnhThat } from '../services/gas.js';
 import { buildIndex } from '../utils/graph.js';
 import { fullName, coGiaTri } from '../utils/text.js';
 import { formatDate, parseLooseDate, stampNow, mocNgay } from '../utils/date.js';
-import { compressImage, driveThumbUrl, anhMacDinhUri, dataUri, moTaCo }
+import { compressImage, driveThumbUrl, dataUri, moTaCo }
   from '../utils/image.js';
+import { anhMacDinhUri } from '../utils/avatar.js';
 import { LOAI_TEN_PHU, nhanLoaiTenPhu, QUAN_HE_CON_NHAN, nhanQuanHeCon,
          chuThichQuanHe, rongHop, caoHop, leLopPhu,
          RONG_NUT_TOI_DA } from '../config.js';
@@ -1224,7 +1225,7 @@ function veXemTruocAnh(nguoi) {
   const im = document.createElement('img');
   im.alt = '';
   im.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
-  im.src = anhMacDinhUri(nguoi && nguoi.sex, mauVien(nguoi));
+  im.src = anhMacDinhUri(nguoi && nguoi.sex);
   boc.append(im);
 
   const dd = mucDaiDien();
@@ -1295,7 +1296,7 @@ function veTamAnh(muc, nguoi) {
   const im = document.createElement('img');
   im.alt = '';
   im.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
-  im.src = anhMacDinhUri(nguoi && nguoi.sex, mauVien(nguoi));
+  im.src = anhMacDinhUri(nguoi && nguoi.sex);
   datAnhKhiTaiXong(im, duongXemAnh(muc, co));
   nut.append(im);
 
@@ -4829,7 +4830,7 @@ function veTheCon(id, i) {
     'width:38px;height:38px;border-radius:50%;overflow:hidden;' +
     'box-shadow:0 0 0 2px #ffffff, 0 0 0 3px ' + mauVien(p) + '66';
   const im = document.createElement('img');
-  im.src = anhMacDinhUri(p && p.sex, mauVien(p));
+  im.src = anhMacDinhUri(p && p.sex);
   im.alt = '';
   im.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
   tron.append(im);

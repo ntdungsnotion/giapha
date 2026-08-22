@@ -2,10 +2,11 @@
 // giapha · js/pages/tree-view.js
 // Vai trò  : MÀN HÌNH CHÍNH — sơ đồ cây, đổi người trung tâm
 // Lớp      : pages — được phép gọi mọi lớp dưới
-// Phụ thuộc: state, domains/{bloodline,layout,render,union}, utils/text,
+// Phụ thuộc: state, domains/{bloodline,layout,render,union},
+//            utils/{text,glyph}, config,
 //            pages/{person-detail,person-edit,person-list,review,settings,
 //            backup}
-// Phiên bản: 1.24.0 · Cập nhật: 22/08/2026 07:10
+// Phiên bản: 1.25.0 · Cập nhật: 22/08/2026 09:40
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -78,6 +79,7 @@ import { openPersonList, closePersonList, openThungRac } from './person-list.js'
 import { openReview, closeReview } from './review.js';
 import { openSettings, closeSettings } from './settings.js';
 import { openBackup, closeBackup } from './backup.js';
+import { veBieuTuongTron } from '../utils/glyph.js';
 import { rongHop, caoHop, leLopPhu } from '../config.js';
 
 let khungCuon = null;   // div cuộn được, bọc quanh SVG
@@ -1101,25 +1103,37 @@ function nguoiDungThayCho(personId) {
   return null;
 }
 
+/**
+ * Một nút tròn nổi trên sơ đồ.
+ *
+ * ⚠ **Biểu tượng KHÔNG còn là `textContent` của cái nút.** Nó là một `<svg>`
+ * do `utils/glyph.js` dựng, và đó là chỗ chữa HAI lỗi chủ dự án chỉ ra ngày
+ * 22/08/2026 sau khi dùng app thật:
+ *
+ * 1. **Kính lúp 🔍 tràn ra ngoài vòng tròn.** Bản trước ép mọi biểu tượng
+ *    chiếm 90% bề ngang; một hình gần vuông rộng 90% đường kính thì bốn góc
+ *    của nó nằm ngoài đường tròn. `glyph.js` đo vùng mực thật rồi ép nó nằm
+ *    trọn trong một đường tròn nhỏ hơn đúng một khe hở 0,7–1mm.
+ * 2. **Chữ ⓘ lệch lên trên, tâm chữ không rơi vào tâm vòng tròn.** Không phải
+ *    lỗi cỡ chữ mà là lỗi CĂN: `align-items:center` căn theo *hộp dòng*, mà
+ *    mực của ⓘ ngồi lệch trong hộp ấy. `glyph.js` căn theo chính vùng mực.
+ *
+ * `CO_NUT_TRON` 44px là đích chạm tối thiểu của ngón tay, đừng hạ xuống —
+ * `kiem-cum-nut.mjs` gác con số này.
+ */
 function nutTron(chu, nhan, chay) {
   const nut = document.createElement('button');
   nut.type = 'button';
-  nut.textContent = chu;
   nut.title = nhan;
   nut.setAttribute('aria-label', nhan);
-  // CO_NUT_TRON 44px là đích chạm tối thiểu, đừng hạ xuống — `kiem-cum-nut.mjs`
-  // gác con số này. Biểu tượng thì chiếm 90% bề ngang ấy (chốt 22/08/2026):
-  // bản cũ ghi 20px, tức 45%, nhìn ra một cái vòng rỗng có chấm nhỏ ở giữa.
-  //
-  // ⚠ Phải có `display:flex` + căn giữa hai chiều: chữ cao gần bằng cả cái nút
-  // thì cách căn mặc định của `<button>` đẩy nó lệch xuống thấy rõ.
   nut.style.cssText =
     'width:' + CO_NUT_TRON + 'px;height:' + CO_NUT_TRON + 'px;' +
     'display:flex;align-items:center;justify-content:center;' +
-    'padding:0;font-size:' + (CO_NUT_TRON * 0.9) + 'px;line-height:1;' +
-    'font-family:system-ui,sans-serif;color:#2a2622;' +
+    'padding:0;box-sizing:border-box;color:#2a2622;' +
     'border:1px solid #e6e0d8;border-radius:' + (CO_NUT_TRON / 2) + 'px;background:#fffdf9;' +
     'box-shadow:0 1px 4px rgba(42,38,34,.12);cursor:pointer;touch-action:manipulation';
+
+  nut.append(veBieuTuongTron(chu));
   nut.addEventListener('click', chay);
   return nut;
 }

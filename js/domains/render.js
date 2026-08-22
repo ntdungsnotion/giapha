@@ -2,8 +2,8 @@
 // giapha · js/domains/render.js
 // Vai trò  : Vẽ SVG từ kết quả layout. Chỉ vẽ, không tính toạ độ sơ đồ.
 // Lớp      : domains — được gọi bởi: pages · được phép gọi: utils, config
-// Phụ thuộc: config (LAYOUT, PHOTO), utils/text, utils/image
-// Phiên bản: 1.5.0 · Cập nhật: 20/08/2026 17:20
+// Phụ thuộc: config (LAYOUT, PHOTO), utils/text, utils/image, utils/avatar
+// Phiên bản: 1.6.0 · Cập nhật: 22/08/2026 09:40
 // ============================================================
 //
 // Đây là file sẽ sửa nhiều nhất khi chỉnh giao diện. Giữ nó chỉ chứa việc vẽ,
@@ -62,7 +62,8 @@
 
 import { LAYOUT, PHOTO } from '../config.js';
 import { fullName, doiSongTuoi, ngayGio } from '../utils/text.js';
-import { driveThumbUrl, anhMacDinhUri } from '../utils/image.js';
+import { driveThumbUrl } from '../utils/image.js';
+import { anhMacDinhUri } from '../utils/avatar.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -373,7 +374,7 @@ function renderAnhTrongO(node, person, laBien, laTrungTam) {
   };
 
   g.append(tao('image', Object.assign({
-    href: anhMacDinhUri(person && person.sex, mauVien(person)),
+    href: anhMacDinhUri(person && person.sex),
   }, oAnh)));
 
   const anhThat = person && typeof person.photoFileId === 'string'

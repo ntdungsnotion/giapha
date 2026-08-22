@@ -3,7 +3,7 @@
 // Vai trò  : Nén ảnh phía trình duyệt, đường dẫn Drive, bóng người mặc định
 // Lớp      : utils — được gọi bởi: pages · được phép gọi: config
 // Phụ thuộc: config (PHOTO)
-// Phiên bản: 1.1.0 · Cập nhật: 20/08/2026 12:40
+// Phiên bản: 1.2.0 · Cập nhật: 22/08/2026 09:40
 // ============================================================
 //
 // BA LUẬT CỦA FILE NÀY
@@ -124,92 +124,20 @@ export function dataUri(base64, mime = 'image/jpeg') {
 }
 
 // ============================================================
-// BÓNG NGƯỜI — ảnh mặc định khi chưa ai gắn ảnh thật
+// ẢNH ĐẠI DIỆN MẶC ĐỊNH — đã CHUYỂN ĐI, đừng dựng lại ở đây
 // ============================================================
 //
-// Ba hình: nam, nữ, và không rõ. Cùng một khuôn với Quick Family Tree — nền
-// tròn màu đặc, bóng người màu trắng — vì chủ dự án đã quen mắt với nó và đã
-// chỉ đúng vào ảnh `anh-qft/ket hon trong gia toc.png` khi chốt (20/08/2026).
+// `anhMacDinhUri()` và ba bộ khuôn bóng người từng sống ở file này. Từ
+// 22/08/2026 chúng nằm ở **`utils/avatar.js`**, vì chủ dự án đưa hai bức ảnh
+// thật (`avatar_nam.svg` · `avatar_nu.svg`) thay cho hình do mã tự vẽ, và
+// ~18KB chuỗi ảnh không có việc gì trong một file tên là *image.js* — file này
+// nói về **NÉN ẢNH NGƯỜI DÙNG CHỌN**, một việc khác hẳn.
 //
-// ⚠ **MÀU do nơi gọi đưa vào, file này không tự chọn.** Ba màu ấy sống ở bảng
-// `VE` trong `domains/render.js` (`vienNam` · `vienNu` · `vienKhongRo`) — cùng
-// một màu đang dùng cho viền ô. Chép chúng vào đây là dựng ra một bản thứ hai,
-// và một hôm nào đó đổi màu viền xong sẽ thấy bóng người vẫn màu cũ.
-//
-// ⚠ Và **`sex: "U"` phải có hình riêng, không được lẫn vào nam.** Dữ liệu có
-// hai người mang giá trị này (P0040, P0052). Vẽ họ y hệt nam là khai một điều
-// gia phả không biết.
-//
-// Vì sao là SVG chứ không phải file PNG trong repo: không phải tải thêm file
-// nào, không hỏng khi mạng chậm, và phóng to bao nhiêu cũng nét — ô sơ đồ vẽ
-// 40px nhưng vòng tròn thông tin vẽ tới 76px.
-
-/**
- * Ba bộ khuôn, vẽ trong khung 60×60. `dau` là vòng tròn đầu, `than` là vai.
- *
- * ⚠ **VAI DỪNG Ở y ≈ 47, KHÔNG chạm đáy khung.** Bản đầu vẽ vai xuống tận
- * y = 58, và trên sơ đồ nó hỏng ngay: bước 28b đặt BẢNG TÊN NỀN TRẮNG đè lên
- * đáy vòng ảnh, mà vai cũng màu trắng — hai mảng trắng dính vào nhau thành một
- * khối, và cả vòng ảnh đọc ra thành **hình vòng cung** chứ không ra hình
- * người. Chừa một dải nền màu giữa vai và bảng tên là hết.
- *
- * Đổi `deLenAnh` trong `VE` thì phải xem lại con số 47 này.
- */
-const BONG = {
-  M: {
-    dau: { cx: 30, cy: 20, r: 9.5 },
-    than: 'M 12 47 C 12 36 20 31 30 31 C 40 31 48 36 48 47 Z',
-    toc: '',
-  },
-  F: {
-    dau: { cx: 30, cy: 21.5, r: 9 },
-    than: 'M 14 47 C 14 37.5 21 33 30 33 C 39 33 46 37.5 46 47 Z',
-    // Tóc dài xoà xuống hai bên mặt: một khối ĐẶC hình quả chuông, rộng dần
-    // xuống dưới. Đây là dấu hiệu duy nhất phân biệt với hình nam ở cỡ nhỏ —
-    // thử bằng khuôn mặt thon hơn hay vai hẹp hơn thì ở cỡ ấy hai hình trông
-    // giống hệt nhau.
-    //
-    // ⚠ **Đặc, KHÔNG phải một vành tóc quanh mặt.** Bản đầu vẽ vành tóc rỗng
-    // giữa, để lộ nền màu giữa tóc và đầu — ở 200px nó thành một cái khăn trùm,
-    // ở 40px nó thành một vệt nhoè. Cả hai đều không đọc ra "tóc dài".
-    toc: 'M 30 6 C 21.5 6 18 12.5 18.4 20.5 C 18.8 27 20.2 32.5 19.8 37 ' +
-         'C 22 38 25.6 38.4 30 38.4 C 34.4 38.4 38 38 40.2 37 ' +
-         'C 39.8 32.5 41.2 27 41.6 20.5 C 42 12.5 38.5 6 30 6 Z',
-  },
-  U: {
-    // Không rõ giới: đầu tròn, thân là một khối thang — cố ý KHÔNG có đường
-    // vai cong của hình nam, để ở cỡ nhỏ vẫn nhận ra là hình thứ ba.
-    dau: { cx: 30, cy: 20.5, r: 9 },
-    than: 'M 15 47 C 15.4 39 17.4 34 19.4 32.8 L 40.6 32.8 C 42.6 34 44.6 39 45 47 Z',
-    toc: '',
-  },
-};
-
-/**
- * Bóng người mặc định, trả về một `data:` URI dùng được cho `<img src>` lẫn
- * `<image href>` trong SVG.
- *
- * @param {string} sex   'M' · 'F' · bất kỳ thứ gì khác coi là 'U'
- * @param {string} mauNen  màu nền vòng tròn — lấy từ `VE` của render.js
- */
-export function anhMacDinhUri(sex, mauNen) {
-  const k = BONG[sex] ? sex : 'U';
-  const b = BONG[k];
-  const nen = mauNen || '#8a8078';
-
-  const svg =
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60">' +
-    '<rect width="60" height="60" fill="' + nen + '"/>' +
-    (b.toc ? '<path d="' + b.toc + '" fill="#ffffff"/>' : '') +
-    '<circle cx="' + b.dau.cx + '" cy="' + b.dau.cy + '" r="' + b.dau.r + '" fill="#ffffff"/>' +
-    '<path d="' + b.than + '" fill="#ffffff"/>' +
-    '</svg>';
-
-  // encodeURIComponent chứ không phải base64: chuỗi ngắn hơn, đọc được khi soi
-  // bằng công cụ của trình duyệt, và không cần btoa (btoa nghẹn với ký tự
-  // ngoài Latin-1 — ở đây chưa có, nhưng đừng dựng sẵn một cái bẫy).
-  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
-}
+// ⚠ Ba điều của bản cũ **đã thôi đúng**, đừng chép lại:
+// tham số `mauNen` (hai ảnh mới tự mang nền của chúng) · hình riêng cho
+// `sex: "U"` (nay dùng ảnh nam, chủ dự án chốt) · và lời giải thích *"vì sao
+// là SVG chứ không phải PNG"* (nay là *vì sao nằm thẳng trong mã chứ không
+// thành file trong repo* — lý do khác, xem `avatar.js`).
 
 /** Số byte thành chữ người thường đọc được: `142 KB`, `3,4 MB`. */
 export function moTaCo(soByte) {
