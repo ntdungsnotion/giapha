@@ -5,7 +5,7 @@
 //            + MÀN HÌNH THÙNG RÁC — đường quay lại của người và cặp đã xoá
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/person, domains/union, utils/text, config
-// Phiên bản: 1.6.0 · Cập nhật: 22/08/2026 18:40
+// Phiên bản: 1.7.0 · Cập nhật: 22/08/2026 20:10
 // ============================================================
 //
 // --- Vì sao màn hình này phải có (bước 24) ------------------------------
@@ -92,6 +92,7 @@ const TOI_DA = 200;
 
 let lopPhu   = null;
 let oTim     = null;
+let khoiNhac = null;   // dòng chữ dưới tiêu đề — đổi theo chế độ chọn
 let khoiDem  = null;
 let khoiDong = null;   // vùng cuộn chứa các dòng người
 let xuLyNgoai = {};
@@ -108,6 +109,31 @@ let nutKhoiPhuc = null;
 let nutXoaHan   = null;
 
 /**
+ * CHẾ ĐỘ CHỌN của *Danh sách người* và *Các gia đình* (22/08/2026).
+ *
+ * --- Vì sao là một CHẾ ĐỘ BẬT/TẮT, không phải ô tích luôn hiện -----------
+ *
+ * Ở hai màn hình ấy, bấm một dòng đang có nghĩa là *"mở người/gia đình này ra
+ * xem"* — việc làm nhiều nhất, và là lý do người ta mở danh sách. Cho ô tích
+ * hiện thường trực thì mỗi dòng có HAI đích chạm trong một hàng cao 44px, đúng
+ * điều luật bước 24 cấm. Còn đổi hẳn cú bấm thành *chọn* thì mất luôn đường đi
+ * xem.
+ *
+ * Bật một chế độ giải được cả hai: ngoài chế độ, cả dòng mở ra xem; trong chế
+ * độ, cả dòng là chọn. Lúc nào cũng đúng MỘT đích chạm một dòng, và dòng nhắc
+ * dưới tiêu đề luôn nói rõ đang ở chế độ nào.
+ *
+ * ⚠ **THÙNG RÁC KHÔNG dùng biến này.** Ở đó chọn nhiều là chuyện thường trực —
+ * màn hình ấy chỉ có mỗi việc chọn — nên nó bật sẵn, không có gì để tắt.
+ *
+ * ⚠ **KHÔNG có dòng "Chọn tất cả" ở hai màn hình này**, khác hẳn thùng rác.
+ * Ở thùng rác, *chọn tất cả rồi khôi phục* là ca thật và không mất gì. Ở đây
+ * *chọn tất cả rồi cho vào thùng rác* là cả cuốn gia phả biến khỏi sơ đồ sau
+ * đúng hai cú chạm. Lấy lại được, nhưng một cú bấm nhầm không nên đắt đến thế.
+ */
+let dangChonNhieu = false;
+
+/**
  * Mở danh sách người.
  *
  * @param {{onXemHoSo?:function(string), onChonNguoi?:function(string),
@@ -120,6 +146,9 @@ let nutXoaHan   = null;
  *                        việc khác thì không phải lúc rẽ sang việc thứ hai.
  *        `onRaSoat`    — có thì chân mọc thêm nút *"Rà soát"*. Cùng luật với
  *                        `onThungRac`: chế độ CHỌN NGƯỜI không nhận.
+ *        `onGomRac`    — có thì chân mọc thêm nút *"Chọn nhiều để xoá"*, và
+ *                        bật được CHẾ ĐỘ CHỌN. Nhận mảng mã `P….` và `U….`;
+ *                        hộp xác nhận nằm ở `person-edit.chuyenVaoThungRac()`.
  *        `tuKhoa`      — chữ điền sẵn vào ô tìm.
  */
 export function openPersonList(xuLy = {}) {
@@ -149,7 +178,8 @@ export function openThungRac(xuLy = {}) {
 /**
  * Mở MÀN HÌNH CÁC GIA ĐÌNH — danh sách mọi CẶP trong gia phả (22/08/2026).
  *
- * @param {{onXemCap?:function(string), tuKhoa?:string}} [xuLy]
+ * @param {{onXemCap?:function(string), onGomRac?:function(string[]),
+ *          tuKhoa?:string}} [xuLy]
  *
  * --- Vì sao màn hình này phải có, và vì sao nó ở ĐÂY --------------------
  *
@@ -184,6 +214,7 @@ function moManHinh(che, xuLy) {
   xuLyNgoai = xuLy || {};
   cheDo     = che;
   daChon    = new Set();
+  dangChonNhieu = false;
 
   lopPhu = document.createElement('div');
   lopPhu.style.cssText =
@@ -220,16 +251,14 @@ function moManHinh(che, xuLy) {
                  : (laChonNguoi ? 'Chọn một người' : 'Danh sách người'));
   tieuDe.style.cssText = 'font-size:19px;font-weight:600;flex:0 0 auto';
 
-  const nhac = document.createElement('div');
-  nhac.textContent = laThungRac
-    ? 'Người và cặp đã xoá vẫn nằm nguyên trong file, chỉ mang một cái cờ. ' +
-      'Đánh dấu những dòng cần xử lý, rồi chọn Khôi phục hay Xoá hẳn.'
-    : (laGiaDinh
-        ? 'Mỗi dòng là một gia đình. Tìm được cả gia đình mà không sơ đồ nào ' +
-          'vẽ ra — kể cả cặp thừa do bấm nhầm.'
-        : 'Tìm được cả người chưa nối với ai — những người không sơ đồ nào vẽ ra.');
-  nhac.style.cssText =
+  // Dòng nhắc là chỗ DUY NHẤT nói ra rằng bấm một dòng bây giờ nghĩa là gì,
+  // nên nó phải đổi theo chế độ — nếu không thì người dùng bật chế độ chọn rồi
+  // bấm một cái tên và ngạc nhiên vì hồ sơ không mở ra.
+  khoiNhac = document.createElement('div');
+  khoiNhac.style.cssText =
     'font-size:13px;line-height:1.5;color:#8a8078;margin-top:4px;flex:0 0 auto';
+  veLaiNhac();
+  const nhac = khoiNhac;
 
   hop.append(tieuDe, nhac);
 
@@ -293,12 +322,52 @@ function moManHinh(che, xuLy) {
  * dòng — `flex-wrap`, không phải chữ viết tắt.
  */
 function veChan(laThungRac, laChonNguoi) {
+  // Dọn trước: `veChan` chạy lại mỗi lần đổi chế độ, và hai biến này còn trỏ
+  // vào nút của lần trước thì `capNhatChan` đi sửa một nút đã rời khỏi màn hình.
+  nutKhoiPhuc = null;
+  nutXoaHan   = null;
+
   const chan = document.createElement('div');
   chan.style.cssText =
     'display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;flex:0 0 auto;' +
     'justify-content:center';
 
-  if (!laThungRac && !laChonNguoi && xuLyNgoai.onThungRac) {
+  // --- CHẾ ĐỘ CHỌN: nút bật, rồi hai nút việc khi đã bật ----------------
+  //
+  // ⚠ Nút *Cho vào thùng rác* MỜ ĐI khi chưa chọn dòng nào, không biến mất.
+  // Cùng lý lẽ đã viết cho hai nút của thùng rác ngay dưới: cái mờ dạy đúng
+  // một điều ngay tại chỗ — *chọn gì đó trước đã* — còn cái biến mất thì
+  // không dạy gì cả.
+  // ⚠ Đọc thẳng `cheDo` chứ KHÔNG dùng `laChonNguoi`: nơi gọi gộp *màn gia
+  // đình* vào tham số ấy để chặn hai cửa Thùng rác / Rà soát, mà chế độ chọn
+  // thì màn gia đình PHẢI có. Gộp hai câu hỏi khác nhau vào một lá cờ chính là
+  // chỗ đã làm nút này biến mất khỏi màn gia đình ở bản đầu.
+  const chonNguoiThat = laChonNguoi && cheDo !== 'giaDinh';
+  if (!laThungRac && !chonNguoiThat && xuLyNgoai.onGomRac) {
+    if (!dangChonNhieu) {
+      const b = nutChan('Chọn nhiều để xoá', () => doiCheDoChon(true));
+      b.dataset.viec = 'bat-chon-nhieu';
+      chan.append(b);
+    } else {
+      nutXoaHan = nutChan('Cho vào thùng rác', () => {
+        if (daChon.size === 0) return;
+        const ds = [...daChon];
+        const chay = xuLyNgoai.onGomRac;
+        closePersonList();
+        chay(ds);
+      }, true);
+      nutXoaHan.dataset.viec = 'gom-rac';
+      chan.append(nutXoaHan);
+
+      const thoi = nutChan('Thôi', () => doiCheDoChon(false));
+      thoi.dataset.viec = 'thoi-chon';
+      chan.append(thoi);
+    }
+  }
+
+  // Ba cửa dưới đây KHÔNG mọc khi đang chọn: đang giữa một việc thì không phải
+  // lúc rẽ sang việc thứ hai — cùng luật đã chốt cho chế độ CHỌN NGƯỜI.
+  if (!laThungRac && !laChonNguoi && !dangChonNhieu && xuLyNgoai.onThungRac) {
     const rac = nutChan('Thùng rác (' + demThungRac() + ')', () => {
       const chay = xuLyNgoai.onThungRac;
       closePersonList();
@@ -308,7 +377,7 @@ function veChan(laThungRac, laChonNguoi) {
     chan.append(rac);
   }
 
-  if (!laThungRac && !laChonNguoi && xuLyNgoai.onRaSoat) {
+  if (!laThungRac && !laChonNguoi && !dangChonNhieu && xuLyNgoai.onRaSoat) {
     const ra = nutChan('Rà soát', () => {
       const chay = xuLyNgoai.onRaSoat;
       closePersonList();
@@ -343,7 +412,12 @@ function veChan(laThungRac, laChonNguoi) {
     chan.append(nutXoaHan);
   }
 
-  chan.append(nutChan('Đóng', () => closePersonList()));
+  // ⚠ Nút *Đóng* TẠM ẨN khi đang chọn, và đó là quyết định của ảnh chụp:
+  // ba nút một hàng trên khung 360px làm nhãn *Cho vào thùng rác (3)* vỡ
+  // thành hai dòng bên trong nút — cùng cái đã xảy ra với *Xoá vĩnh viễn*
+  // ở bước 38. Không mất đường ra: *Thôi* đưa về chế độ thường nơi *Đóng*
+  // hiện lại, mà phím Esc và cú bấm ra ngoài lớp phủ thì vẫn đóng như cũ.
+  if (!dangChonNhieu) chan.append(nutChan('Đóng', () => closePersonList()));
   return chan;
 }
 
@@ -368,11 +442,57 @@ function chayViecTrenLuaChon(laXoaHan) {
   chay(laXoaHan && chonHet ? null : ds);
 }
 
+/**
+ * Bật hoặc tắt chế độ chọn: dựng lại cả danh sách lẫn chân, vì cả hai đổi hẳn.
+ *
+ * Bỏ sạch tập đang chọn ở CẢ HAI chiều. Tắt rồi bật lại mà tập cũ còn nguyên
+ * là người dùng bấm *Cho vào thùng rác* trên một lựa chọn họ tưởng đã bỏ.
+ */
+function doiCheDoChon(bat) {
+  dangChonNhieu = !!bat;
+  daChon = new Set();
+  veLaiNhac();
+  veLaiDanhSach();
+  veLaiChan();
+}
+
+/**
+ * Vẽ lại CẢ hàng chân — dùng khi bật/tắt chế độ chọn, vì lúc ấy chân đổi hẳn
+ * bộ nút chứ không chỉ đổi nhãn.
+ */
+function veLaiChan() {
+  const hop = lopPhu && lopPhu.firstChild;
+  if (!hop) return;
+  const laThungRac  = cheDo === 'thungRac';
+  const laGiaDinh   = cheDo === 'giaDinh';
+  const laChonNguoi = !laThungRac && !laGiaDinh &&
+                      !xuLyNgoai.onXemHoSo && !!xuLyNgoai.onChonNguoi;
+  hop.replaceChild(veChan(laThungRac, laChonNguoi || laGiaDinh), hop.lastChild);
+  capNhatChan();
+}
+
+/** Dòng nhắc dưới tiêu đề, đổi theo chế độ đang bật. */
+function veLaiNhac() {
+  if (!khoiNhac) return;
+
+  khoiNhac.textContent = (cheDo === 'thungRac')
+    ? 'Người và cặp đã xoá vẫn nằm nguyên trong file, chỉ mang một cái cờ. ' +
+      'Đánh dấu những dòng cần xử lý, rồi chọn Khôi phục hay Xoá hẳn.'
+    : (dangChonNhieu
+        ? 'ĐANG CHỌN — bấm một dòng là đánh dấu, không mở ra nữa. Chọn xong thì ' +
+          'bấm "Cho vào thùng rác": xoá mềm, lấy lại được bất cứ lúc nào.'
+        : (cheDo === 'giaDinh'
+            ? 'Mỗi dòng là một gia đình. Tìm được cả gia đình mà không sơ đồ ' +
+              'nào vẽ ra — kể cả cặp thừa do bấm nhầm.'
+            : 'Tìm được cả người chưa nối với ai — những người không sơ đồ nào vẽ ra.'));
+}
+
 /** Nhãn hai nút việc chạy theo số đang chọn, và mờ đi khi chưa chọn gì. */
 function capNhatChan() {
   const n = daChon.size;
-  for (const [nut, chu] of [[nutKhoiPhuc, 'Khôi phục'], [nutXoaHan, 'Xoá hẳn']]) {
+  for (const nut of [nutKhoiPhuc, nutXoaHan]) {
     if (!nut) continue;
+    const chu = nut.dataset.nhan || nut.textContent;
     nut.textContent = n > 0 ? chu + ' (' + n + ')' : chu;
     nut.disabled = n === 0;
     nut.style.opacity = n === 0 ? '.4' : '1';
@@ -384,6 +504,9 @@ function nutChan(chu, chay, nguyHiem) {
   const nut = document.createElement('button');
   nut.type = 'button';
   nut.textContent = chu;
+  // Nhãn GỐC giữ riêng: `capNhatChan` nối thêm "(n)" vào nhãn, và đọc ngược
+  // từ `textContent` thì lần thứ hai sẽ ra "Xoá hẳn (2) (3)".
+  nut.dataset.nhan = chu;
   nut.style.cssText =
     'flex:1 1 0;height:42px;font-size:14px;font-family:inherit;' +
     'max-width:' + RONG_NUT_TOI_DA + ';' +
@@ -409,6 +532,7 @@ export function closePersonList() {
   if (lopPhu) lopPhu.remove();
   lopPhu    = null;
   oTim      = null;
+  khoiNhac  = null;
   khoiDem   = null;
   khoiDong  = null;
   xuLyNgoai = {};
@@ -416,6 +540,7 @@ export function closePersonList() {
   daChon    = new Set();
   nutKhoiPhuc = null;
   nutXoaHan   = null;
+  dangChonNhieu = false;
 }
 
 /** Danh sách có đang mở hay không — nơi gọi hỏi trước khi đóng cho đúng lúc. */
@@ -470,6 +595,8 @@ function veLaiDanhSach() {
     them.style.cssText = 'padding:10px 4px;font-size:12px;color:#8a8078';
     khoiDong.append(them);
   }
+
+  capNhatChan();
 }
 
 function moTaSoLuong(kq, tuKhoa) {
@@ -499,6 +626,23 @@ function moTaSoLuong(kq, tuKhoa) {
  * chịu kể tên nó ra.
  */
 function veDongGiaDinh(u) {
+  const tenCap = (Array.isArray(u.partners) ? u.partners : [])
+    .filter((id) => id && state.index.personById.has(id))
+    .map((id) => fullName(state.index.personById.get(id)))
+    .filter(coGiaTri);
+
+  if (dangChonNhieu) {
+    const soCon = (Array.isArray(u.children) ? u.children : [])
+      .filter((c) => c && c.personId && state.index.personById.has(c.personId)).length;
+    const dong = veDongTrong(
+      u.id,
+      tenCap.length > 0 ? tenCap.join('  và  ') : '(gia đình chưa có ai)',
+      [soCon > 0 ? soCon + ' con' : 'chưa có con', u.id].join('  ·  '),
+      tenCap.length > 0);
+    dong.setAttribute('data-ma', u.id);
+    return dong;
+  }
+
   const nut = document.createElement('button');
   nut.type = 'button';
   nut.setAttribute('data-ma', u.id);
@@ -507,15 +651,10 @@ function veDongGiaDinh(u) {
     'border:none;border-bottom:1px solid #f0ece5;font-family:inherit;color:inherit;' +
     'cursor:pointer;touch-action:manipulation';
 
-  const ten = (Array.isArray(u.partners) ? u.partners : [])
-    .filter((id) => id && state.index.personById.has(id))
-    .map((id) => fullName(state.index.personById.get(id)))
-    .filter(coGiaTri);
-
   const hang1 = document.createElement('div');
-  hang1.textContent = ten.length > 0 ? ten.join('  và  ') : '(gia đình chưa có ai)';
+  hang1.textContent = tenCap.length > 0 ? tenCap.join('  và  ') : '(gia đình chưa có ai)';
   hang1.style.cssText = 'font-size:15px;font-weight:600' +
-    (ten.length > 0 ? '' : ';color:#8a8078;font-style:italic');
+    (tenCap.length > 0 ? '' : ';color:#8a8078;font-style:italic');
   nut.append(hang1);
 
   const soCon = (Array.isArray(u.children) ? u.children : [])
@@ -573,6 +712,11 @@ function veDanhSachGiaDinh() {
   }
 
   for (const m of hop) khoiDong.append(veDongGiaDinh(m.u));
+
+  // Cùng lý do đã ghi ở nhánh Danh sách người: thiếu dòng này thì nút *Cho
+  // vào thùng rác* ở lại trạng thái mờ và DISABLED, mà nút disabled thì trình
+  // duyệt KHÔNG bắn cú bấm nào cả — chọn xong bấm không ăn, mà cũng không báo lỗi.
+  capNhatChan();
 }
 
 // ============================================================
@@ -750,6 +894,10 @@ function veDongTrong(ma, hangTren, hangDuoi, coTen) {
 
   const nut = document.createElement('button');
   nut.type = 'button';
+  // ⚠ KHÔNG gắn `data-ma` ở đây. Bốn nơi gọi tự gắn nhãn LOẠI của mình —
+  // `data-ma` cho một người, `data-cap` cho một cặp — và thùng rác phân biệt
+  // hai nhóm bằng đúng hai nhãn ấy. Gắn sẵn `data-ma` cho mọi dòng thì dòng
+  // CẶP cũng bị đếm là người.
   nut.setAttribute('aria-pressed', dangChon ? 'true' : 'false');
   nut.style.cssText =
     'display:flex;align-items:center;gap:9px;width:100%;text-align:left;' +
@@ -805,6 +953,16 @@ function tenTrongCay(personId) {
  *     là thứ làm người dùng tưởng máy hỏng.
  */
 function veMotDong(muc) {
+  // Đang chọn thì dùng đúng khuôn dòng của thùng rác — ô ✓ bên trái, cả dòng
+  // là một đích chạm, bấm là đánh dấu. Một khuôn cho cả ba màn hình.
+  if (dangChonNhieu) {
+    const dong = veDongTrong(muc.id, muc.ten !== '' ? muc.ten : '(chưa có tên)',
+                             [muc.id, muc.doiSong].filter(coGiaTri).join('  ·  '),
+                             muc.ten !== '');
+    dong.setAttribute('data-ma', muc.id);
+    return dong;
+  }
+
   const nut = document.createElement('button');
   nut.type = 'button';
   nut.setAttribute('data-ma', muc.id);

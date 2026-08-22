@@ -8,7 +8,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate,media,purge,render},
 //            services/{repo,gas}, utils/{graph,text,date,image,avatar}, config
-// Phiên bản: 1.24.0 · Cập nhật: 22/08/2026 18:40
+// Phiên bản: 1.25.0 · Cập nhật: 22/08/2026 20:10
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -318,6 +318,8 @@ function moForm(che, nguoi, chonNoi, xuLy) {
 
   hop.append(veDauForm(nguoi));
   hop.append(...veCacO(nguoi));
+
+  hop.append(...veKhoiXoaNguoi(nguoi));
 
   khoiKetQua = document.createElement('div');
   hop.append(khoiKetQua);
@@ -1884,6 +1886,69 @@ function veChan(nguoi, luuDuoc) {
 
   chan.append(nutLuu, huy);
   return chan;
+}
+
+/**
+ * Khối XOÁ ở CUỐI THÂN form sửa hồ sơ (22/08/2026).
+ *
+ * Chủ dự án: *"trong phần chỉnh sửa mỗi người, gia đình đang chọn cũng có thêm
+ * nút xoá"*. Trước hôm nay, xoá một người chỉ tới được từ vành vòng tròn.
+ *
+ * --- BA quyết định -------------------------------------------------------
+ *
+ * 1. **KHÔNG đặt nút này vào hàng chân cạnh nút *Lưu*.** Hàng chân của form
+ *    này DÍNH ĐÁY (`position:sticky`) và luôn nằm dưới ngón cái suốt lúc
+ *    người ta cuộn qua ba chục ô nhập. Một nút xoá nằm sẵn ở đó, cách nút
+ *    *Lưu* đúng 8px, là chuyện sớm muộn.
+ *
+ *    Chỗ đúng là CUỐI THÂN form: phải cuộn hết mọi ô mới tới, và ở đó nó đứng
+ *    một mình sau một đường kẻ.
+ *
+ * 2. **CHỈ mọc ở chế độ SỬA.** Form đang THÊM một người mới thì chưa có bản
+ *    ghi nào để mà xoá — nút *Huỷ* mới là thứ đúng, và nó đã có sẵn.
+ *
+ * 3. **Nó chỉ là CỬA, không phải việc.** Hộp xác nhận, phép đếm hậu quả và
+ *    đường hoàn tác đều nằm trong `xoaNguoi()` — luật 8, viết từ bước 21.
+ *    Chép một bản thứ hai ở đây là tới ngày một bản được vá còn bản kia không.
+ *
+ * @returns {HTMLElement[]} rỗng khi không phải chế độ sửa, hoặc không đủ quyền.
+ */
+function veKhoiXoaNguoi(nguoi) {
+  if (cheDo !== 'sua' || !nguoi || !nguoi.id) return [];
+  if (!suaDuoc()) return [];
+
+  const vach = document.createElement('div');
+  vach.style.cssText = 'margin-top:22px;border-top:1px solid #f0ebe4;padding-top:14px';
+
+  const nhan = document.createElement('div');
+  nhan.textContent = 'Xoá khỏi gia phả';
+  nhan.style.cssText =
+    'font-size:12px;font-weight:600;letter-spacing:.04em;color:#8a8078;margin-bottom:6px';
+
+  const giai = document.createElement('div');
+  giai.textContent =
+    'Xoá mềm: bản ghi vẫn nằm nguyên trong file, chỉ mang thêm một cái cờ, và ' +
+    'sơ đồ thôi vẽ ra. Lấy lại được bất cứ lúc nào từ thùng rác.';
+  giai.style.cssText = 'font-size:12px;line-height:1.5;color:#8a8078;margin-bottom:8px';
+
+  const nut = document.createElement('button');
+  nut.type = 'button';
+  nut.dataset.viec = 'xoa-nguoi';
+  nut.textContent = 'Xoá ' + tenNguoi(nguoi.id) + ' khỏi gia phả';
+  nut.style.cssText = KIEU_NUT_CHAN +
+    'width:100%;text-align:center;' +
+    'background:#fbf0ec;color:#8a3a2a;border:1px solid #f0d8d0;font-weight:600';
+
+  // ⚠ Giữ lấy `xuLyNgoai` TRƯỚC khi đóng form: `closePersonForm()` đặt nó về
+  // rỗng, nên đọc sau đó thì đường `onDaLuu` biến mất và sơ đồ không vẽ lại.
+  nut.addEventListener('click', () => {
+    const xuLy = xuLyNgoai;
+    closePersonForm();
+    xoaNguoi(nguoi.id, xuLy);
+  });
+
+  vach.append(nhan, giai, nut);
+  return [vach];
 }
 
 // ============================================================

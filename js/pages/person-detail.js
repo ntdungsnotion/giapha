@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
 //            utils/{text,date,image,avatar,glyph}, config
-// Phiên bản: 1.26.0 · Cập nhật: 22/08/2026 18:40
+// Phiên bản: 1.27.0 · Cập nhật: 22/08/2026 20:10
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -442,6 +442,7 @@ function veLaiTheDangMo() {
  * @param {string} unionId
  * @param {{onChonNguoi?:function(string), onSuaCap?:function(string,string),
  *          onThemCon?:function(string), onSapThuTu?:function(string),
+ *          onXoaCap?:function(string),
  *          onSuaCon?:function(string)}} [xuLy]
  *        `onSuaCon` nhận MÃ CẶP — nửa sau của việc 8 (22/08/2026). Nó là cửa
  *        vào ba việc mà trước nay không có chỗ nào làm được từ phía một GIA
@@ -756,7 +757,64 @@ function veChanTheCap(u, xuLy) {
   }
 
   chan.append(nutChan('Đóng', false, () => closePersonDetail()));
-  return chan;
+
+  const boc = document.createElement('div');
+  boc.append(chan);
+  const xoa = nutXoaCap(u, xuLy);
+  if (xoa) boc.append(xoa);
+  return boc;
+}
+
+/**
+ * Nút *Xoá gia đình này* — một DÒNG RIÊNG dưới hàng nút đi lại (22/08/2026).
+ *
+ * ⚠ **Không nhét vào hàng nút cùng với *Đóng*.** Hàng ấy toàn nút đi lại, và
+ * *Đóng* là nút người ta bấm theo phản xạ khi xem xong. Một nút đỏ ngồi cạnh
+ * nó là mời bấm nhầm — cùng luật đã giữ cho hàng chân của form sửa hồ sơ.
+ *
+ * ⚠ **Xoá một CẶP KHÔNG xoá ai cả.** Hai người vẫn nguyên trong gia phả, chỉ
+ * là thôi làm vợ chồng và thôi làm cha mẹ của những người con đứng dưới. Câu
+ * ấy phải nằm ngay trên nút, không đợi tới hộp xác nhận: người bấm cần biết
+ * trước khi bấm, chứ không phải sau.
+ *
+ * ⚠ Nó chỉ là CỬA. Hộp xác nhận và đường ghi nằm ở `chuyenVaoThungRac()` —
+ * cùng chỗ với mọi đường ghi khác, và nó đã biết nhận cả mã `U….`
+ *
+ * @returns {HTMLElement|null}
+ */
+function nutXoaCap(u, xuLy) {
+  if (!xuLy || !xuLy.onXoaCap) return null;
+  if (!suaDuoc()) return null;
+
+  const boc = document.createElement('div');
+  boc.style.cssText = 'margin-top:14px;border-top:1px solid #f0ebe4;padding-top:12px';
+
+  const soCon = (Array.isArray(u.children) ? u.children : [])
+    .filter((c) => c && c.personId && state.index.personById.has(c.personId)).length;
+
+  const giai = document.createElement('div');
+  giai.textContent = soCon > 0
+    ? 'Xoá gia đình này KHÔNG xoá ai cả — hai người vẫn nguyên trong gia phả, ' +
+      'chỉ thôi làm vợ chồng và thôi làm cha mẹ của ' + soCon + ' người con ' +
+      'đứng dưới. Lấy lại được từ thùng rác.'
+    : 'Xoá gia đình này KHÔNG xoá ai cả — hai người vẫn nguyên trong gia phả, ' +
+      'chỉ thôi làm vợ chồng. Lấy lại được từ thùng rác.';
+  giai.style.cssText = 'font-size:12px;line-height:1.5;color:#8a8078;margin-bottom:8px';
+
+  const nut = document.createElement('button');
+  nut.type = 'button';
+  nut.dataset.viec = 'xoa-cap';
+  nut.textContent = 'Xoá gia đình này khỏi gia phả';
+  nut.style.cssText =
+    'display:block;width:100%;min-height:44px;padding:8px 14px;font-size:14px;' +
+    'font-family:inherit;text-align:center;border-radius:9px;cursor:pointer;' +
+    'touch-action:manipulation;' +
+    'background:#fbf0ec;color:#8a3a2a;border:1px solid #f0d8d0;font-weight:600';
+
+  nut.addEventListener('click', () => { closePersonDetail(); xuLy.onXoaCap(u.id); });
+
+  boc.append(giai, nut);
+  return boc;
 }
 
 // ============================================================
