@@ -6,7 +6,7 @@
 //            utils/{text,glyph}, config,
 //            pages/{person-detail,person-edit,person-list,review,settings,
 //            backup}
-// Phiên bản: 1.26.0 · Cập nhật: 22/08/2026 15:40
+// Phiên bản: 1.27.0 · Cập nhật: 22/08/2026 17:10
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -72,7 +72,7 @@ import { openPersonMenu, openPersonDetail, openUnionDetail,
          closePersonDetail } from './person-detail.js';
 import { openPersonForm, closePersonForm, quickAddChild, quickAddParent,
          quickAddSpouse, linkExisting, goNoiNguoi, xoaNguoi,
-         openUnionForm, openSapThuTu, openSuaCon,
+         openUnionForm, openSapThuTu, openSuaCon, openFamilyForm,
          khoiPhucNhieu, donThungRac,
          chuyenVaoThungRac } from './person-edit.js';
 import { openPersonList, closePersonList, openThungRac } from './person-list.js';
@@ -810,7 +810,7 @@ function moDanhSachNguoi() {
   // cặp. Không lời báo lỗi nào, chỉ là một câu hỏi thừa.
   const dongTruoc = (fn) => (...a) => { closePersonList(); fn(...a); };
 
-  // Bọc CẢ MƯỜI MỘT, không bọc bốn rồi để những cái mới đi thẳng: bốn việc của bước 26
+  // Bọc CẢ MƯỜI HAI, không bọc bốn rồi để những cái mới đi thẳng: bốn việc của bước 26
   // cũng mở hộp riêng của chúng, và cái danh sách còn nằm đè lên trên vẫn che
   // mất đúng kết quả người dùng vừa gây ra.
   //
@@ -833,6 +833,7 @@ function moDanhSachNguoi() {
       onSuaCap:     dongTruoc(goc.onSuaCap),
       onSapThuTu:   dongTruoc(goc.onSapThuTu),
       onSuaCon:     dongTruoc(goc.onSuaCon),
+      onSuaGiaDinh: dongTruoc(goc.onSuaGiaDinh),
     }),
   });
 }
@@ -925,7 +926,7 @@ function moTheNguoiTrungTam() {
 }
 
 /**
- * MƯỜI MỘT việc thẻ thông tin báo ngược ra ngoài. Gom một chỗ để hai nơi mở
+ * MƯỜI HAI việc thẻ thông tin báo ngược ra ngoài. Gom một chỗ để hai nơi mở
  * thẻ — chạm giữ và nút ⓘ — không bao giờ mọc ra hai bộ nút khác nhau.
  *
  * ⚠ Sáu trong số ấy là sáu mục của MENU VÒNG TRÒN, và cả sáu đều phải có mặt
@@ -951,7 +952,24 @@ function xuLyThe() {
     onSuaCap:     moFormSuaCap,
     onSapThuTu:   moSapCacCon,
     onSuaCon:     moSuaCon,
+    onSuaGiaDinh: moFormGiaDinh,
   };
+}
+
+/**
+ * Màn hình *Sửa thông tin gia đình* — cửa thứ hai của thẻ người (22/08/2026).
+ *
+ * Nhận CẢ BỘ `xuLyThe()` chứ không chỉ `onDaLuu`: bên trong màn hình ấy có
+ * những đường dẫn ngược ra ngoài — mở hồ sơ một người (`onSuaNguoi`), thêm con
+ * (`onThemCon`), chọn cha mẹ khi chưa có (`onKetNoi`). Truyền thiếu cái nào
+ * thì đúng cái mục ấy không mọc ra, và người dùng gặp một khoảng trống không
+ * ai giải thích.
+ *
+ * `refresh()` chứ không dời người trung tâm: sửa quan hệ đổi HÌNH rất nhiều,
+ * và người dùng cần nhìn thấy sơ đồ quanh CHÍNH người họ đang sửa đổi đi.
+ */
+function moFormGiaDinh(personId) {
+  openFamilyForm(personId, Object.assign(xuLyThe(), { onDaLuu: () => refresh() }));
 }
 
 /**

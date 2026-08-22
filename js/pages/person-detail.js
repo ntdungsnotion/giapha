@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
 //            utils/{text,date,image,avatar,glyph}, config
-// Phiên bản: 1.24.0 · Cập nhật: 22/08/2026 15:40
+// Phiên bản: 1.25.0 · Cập nhật: 22/08/2026 17:10
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -168,7 +168,11 @@ const KIEU_HOP =
  *          onThemChaMe?:function(string,string), onThemBanDoi?:function(string),
  *          onThemCon?:function({unionId?:string, chaMeId?:string}),
  *          onKetNoi?:function(string), onGoNoi?:function(string),
- *          onXoaNguoi?:function(string), onSuaCap?:function(string)}} [xuLy]
+ *          onXoaNguoi?:function(string), onSuaCap?:function(string),
+ *          onSuaGiaDinh?:function(string)}} [xuLy]
+ *        `onSuaGiaDinh` — cửa THỨ HAI của chân thẻ (22/08/2026): màn hình
+ *                       *Sửa thông tin gia đình*, nơi cha mẹ · vợ/chồng · con
+ *                       cái của người này nằm chung một chỗ và sửa được ngay.
  *        `onChonNguoi`  bấm một người trong phần quan hệ, hoặc nút "Đưa ra giữa
  *                       sơ đồ". Thẻ tự đóng trước khi gọi.
  *        `onSuaNguoi`   nút *"Sửa hồ sơ"* dưới THẺ (không còn ở vòng tròn).
@@ -1290,17 +1294,38 @@ function veChanThe(p, xuLy) {
   const chan = document.createElement('div');
   chan.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:18px';
 
-  // "Sửa hồ sơ" ở ĐÂY chứ không ở vòng tròn (chủ dự án chốt 20/08/2026). Sửa
-  // ngày sinh, sửa tên, sửa ghi chú đều là *sửa cái đang đọc* — nên chỗ đúng
-  // của nó là ngay dưới thứ nó sắp sửa, không phải một góc của vòng tròn cách
-  // đó hai cú chạm. Vòng tròn giữ lại đúng những việc đụng tới QUAN HỆ.
+  // --- HAI CỬA SỬA, ĐỨNG CẠNH NHAU (chủ dự án chốt 22/08/2026) ----------
+  //
+  // *"khi bấm thông tin 1 người từ menu vòng tròn sẽ cần 2 nút"*. Trước hôm nay
+  // thẻ này chỉ có MỘT nút sửa — *Sửa hồ sơ* — còn mọi việc đụng tới QUAN HỆ
+  // thì nằm sau nút *Các việc khác* → vòng tròn → Kết nối / Gỡ nối. Bốn cú chạm
+  // để tới, và tới nơi thì hai mục ấy lại hỏi từ phía MỘT CON NGƯỜI chứ không
+  // từ phía gia đình.
+  //
+  // Hai nút này chia đôi đúng theo cách người ta nghĩ về một người trong gia
+  // phả, và ranh giới ấy trùng khít với ranh giới của DỮ LIỆU:
+  //
+  //   · *Sửa thông tin cá nhân* → bản ghi NGƯỜI  — tên, ngày sinh, ảnh, ghi chú
+  //   · *Sửa thông tin gia đình* → bản ghi CẶP    — cha mẹ, vợ/chồng, con cái
+  //
+  // ⚠ Tên cũ *"Sửa hồ sơ"* bỏ hẳn: đứng cạnh *"Sửa thông tin gia đình"* thì
+  // "hồ sơ" không nói ra được rằng nó KHÔNG đụng tới quan hệ.
   if (xuLy.onSuaNguoi) {
     chan.append(nutChan(
-      coQuyen ? 'Sửa hồ sơ' : 'Sửa hồ sơ — bạn chỉ có quyền xem',
+      coQuyen ? 'Sửa thông tin cá nhân' : 'Sửa thông tin cá nhân — bạn chỉ có quyền xem',
       false,
       () => { closePersonDetail(); xuLy.onSuaNguoi(p.id); },
       !coQuyen,
     ));
+  }
+
+  // ⚠ Nút này KHÔNG đòi `suaDuoc()` để mọc ra, khác nút bên cạnh: màn hình gia
+  // đình cũng là chỗ ĐỌC ra người này đứng ở những nhà nào, và người chỉ có
+  // quyền xem vẫn phải xem được điều đó. Bên trong nó, từng việc sửa mới hỏi
+  // quyền — cùng lối đã chốt cho `nutXemGiaDinh`.
+  if (xuLy.onSuaGiaDinh) {
+    chan.append(nutChan('Sửa thông tin gia đình', false,
+      () => { closePersonDetail(); xuLy.onSuaGiaDinh(p.id); }));
   }
 
   // Đường quay về vòng tròn. KHÔNG gọi là "Sửa gia phả" nữa: đứng cạnh
