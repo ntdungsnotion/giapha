@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
 //            utils/{text,date,image,avatar,glyph}, config
-// Phiên bản: 1.25.0 · Cập nhật: 22/08/2026 17:10
+// Phiên bản: 1.26.0 · Cập nhật: 22/08/2026 18:40
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -697,7 +697,7 @@ function nutThemConVaoCap(u, xuLy) {
  *
  * ⚠ **Một nút RIÊNG một dòng, không phải một đích chạm thứ hai nhét vào dòng
  * tên đứa bé.** Hai đích chạm sát nhau trong một dòng cao 44px là mời bấm nhầm
- * — cùng luật đã chốt ở `pages/person-list.js` và nhắc lại ở `nutXemGiaDinh`.
+ * — cùng luật đã chốt ở `pages/person-list.js`.
  * Dòng tên đứa bé giữ nguyên việc cũ của nó: mở hồ sơ người ấy.
  *
  * ⚠ **KHÔNG cho nó lên vành vòng tròn**, cùng lý lẽ đã viết ba lần trong file
@@ -746,7 +746,8 @@ function veChanTheCap(u, xuLy) {
   }
 
   // Chỉ mọc khi có ÍT NHẤT HAI người con — một mình thì không có thứ tự nào để
-  // sắp, cùng đúng điều kiện của nutSapThuTu trên thẻ người.
+  // sắp. Nút cùng điều kiện trên thẻ NGƯỜI đã gỡ 22/08/2026; thẻ GIA ĐÌNH
+  // này nay là cửa nhìn thấy được duy nhất của màn hình Sắp thứ tự.
   const soCon = (Array.isArray(u.children) ? u.children : [])
     .filter((c) => c && c.personId && state.index.personById.has(c.personId)).length;
   if (suaDuoc() && xuLy.onSapThuTu && soCon >= 2 && mocId) {
@@ -1117,11 +1118,25 @@ function veQuanHe(index, p, xuLy) {
     }
   }
 
+  // --- THẺ NGƯỜI CHỈ CÒN ĐỌC (chủ dự án chốt 22/08/2026) ----------------
+  //
+  // Hai nút *"Xem gia đình với…"* và *"Sắp thứ tự các con"* đã GỠ khỏi đây.
+  // Chúng nói lại đúng những điều mà màn hình *Sửa thông tin gia đình* vừa nói,
+  // và ba chỗ cùng kể một chuyện là đúng thứ làm app khó dùng.
+  //
+  // Ba nhóm quan hệ ở dưới GIỮ NGUYÊN, và giữ cả cú bấm: bấm một cái tên là đi
+  // tới người ấy. Đó là ĐỌC — đúng việc của thẻ này. Thứ bị gỡ chỉ là hai cửa
+  // dẫn sang việc SỬA.
+  //
+  // ⚠ HAI ĐƯỜNG ẤY KHÔNG MẤT, CHÚNG DỜI CHỖ. Gỡ suông là mất thật hai thứ:
+  // ngày cưới / ảnh cưới / ghi chú của một cặp (chỉ còn tới được từ màn Rà
+  // soát), và cửa nhìn thấy được của cử chỉ CHẠM GIỮ — mà luật chat 1.6 nói
+  // một cử chỉ ẩn phải LUÔN có một cái nút đi kèm. Cả hai nay nằm trong màn
+  // hình gia đình, ở nút *"Ngày cưới · ảnh cưới · sắp thứ tự các con"* của
+  // từng khối cặp.
   ra.push(...veNhom('Cha mẹ', chaMe, xuLy));
-  // MỘT NÚT MỘT CẶP — quyết định 1 của thẻ gia đình. Người có hai đời vợ thì
-  // hai dòng, mỗi dòng gọi thẳng tên người kia; không có hộp nào hỏi "cặp nào".
-  ra.push(...veNhom('Vợ/chồng', banDoi, xuLy, ...nutXemGiaDinh(index, p, xuLy)));
-  ra.push(...veNhom('Con', con, xuLy, nutSapThuTu(p, xuLy)));
+  ra.push(...veNhom('Vợ/chồng', banDoi, xuLy));
+  ra.push(...veNhom('Con', con, xuLy));
   return ra;
 }
 
@@ -1141,97 +1156,6 @@ function themNguoi(vao, index, id, ghiChu) {
   if (!id || !index.personById.has(id)) return;
   if (vao.some((m) => m.id === id)) return;   // hai bộ cha mẹ chung một người
   vao.push({ id, ghiChu: ghiChu || '' });
-}
-
-/**
- * Nút *"Sửa cặp"*, đứng ngay dưới danh sách vợ/chồng (bước 29).
- *
- * ⚠ **KHÔNG cho nó lên vành vòng tròn.** Vành đã co từ tám mục xuống sáu ở
- * bước 26, và co là để mỗi mục có 60° thay vì 45° — thêm mục thứ bảy là trả
- * lại đúng cái hỏng vừa sửa xong (nhãn của mục này đè lên vòng tròn của mục
- * kế). Chỗ đúng của nó là ngay dưới thứ nó sắp sửa, cùng một lý do đã đưa
- * *"Sửa hồ sơ"* xuống dưới THẺ.
- *
- * ⚠ Và nó là một nút RIÊNG một dòng, không phải một đích chạm thứ hai nhét vào
- * dòng tên người: hai đích chạm sát nhau trong một dòng cao 44px là mời bấm
- * nhầm (luật đã chốt ở `pages/person-list.js`).
- *
- * @returns {HTMLElement|null} null khi nơi gọi không nhận việc này — lúc ấy
- *          nhóm Vợ/chồng hiện như cũ, không có nút chết nào mọc ra.
- */
-function nutXemGiaDinh(index, p, xuLy) {
-  const ds = getPartnerUnions(index, p.id);
-  if (ds.length === 0) return [];
-
-  // ⚠ KHÔNG đòi `suaDuoc()`. Đây là cửa vào một màn hình ĐỌC, khác hẳn nút
-  // *"Sửa cặp"* mà nó thay thế: người chỉ có quyền xem vẫn phải xem được ngày
-  // cưới và các con của một gia đình. Nút SỬA nằm trong thẻ ấy, và chính nó
-  // mới hỏi `suaDuoc()`.
-  return ds.map((u) => {
-    const kia = (Array.isArray(u.partners) ? u.partners : [])
-      .filter((id) => id && id !== p.id && index.personById.has(id))
-      .map((id) => fullName(index.personById.get(id)))
-      .join('  và  ');
-
-    const nut = document.createElement('button');
-    nut.type = 'button';
-    nut.dataset.viec = 'xem-gia-dinh';
-    nut.dataset.cap = u.id;
-    nut.style.cssText =
-      'display:block;width:100%;text-align:left;padding:9px 11px;font-family:inherit;' +
-      'font-size:13px;color:#8a8078;border:1px dashed #e6e0d8;border-radius:8px;' +
-      'background:none;cursor:pointer;touch-action:manipulation';
-    nut.textContent = coGiaTri(kia)
-      ? 'Xem gia đình với ' + kia + ' — ngày cưới, các con'
-      : 'Xem gia đình này — ngày cưới, các con';
-
-    nut.addEventListener('click', () => openUnionDetail(u.id, xuLy));
-    return nut;
-  });
-}
-
-/**
- * Nút *"Sắp thứ tự các con"*, đứng ngay dưới danh sách con (21/08/2026).
- *
- * ⚠ **Đây là CÁI NÚT ĐI KÈM cử chỉ ẩn.** Chạm giữ trên một ô sơ đồ bật màn
- * hình sắp thứ tự, mà chạm giữ thì không có gì trên màn hình nói ra rằng nó tồn
- * tại — luật chat 1.6: một cử chỉ ẩn phải luôn có một cửa nhìn thấy được.
- *
- * ⚠ **KHÔNG cho nó lên vành vòng tròn**, cùng lý lẽ đã viết ở `nutSuaCap`:
- * vành co từ tám mục xuống sáu ở bước 26 để mỗi mục có 60° thay vì 45°, và mục
- * thứ bảy là trả lại đúng cái hỏng vừa sửa xong. Chỗ đúng của nó là ngay dưới
- * thứ nó sắp xếp.
- *
- * ⚠ **Chỉ mọc khi có từ hai người con trở lên.** Một nút bấm vào chỉ để nghe
- * "không có gì để sắp" là một nút chết — đúng thứ điểm dừng của bước 26 cấm.
- * Người con một thì cửa duy nhất là chạm giữ, và ở đó app trả lời bằng chữ.
- *
- * @returns {HTMLElement|null}
- */
-function nutSapThuTu(p, xuLy) {
-  if (!xuLy || !xuLy.onSapThuTu) return null;
-  if (!suaDuoc()) return null;   // chỉ có quyền xem thì không mọc nút sửa
-
-  const coHang = getPartnerUnions(state.index, p.id).some((u) =>
-    (Array.isArray(u.children) ? u.children : [])
-      .filter((c) => c && c.personId && state.index.personById.has(c.personId))
-      .length >= 2);
-  if (!coHang) return null;
-
-  const nut = document.createElement('button');
-  nut.type = 'button';
-  nut.dataset.viec = 'sap-thu-tu';
-  nut.style.cssText =
-    'display:block;width:100%;text-align:left;padding:9px 11px;font-family:inherit;' +
-    'font-size:13px;color:#8a8078;border:1px dashed #e6e0d8;border-radius:8px;' +
-    'background:none;cursor:pointer;touch-action:manipulation';
-  nut.textContent = 'Sắp thứ tự các con — ai là anh, ai là em';
-
-  nut.addEventListener('click', () => {
-    closePersonDetail();
-    xuLy.onSapThuTu(p.id);
-  });
-  return nut;
 }
 
 function veNhom(tieuDe, danhSach, xuLy, ...cacNutPhu) {
@@ -1322,7 +1246,7 @@ function veChanThe(p, xuLy) {
   // ⚠ Nút này KHÔNG đòi `suaDuoc()` để mọc ra, khác nút bên cạnh: màn hình gia
   // đình cũng là chỗ ĐỌC ra người này đứng ở những nhà nào, và người chỉ có
   // quyền xem vẫn phải xem được điều đó. Bên trong nó, từng việc sửa mới hỏi
-  // quyền — cùng lối đã chốt cho `nutXemGiaDinh`.
+  // quyền — cùng lối đã chốt cho thẻ gia đình.
   if (xuLy.onSuaGiaDinh) {
     chan.append(nutChan('Sửa thông tin gia đình', false,
       () => { closePersonDetail(); xuLy.onSuaGiaDinh(p.id); }));

@@ -8,7 +8,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate,media,purge,render},
 //            services/{repo,gas}, utils/{graph,text,date,image,avatar}, config
-// Phiên bản: 1.23.0 · Cập nhật: 22/08/2026 17:10
+// Phiên bản: 1.24.0 · Cập nhật: 22/08/2026 18:40
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -5288,7 +5288,11 @@ async function chayChuyenCon(unionId, conId, capMoi, xuLy, chan) {
  * @param {string} personId
  * @param {{onDaLuu?:function(string), onThemCon?:function(string),
  *          onKetNoi?:function(string), onSuaNguoi?:function(string),
- *          onChonNguoi?:function(string)}} [xuLy]
+ *          onChonNguoi?:function(string), onXemCap?:function(string)}} [xuLy]
+ *        `onXemCap` — mở THẺ GIA ĐÌNH của một cặp. Từ 22/08/2026 đây là cửa
+ *        DUY NHẤT đi thường ngày tới ngày cưới · ảnh cưới · ghi chú của cặp, và
+ *        tới màn hình *Sắp thứ tự các con*: hai nút cũ trên thẻ NGƯỜI đã gỡ đi
+ *        vì chúng nói lại đúng những điều màn hình này nói.
  */
 export function openFamilyForm(personId, xuLy = {}) {
   const index = state.index;
@@ -5483,6 +5487,7 @@ function veKhoiChaMe(u, personId, xuLy) {
       () => moHopViecCon(u.id, c.personId, xuLyCon(personId, xuLy))));
   }
 
+  boc.append(...nutTheCap(u, xuLy));
   return boc;
 }
 
@@ -5524,7 +5529,36 @@ function veKhoiVoChong(u, personId, xuLy) {
       () => { closePersonForm(); xuLy.onThemCon(u.id); }));
   }
 
+  boc.append(...nutTheCap(u, xuLy));
   return boc;
+}
+
+/**
+ * Cửa sang THẺ GIA ĐÌNH của một cặp — nơi có ngày cưới, ảnh cưới, ghi chú, và
+ * nút *Sắp thứ tự các con*.
+ *
+ * ⚠ **Nút này gánh HAI đường vừa gỡ khỏi thẻ người** (22/08/2026), nên nó
+ * KHÔNG được biến mất khi thiếu quyền sửa: thẻ gia đình là màn hình ĐỌC, và
+ * ngày cưới là thứ người chỉ có quyền xem vẫn phải xem được.
+ *
+ * ⚠ Và nó là cửa nhìn thấy được của cử chỉ CHẠM GIỮ trên ô sơ đồ (luật chat
+ * 1.6). Bỏ nó đi là để *Sắp thứ tự các con* chỉ còn tới được bằng một cử chỉ
+ * mà không chỗ nào trên màn hình nói ra rằng nó tồn tại.
+ *
+ * @returns {HTMLElement[]} rỗng khi nơi gọi không nhận việc này — không mọc ra
+ *          nút chết nào.
+ */
+function nutTheCap(u, xuLy) {
+  if (!xuLy || !xuLy.onXemCap) return [];
+
+  const soCon = (Array.isArray(u.children) ? u.children : [])
+    .filter((c) => c && c.personId && state.index.personById.has(c.personId)).length;
+
+  return [nutGachDut(
+    soCon >= 2
+      ? 'Ngày cưới · ảnh cưới · sắp thứ tự các con →'
+      : 'Ngày cưới · ảnh cưới · ghi chú của gia đình này →',
+    () => { closePersonForm(); xuLy.onXemCap(u.id); })];
 }
 
 function veKhoiChuaCoChaMe(personId, xuLy) {

@@ -1,10 +1,11 @@
 // ============================================================
 // giapha · js/pages/person-list.js
 // Vai trò  : MÀN HÌNH DANH SÁCH NGƯỜI — cửa vào KHÔNG đi qua sơ đồ
+//            + MÀN HÌNH CÁC GIA ĐÌNH — cùng câu hỏi ấy, hỏi về CẶP
 //            + MÀN HÌNH THÙNG RÁC — đường quay lại của người và cặp đã xoá
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/person, domains/union, utils/text, config
-// Phiên bản: 1.5.0 · Cập nhật: 21/08/2026 23:10
+// Phiên bản: 1.6.0 · Cập nhật: 22/08/2026 18:40
 // ============================================================
 //
 // --- Vì sao màn hình này phải có (bước 24) ------------------------------
@@ -83,7 +84,7 @@
 import { state } from '../state.js';
 import { searchPersons } from '../domains/person.js';
 import { listDeletedUnions } from '../domains/union.js';
-import { fullName, coGiaTri } from '../utils/text.js';
+import { fullName, coGiaTri, removeDiacritics } from '../utils/text.js';
 import { rongHop, caoHop, leLopPhu, RONG_NUT_TOI_DA } from '../config.js';
 
 /** Nhiều hơn mức này thì không vẽ hết — xem `conThua` trong `searchPersons`. */
@@ -95,7 +96,7 @@ let khoiDem  = null;
 let khoiDong = null;   // vùng cuộn chứa các dòng người
 let xuLyNgoai = {};
 let ngheBanPhim = null;
-let cheDo    = 'danhSach';   // 'danhSach' | 'thungRac'
+let cheDo    = 'danhSach';   // 'danhSach' | 'giaDinh' | 'thungRac'
 
 /**
  * Mã đang được đánh dấu trong thùng rác. Người (`P…`) và cặp (`U…`) chung một
@@ -146,6 +147,31 @@ export function openThungRac(xuLy = {}) {
 }
 
 /**
+ * Mở MÀN HÌNH CÁC GIA ĐÌNH — danh sách mọi CẶP trong gia phả (22/08/2026).
+ *
+ * @param {{onXemCap?:function(string), tuKhoa?:string}} [xuLy]
+ *
+ * --- Vì sao màn hình này phải có, và vì sao nó ở ĐÂY --------------------
+ *
+ * Cùng một lỗ hổng đã sinh ra màn hình *Danh sách người* ở bước 24, chỉ là hỏi
+ * về CẶP: app đang coi *"được vẽ"* là *"tồn tại"*. Sơ đồ vẽ quanh một người
+ * trung tâm, nên một cặp mà cả hai người đều nằm ngoài vùng vẽ thì không màn
+ * hình nào kể tên nó ra — kể cả cặp thừa do một lần bấm nhầm nút *+ Vợ chồng*.
+ *
+ * Ở đây chứ không phải một file mới, vì nó dùng lại NGUYÊN cái khung của hai
+ * màn hình kia: hộp cao chốt cứng, ô tìm đứng yên khi gõ, vùng cuộn riêng, chân
+ * biết xuống dòng. Ba thứ ấy đều là những chỗ đã sập một lần rồi mới sửa được
+ * (xem ghi chú `height` CHỐT CỨNG ở `moManHinh`) — chép sang file khác là chép
+ * luôn cơ hội để chúng trôi lệch nhau.
+ *
+ * ⚠ **Cặp ĐÃ XOÁ MỀM không có mặt ở đây.** Chỗ của chúng là THÙNG RÁC, và một
+ * cặp hiện ở cả hai nơi thì người dùng không đoán được bấm vào thì được gì.
+ */
+export function openDanhSachGiaDinh(xuLy = {}) {
+  moManHinh('giaDinh', xuLy);
+}
+
+/**
  * Thùng rác có trống hay không — dùng để quyết định nút *Dọn thùng rác* có mọc
  * ra hay không. Đếm trên bản ghi, cùng phép với `demThungRac()`.
  */
@@ -183,19 +209,25 @@ function moManHinh(che, xuLy) {
     'box-shadow:0 8px 32px rgba(42,38,34,.28)';
 
   const laThungRac  = cheDo === 'thungRac';
-  const laChonNguoi = !laThungRac && !xuLyNgoai.onXemHoSo && !!xuLyNgoai.onChonNguoi;
+  const laGiaDinh   = cheDo === 'giaDinh';
+  const laChonNguoi = !laThungRac && !laGiaDinh &&
+                      !xuLyNgoai.onXemHoSo && !!xuLyNgoai.onChonNguoi;
 
   const tieuDe = document.createElement('div');
   tieuDe.textContent = laThungRac
     ? 'Thùng rác'
-    : (laChonNguoi ? 'Chọn một người' : 'Danh sách người');
+    : (laGiaDinh ? 'Các gia đình'
+                 : (laChonNguoi ? 'Chọn một người' : 'Danh sách người'));
   tieuDe.style.cssText = 'font-size:19px;font-weight:600;flex:0 0 auto';
 
   const nhac = document.createElement('div');
   nhac.textContent = laThungRac
     ? 'Người và cặp đã xoá vẫn nằm nguyên trong file, chỉ mang một cái cờ. ' +
       'Đánh dấu những dòng cần xử lý, rồi chọn Khôi phục hay Xoá hẳn.'
-    : 'Tìm được cả người chưa nối với ai — những người không sơ đồ nào vẽ ra.';
+    : (laGiaDinh
+        ? 'Mỗi dòng là một gia đình. Tìm được cả gia đình mà không sơ đồ nào ' +
+          'vẽ ra — kể cả cặp thừa do bấm nhầm.'
+        : 'Tìm được cả người chưa nối với ai — những người không sơ đồ nào vẽ ra.');
   nhac.style.cssText =
     'font-size:13px;line-height:1.5;color:#8a8078;margin-top:4px;flex:0 0 auto';
 
@@ -208,8 +240,11 @@ function moManHinh(che, xuLy) {
     oTim = document.createElement('input');
     oTim.type = 'search';
     oTim.value = typeof xuLyNgoai.tuKhoa === 'string' ? xuLyNgoai.tuKhoa : '';
-    oTim.placeholder = 'Gõ tên, hoặc mã như P0012';
-    oTim.setAttribute('aria-label', 'Tìm người theo tên hoặc theo mã');
+    oTim.placeholder = laGiaDinh ? 'Gõ tên một người, hoặc mã như U0008'
+                                 : 'Gõ tên, hoặc mã như P0012';
+    oTim.setAttribute('aria-label', laGiaDinh
+      ? 'Tìm gia đình theo tên một người trong nhà, hoặc theo mã cặp'
+      : 'Tìm người theo tên hoặc theo mã');
     oTim.autocomplete = 'off';
     oTim.style.cssText =
       'margin-top:12px;flex:0 0 auto;width:100%;box-sizing:border-box;height:44px;' +
@@ -228,7 +263,7 @@ function moManHinh(che, xuLy) {
     'flex:1 1 auto;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;' +
     'border-top:1px solid #f0ece5';
 
-  hop.append(khoiDem, khoiDong, veChan(laThungRac, laChonNguoi));
+  hop.append(khoiDem, khoiDong, veChan(laThungRac, laChonNguoi || laGiaDinh));
 
   lopPhu.addEventListener('click', (e) => { if (e.target === lopPhu) closePersonList(); });
   lopPhu.append(hop);
@@ -411,6 +446,7 @@ function veLaiDanhSach() {
   }
 
   if (cheDo === 'thungRac') { veThungRac(); return; }
+  if (cheDo === 'giaDinh')  { veDanhSachGiaDinh(); return; }
 
   const tuKhoa = oTim ? oTim.value : '';
   const kq = searchPersons(state.tree, tuKhoa, { toiDa: TOI_DA });
@@ -439,6 +475,104 @@ function veLaiDanhSach() {
 function moTaSoLuong(kq, tuKhoa) {
   if (String(tuKhoa).trim() === '') return 'Gia phả có ' + kq.tongNguoi + ' người.';
   return kq.tongKhop + ' người khớp, trên tổng số ' + kq.tongNguoi + '.';
+}
+
+// ============================================================
+// CÁC GIA ĐÌNH (22/08/2026)
+// ============================================================
+//
+// ⚠ **Tìm theo TÊN NGƯỜI, không phải tên cặp** — một cặp không có tên. Gõ
+// *"Dũng"* ra mọi gia đình có người tên Dũng đứng trong đó, ở bất kỳ vai nào.
+// Đó đúng là cách người ta đi tìm một gia đình: nhớ một người trong nhà.
+//
+// ⚠ **KHÔNG cắt danh sách như bên Danh sách người.** Số cặp luôn nhỏ hơn số
+// người (bản làm việc: 26 cặp / 65 người), và một cặp chiếm một dòng thấp hơn
+// một người vì không có ảnh. Cắt thì phải thêm một dòng *"còn N nữa"* để giải
+// thích, mà nó dài gần bằng phần tiết kiệm được.
+
+/**
+ * Một dòng của màn hình Các gia đình.
+ *
+ * ⚠ Cặp MỘT NGƯỜI vẫn hiện ra, và không có chỗ trống nào giữ chỗ cho người
+ * chưa có — `U0024` là ca thật. Cặp RỖNG (không ai trong `partners`) cũng
+ * hiện: nó gần như luôn là rác, và thứ duy nhất nhặt được rác là một màn hình
+ * chịu kể tên nó ra.
+ */
+function veDongGiaDinh(u) {
+  const nut = document.createElement('button');
+  nut.type = 'button';
+  nut.setAttribute('data-ma', u.id);
+  nut.style.cssText =
+    'display:block;width:100%;text-align:left;padding:10px 8px;background:none;' +
+    'border:none;border-bottom:1px solid #f0ece5;font-family:inherit;color:inherit;' +
+    'cursor:pointer;touch-action:manipulation';
+
+  const ten = (Array.isArray(u.partners) ? u.partners : [])
+    .filter((id) => id && state.index.personById.has(id))
+    .map((id) => fullName(state.index.personById.get(id)))
+    .filter(coGiaTri);
+
+  const hang1 = document.createElement('div');
+  hang1.textContent = ten.length > 0 ? ten.join('  và  ') : '(gia đình chưa có ai)';
+  hang1.style.cssText = 'font-size:15px;font-weight:600' +
+    (ten.length > 0 ? '' : ';color:#8a8078;font-style:italic');
+  nut.append(hang1);
+
+  const soCon = (Array.isArray(u.children) ? u.children : [])
+    .filter((c) => c && c.personId && state.index.personById.has(c.personId)).length;
+  const m = (u && typeof u.marriage === 'object' && u.marriage) ? u.marriage : {};
+
+  // Trường trống thì KHÔNG vẽ — không ghi "không rõ", không hiện "…".
+  const phu = [
+    soCon > 0 ? soCon + ' con' : 'chưa có con',
+    coGiaTri(m.raw) ? 'cưới ' + String(m.raw) : '',
+    u.status === 'divorced' ? 'đã ly hôn' : '',
+    u.id,
+  ].filter(coGiaTri).join('  ·  ');
+
+  const hang2 = document.createElement('div');
+  hang2.textContent = phu;
+  hang2.style.cssText = 'font-size:13px;color:#8a8078;margin-top:2px';
+  nut.append(hang2);
+
+  nut.addEventListener('click', () => {
+    const chay = xuLyNgoai.onXemCap;
+    closePersonList();
+    if (chay) chay(u.id);
+  });
+  return nut;
+}
+
+function veDanhSachGiaDinh() {
+  const index = state.index;
+  const tuKhoa = removeDiacritics(oTim ? oTim.value : '').toLowerCase().trim();
+
+  const tatCa = [];
+  for (const u of (index ? index.unionById.values() : [])) {
+    if (!u || u.deleted) continue;
+    const ten = (Array.isArray(u.partners) ? u.partners : [])
+      .filter((id) => id && index.personById.has(id))
+      .map((id) => fullName(index.personById.get(id)))
+      .join(' ');
+    tatCa.push({ u, tim: removeDiacritics(ten + ' ' + u.id).toLowerCase() });
+  }
+
+  tatCa.sort((a, b) => String(a.u.id).localeCompare(String(b.u.id)));
+  const hop = tuKhoa === '' ? tatCa : tatCa.filter((m) => m.tim.indexOf(tuKhoa) >= 0);
+
+  khoiDem.textContent = tuKhoa === ''
+    ? 'Gia phả có ' + tatCa.length + ' gia đình.'
+    : hop.length + ' gia đình khớp, trên tổng số ' + tatCa.length + '.';
+
+  if (hop.length === 0) {
+    khoiDong.append(loiNhan(
+      'Không tìm thấy gia đình nào khớp "' + String(oTim ? oTim.value : '').trim() + '".',
+      'Gõ tên MỘT NGƯỜI trong nhà — một gia đình không có tên riêng. ' +
+      'Biết mã thì gõ thẳng mã, ví dụ U0008.'));
+    return;
+  }
+
+  for (const m of hop) khoiDong.append(veDongGiaDinh(m.u));
 }
 
 // ============================================================

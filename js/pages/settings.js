@@ -4,7 +4,7 @@
 //            đường sang màn hình Sao lưu & khôi phục
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, services/gas, utils/text
-// Phiên bản: 1.9.0 · Cập nhật: 22/08/2026 07:30
+// Phiên bản: 1.10.0 · Cập nhật: 22/08/2026 18:40
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
@@ -109,6 +109,7 @@ export function openSettings(xuLy = {}) {
   tieuDe.style.cssText = 'font-size:19px;font-weight:600';
   hop.append(tieuDe);
 
+  veKhoiQuanLy(hop);
   veKhoiMacDinh(hop);
   veKhoiHienThi(hop);
   veKhoiSaoLuu(hop);
@@ -337,6 +338,66 @@ function veKhoiSaoLuu(vao) {
   khoi.append(nut('Mở Sao lưu & khôi phục', false, true,
                   () => xuLyNgoai.onMoSaoLuu()));
 
+  vao.append(khoi);
+  return khoi;
+}
+
+// ============================================================
+// Khối "Quản lý gia phả" — hai danh sách (22/08/2026)
+// ============================================================
+//
+// Chủ dự án: *"Ở cài đặt sẽ cho thêm 2 menu là quản lý cá nhân => hiện danh
+// sách cá nhân => sửa thông tin của người đó; menu gia đình => có danh sách
+// các gia đình => bấm vào đó sửa thành viên"*.
+//
+// --- BA quyết định ------------------------------------------------------
+//
+// 1. **ĐỨNG ĐẦU màn hình Cài đặt.** Bốn khối cũ đều là *chỉnh app* — người
+//    trung tâm mặc định, cỡ chữ, sao lưu, tài khoản. Hai nút này là *đi vào
+//    gia phả*, tức việc thường ngày. Việc làm nhiều nhất đứng chỗ dễ thấy nhất.
+//
+// 2. **"Danh sách người" mở ĐÚNG cái màn hình mà nút 🔍 mở** — không dựng bản
+//    thứ hai. Hai cửa vào một phòng là chuyện thường; hai cái phòng giống nhau
+//    thì tới ngày một cái được vá còn cái kia không. Nút 🔍 giữ nguyên cho
+//    người đã quen nó.
+//
+// 3. **"Các gia đình" là màn hình MỚI**, và nó lấp đúng lỗ hổng mà Danh sách
+//    người đã lấp cho người: một cặp không nằm trong vùng vẽ thì trước hôm nay
+//    không màn hình nào kể tên nó ra.
+
+function veKhoiQuanLy(vao) {
+  if (!xuLyNgoai.onDanhSachNguoi && !xuLyNgoai.onDanhSachGiaDinh) return null;
+
+  const khoi = document.createElement('div');
+  khoi.style.cssText = 'margin-top:4px';
+  khoi.append(veNhanKhoi('Quản lý gia phả'));
+
+  const giaiThich = document.createElement('div');
+  giaiThich.textContent =
+    'Hai đường vào gia phả không đi qua sơ đồ — tìm được cả người và cả gia ' +
+    'đình mà sơ đồ hiện thời không vẽ ra.';
+  giaiThich.style.cssText =
+    'font-size:13px;line-height:1.55;color:#8a8078;margin-bottom:10px';
+  khoi.append(giaiThich);
+
+  const hang = document.createElement('div');
+  hang.style.cssText = 'display:flex;flex-direction:column;gap:8px';
+
+  if (xuLyNgoai.onDanhSachNguoi) {
+    const b = nut('Danh sách người — xem và sửa từng người', false, true,
+                  () => xuLyNgoai.onDanhSachNguoi());
+    b.dataset.viec = 'danh-sach-nguoi';
+    hang.append(b);
+  }
+
+  if (xuLyNgoai.onDanhSachGiaDinh) {
+    const b = nut('Các gia đình — xem một cặp và các con', false, true,
+                  () => xuLyNgoai.onDanhSachGiaDinh());
+    b.dataset.viec = 'danh-sach-gia-dinh';
+    hang.append(b);
+  }
+
+  khoi.append(hang);
   vao.append(khoi);
   return khoi;
 }

@@ -6,7 +6,7 @@
 //            utils/{text,glyph}, config,
 //            pages/{person-detail,person-edit,person-list,review,settings,
 //            backup}
-// Phiên bản: 1.27.0 · Cập nhật: 22/08/2026 17:10
+// Phiên bản: 1.28.0 · Cập nhật: 22/08/2026 18:40
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -75,7 +75,8 @@ import { openPersonForm, closePersonForm, quickAddChild, quickAddParent,
          openUnionForm, openSapThuTu, openSuaCon, openFamilyForm,
          khoiPhucNhieu, donThungRac,
          chuyenVaoThungRac } from './person-edit.js';
-import { openPersonList, closePersonList, openThungRac } from './person-list.js';
+import { openPersonList, closePersonList, openThungRac,
+         openDanhSachGiaDinh } from './person-list.js';
 import { openReview, closeReview } from './review.js';
 import { openSettings, closeSettings } from './settings.js';
 import { openBackup, closeBackup } from './backup.js';
@@ -781,6 +782,12 @@ function veHopNutTrenPhai() {
   hop.append(
     nutTron('⚙', 'Cài đặt', () => openSettings({
       onDoiHienThi: () => refresh(),
+
+      // Hai cửa mới (22/08/2026). Cùng lối với `onMoSaoLuu` ngay dưới: ĐÓNG
+      // Cài đặt trước rồi mới mở màn hình kia — hai lớp phủ cùng z-index 30,
+      // chồng nhau thì cái mở sau nằm dưới và người dùng bấm vào khoảng không.
+      onDanhSachNguoi:   () => { closeSettings(); moDanhSachNguoi(); },
+      onDanhSachGiaDinh: () => { closeSettings(); moDanhSachGiaDinh(); },
       // Đóng Cài đặt TRƯỚC khi mở màn sao lưu: hai lớp phủ cùng z-index 30,
       // chồng nhau thì cái mở sau nằm dưới và người dùng bấm vào khoảng không
       // — đúng cái bẫy đã sập một lần ở bước 26.
@@ -957,6 +964,22 @@ function xuLyThe() {
 }
 
 /**
+ * Màn hình CÁC GIA ĐÌNH, và đường đi tiếp của nó (22/08/2026).
+ *
+ * Bấm một dòng là mở THẺ GIA ĐÌNH của cặp ấy — màn hình ĐỌC, đúng thứ người
+ * mở một danh sách đang muốn. Từ thẻ đó có sẵn *Sửa gia đình này* và *Sắp thứ
+ * tự các con*.
+ *
+ * Truyền cả bộ `xuLyThe()` xuống, không chỉ một hàm: thẻ gia đình mọc ra nút
+ * nào là tuỳ bộ ấy có gì, và thiếu một cái thì đúng mục ấy lặng lẽ không hiện.
+ */
+function moDanhSachGiaDinh() {
+  openDanhSachGiaDinh({
+    onXemCap: (unionId) => openUnionDetail(unionId, xuLyThe()),
+  });
+}
+
+/**
  * Màn hình *Sửa thông tin gia đình* — cửa thứ hai của thẻ người (22/08/2026).
  *
  * Nhận CẢ BỘ `xuLyThe()` chứ không chỉ `onDaLuu`: bên trong màn hình ấy có
@@ -969,7 +992,13 @@ function xuLyThe() {
  * và người dùng cần nhìn thấy sơ đồ quanh CHÍNH người họ đang sửa đổi đi.
  */
 function moFormGiaDinh(personId) {
-  openFamilyForm(personId, Object.assign(xuLyThe(), { onDaLuu: () => refresh() }));
+  openFamilyForm(personId, Object.assign(xuLyThe(), {
+    onDaLuu:  () => refresh(),
+    // Cửa tới ngày cưới · ảnh cưới · Sắp thứ tự các con. Từ 22/08/2026 đây là
+    // đường đi thường ngày duy nhất tới thẻ gia đình: hai nút cũ trên thẻ NGƯỜI
+    // đã gỡ vì chúng nói lại đúng những điều màn hình này nói.
+    onXemCap: (unionId) => openUnionDetail(unionId, xuLyThe()),
+  }));
 }
 
 /**
