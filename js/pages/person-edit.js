@@ -6,7 +6,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate,media,purge,render},
 //            services/{repo,gas}, utils/{graph,text,date,image,avatar}, config
-// Phiên bản: 1.20.0 · Cập nhật: 22/08/2026 09:40
+// Phiên bản: 1.21.0 · Cập nhật: 22/08/2026 11:00
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -3113,6 +3113,19 @@ function moTaCap(u) {
  *
  * @param {'chaMe'|'banDoi'|'con'} vaiTro  vai trò của NGƯỜI SẮP ĐƯỢC NỐI VÀO
  * @param {string} mocId  người đang đứng giữa việc này
+ * @param {string} [doiTacId]  người kia của đường NỐI — xem mục dưới
+ *
+ * --- ⚠ QUAN HỆ VỢ CHỒNG ĐỐI XỨNG, MÃ THÌ TỪNG KHÔNG (vá 22/08/2026) ------
+ *
+ * Bản cũ chỉ nhìn cặp của `mocId`. Hệ quả đo được bằng
+ * `kiem-thu/chan-doan-gia-dinh.mjs`: nối vợ–chồng từ thẻ CHỒNG thì app hỏi và
+ * kể rõ *"1 con · U0026"*; từ thẻ VỢ thì nó **im lặng dựng cặp mới**, dù cặp
+ * kia đang có con và còn đúng một chỗ trống. Cùng hai con người, cùng một mối
+ * nối, hai kết quả khác nhau — chỉ vì người dùng mở thẻ nào trước.
+ *
+ * Nay `'banDoi'` gom cặp của **cả hai phía**. Một cặp chỉ nhận được khi nó còn
+ * chỗ trống, và người điền vào chỗ ấy là người CHƯA đứng trong cặp — `dungCayNoi`
+ * tự tìm ra, không cần truyền thêm gì.
  *
  * --- Khi nào đi thẳng, khi nào phải hỏi ---------------------------------
  *
@@ -3132,13 +3145,22 @@ function moTaCap(u) {
  * cặp ĐANG CÓ CON thì người mới đồng thời thành cha/mẹ của mấy người con ấy
  * (luật 9). Một việc kéo theo một việc khác thì không được làm lặng lẽ.
  */
-function chonCap(vaiTro, mocId, xuLy, tiep) {
+function chonCap(vaiTro, mocId, xuLy, tiep, doiTacId = '') {
   const index = state.index;
   if (!index) return;
 
-  const tatCa = (vaiTro === 'chaMe')
+  let tatCa = (vaiTro === 'chaMe')
     ? getParentUnions(index, mocId)
     : getPartnerUnions(index, mocId);
+
+  // Cặp của người KIA, chỉ ở vai vợ/chồng. Cặp nào cả hai đã cùng đứng thì
+  // không kể — `quanHeDaCo()` đã chặn đường ấy từ trước khi tới đây.
+  if (vaiTro === 'banDoi' && doiTacId) {
+    const daCo = new Set(tatCa.map((u) => u.id));
+    for (const u of getPartnerUnions(index, doiTacId)) {
+      if (!daCo.has(u.id)) { daCo.add(u.id); tatCa = tatCa.concat([u]); }
+    }
+  }
 
   // 'con' nhận mọi cặp của người ấy; hai vai kia cần một chỗ trống trong hàng
   // vợ/chồng, vì người sắp nối vào sẽ đứng ở đó.
@@ -3163,6 +3185,19 @@ function chonCap(vaiTro, mocId, xuLy, tiep) {
     chay: () => tiep(u.id),
   }));
 
+  // Cặp một người có con là ca dễ chọn nhầm nhất: bước vào đó là đồng thời
+  // nhận mấy người con ấy làm con mình (luật 9). Nói ngay trên chính cái nút.
+  if (vaiTro === 'banDoi') {
+    for (const m of cacMuc) {
+      const u = nhanDuoc.find((x) => x.id === m.ma);
+      const soCon = (u && Array.isArray(u.children)) ? u.children.length : 0;
+      if (soCon > 0) {
+        m.phu = m.phu + '  ·  ⚠ bước vào cặp này là nhận luôn ' + soCon +
+                ' người con ấy làm con mình';
+      }
+    }
+  }
+
   cacMuc.push({
     ma: 'moi',
     chu: vaiTro === 'chaMe' ? 'Tạo một cặp cha mẹ MỚI' : 'Tạo một cặp MỚI',
@@ -3182,7 +3217,9 @@ function chonCap(vaiTro, mocId, xuLy, tiep) {
 
   moHopChon('chon', xuLy, {
     tieuDe: 'Nối vào cặp nào?',
-    phu:    tenNguoi(mocId) + '  ·  ' + mocId,
+    phu:    doiTacId
+      ? tenNguoi(mocId) + '  ←→  ' + tenNguoi(doiTacId)
+      : tenNguoi(mocId) + '  ·  ' + mocId,
     cauMo:  nhanDuoc.length === 0
       ? (vaiTro === 'chaMe'
         ? tenNguoi(mocId) + ' đã có đủ cha mẹ trong gia phả, nên người này sẽ ' +
@@ -3192,7 +3229,10 @@ function chonCap(vaiTro, mocId, xuLy, tiep) {
       : (vaiTro === 'chaMe'
         ? 'Cha mẹ của ' + tenNguoi(mocId) + ' được ghi theo CẶP. Chọn cặp:'
         : (vaiTro === 'banDoi'
-          ? 'Chọn chỗ đứng cho người vợ / chồng này:'
+          ? (doiTacId
+            ? 'Hai người này đứng chung cặp nào? Cặp kể dưới đây là cặp của ' +
+              'CẢ HAI phía, và cặp nào cũng còn đúng một chỗ trống.'
+            : 'Chọn chỗ đứng cho người vợ / chồng này:')
           : 'Người con này thuộc về cặp nào của ' + tenNguoi(mocId) + '?')),
     cacDong,
     cacMuc,
@@ -3479,7 +3519,7 @@ export function linkExisting(personId, targetId, relationType, xuLy = {}) {
 
   chonCap(vaiTro, personId, xuLy, (unionId) => {
     moHopXacNhanNoi({ personId, targetId, loai: relationType, unionId }, xuLy);
-  });
+  }, targetId);
 }
 
 /** Ba nút, ba câu nói từ phía người đang mở thẻ. Không dùng chữ "quan hệ 1". */
@@ -3559,6 +3599,40 @@ function moHopXacNhanNoi(ctx, xuLy) {
   chan.append(nutLuu, nutChanXoa('Không nối', false, () => closePersonForm()));
 }
 
+/**
+ * Ai là người BƯỚC VÀO cặp `unionId` — người chưa đứng sẵn trong đó.
+ * Cần vì `chonCap('banDoi')` nay kể cả cặp của người kia (vá 22/08/2026).
+ */
+function aiVaoCap(unionId, personId, targetId) {
+  const u = state.index && state.index.unionById.get(unionId);
+  const cac = (u && Array.isArray(u.partners)) ? u.partners : [];
+  return cac.indexOf(targetId) >= 0 ? personId : targetId;
+}
+
+/**
+ * ⚠ Người con này ĐÃ CÓ cha mẹ ở cặp khác — dòng cảnh báo, hoặc chuỗi rỗng.
+ *
+ * Lỗ hổng thứ hai của đường kết nối (đo được 21/08/2026): từ thẻ VỢ chọn
+ * *"C là CON của tôi"*, app nối C vào cặp mới **mà không nói C đã có cha mẹ ở
+ * cặp khác** — kết quả là hai cặp cha mẹ chung một người cha, đúng loại dữ liệu
+ * bẩn mà màn Rà soát phải đi nhặt về sau.
+ *
+ * Chỉ NÓI RA, không chặn: hai cặp cha mẹ là chuyện thật khi có cha mẹ nuôi hoặc
+ * cha mẹ kế. Thứ sai là làm việc ấy mà người dùng không biết mình đang làm.
+ */
+function loiConDaCoChaMe(childId, unionId) {
+  const index = state.index;
+  if (!index || !childId) return '';
+  const khac = getParentUnions(index, childId).filter((u) => u.id !== unionId);
+  if (khac.length === 0) return '';
+
+  return '⚠ ' + tenNguoi(childId) + ' ĐÃ CÓ cha mẹ trong gia phả: ' +
+         khac.map((u) => keTenPartner(u.id) + '  ·  ' + u.id).join('   |   ') +
+         '. Nối xong thì người này có ' + (khac.length + 1) + ' cặp cha mẹ — ' +
+         'đúng khi đó là cha mẹ NUÔI hoặc cha mẹ KẾ, còn nếu chỉ là một cặp ghi ' +
+         'trùng thì hãy "Không nối", gỡ cặp cũ trước rồi nối lại.';
+}
+
 /** Từng dòng hậu quả của đường NỐI. Nối chỉ THÊM cạnh, nên không ai mất gì. */
 function cauKeNoi() {
   const { personId, targetId, loai, unionId } = noiCtx;
@@ -3567,15 +3641,18 @@ function cauKeNoi() {
   const dong = [];
 
   if (loai === 'spouse') {
+    const vao = unionId ? aiVaoCap(unionId, personId, targetId) : targetId;
     dong.push(A + ' và ' + B + ' thành vợ chồng' +
-              (unionId ? ' trong cặp ' + unionId + '.' : ' trong một cặp mới.'));
+              (unionId ? ' trong cặp ' + unionId + ' — ' + tenNguoi(vao) +
+                         ' là người bước vào cặp đang có.'
+                       : ' trong một cặp mới.'));
     if (unionId) {
       const u = state.index.unionById.get(unionId);
       const cacCon = (Array.isArray(u && u.children) ? u.children : [])
         .map((c) => c && c.personId).filter((id) => id && state.index.personById.has(id));
       if (cacCon.length > 0) {
         dong.push('⚠ Cặp ' + unionId + ' đang có ' + cacCon.length + ' người con (' +
-                  cacCon.map(tenNguoi).join(' · ') + '), nên ' + B +
+                  cacCon.map(tenNguoi).join(' · ') + '), nên ' + tenNguoi(vao) +
                   ' đồng thời thành cha/mẹ của họ. Trong gia phả này quan hệ cha ' +
                   'mẹ – con đi QUA cặp, không nối thẳng người với người.');
       }
@@ -3584,10 +3661,14 @@ function cauKeNoi() {
     dong.push(B + ' thành người con của ' +
               (unionId ? keTenPartner(unionId) + '  ·  ' + unionId
                        : A + ' (app tạo thêm một cặp mới cho riêng họ)') + '.');
+    const canhBao = loiConDaCoChaMe(targetId, unionId);
+    if (canhBao) dong.push(canhBao);
   } else {
     dong.push(B + ' thành cha / mẹ của ' + A +
               (unionId ? ', đứng chung cặp ' + unionId + ' với ' + keTenPartner(unionId) + '.'
                        : ' trong một cặp cha mẹ mới.'));
+    const canhBao = loiConDaCoChaMe(personId, unionId);
+    if (canhBao) dong.push(canhBao);
   }
 
   dong.push('Không ai bị xoá, và không mối nối nào đang có bị bỏ đi. Nối nhầm ' +
@@ -3686,7 +3767,9 @@ function dungCayNoi(quanHe) {
 
   if (loai === 'spouse') {
     if (unionId) {
-      const kq = addPartner(tree, unionId, targetId);
+      // Cặp ấy có thể là cặp của NGƯỜI KIA (`chonCap` nay gom cả hai phía), nên
+      // người bước vào là người chưa đứng trong đó — không mặc định là `targetId`.
+      const kq = addPartner(tree, unionId, aiVaoCap(unionId, personId, targetId));
       if (!kq) return null;
       return { tree: kq.tree, union: kq.union, laUnionMoi: false, diff: kq.diff };
     }
