@@ -8,7 +8,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate,media,purge,render},
 //            services/{repo,gas}, utils/{graph,text,date,image,avatar}, config
-// Phiên bản: 1.27.0 · Cập nhật: 26/08/2026 21:30
+// Phiên bản: 1.28.0 · Cập nhật: 27/08/2026 10:15
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -136,6 +136,35 @@
 //    `'birth'`. Ghi nhầm một người con đẻ thành con nuôi không hiện ra thành
 //    một lời nào — nó chỉ làm mấy phép rà im lặng. Vì thế mặc định của mọi ô
 //    chọn ở đây là thứ ĐANG LƯU, không bao giờ là một giá trị app tự đoán.
+//
+// --- HỎI THỨ BẬC NGAY LÚC NHẬP: luật thứ mười hai (27/08/2026) ----------
+//
+// 12. CUỘC HÔN NHÂN THỨ HAI PHẢI ĐƯỢC HỎI, KHÔNG ĐƯỢC ĐOÁN — VÀ CHỈ HỎI KHI
+//    NÓ LÀ THỨ HAI. Trước hôm nay mọi đường tạo cặp đều gọi
+//    `createUnion(…, {})`, tức lặng lẽ ghi *"cặp thứ 1"* cho cả hai phía. Thêm
+//    ông D làm chồng bà C — bà đã có một đời chồng — thì gia phả nhận một câu
+//    sai mà không ai báo gì, và người dùng phải tự nhớ để vào sửa lại.
+//
+//    Nay ô ấy mọc ra ngay trong form / trong hộp Kết nối, nhưng **chỉ với người
+//    ĐÃ đứng trong ít nhất một cặp khác**. Lấy vợ/chồng lần đầu thì không hỏi
+//    gì cả: hỏi một câu chỉ có một câu trả lời là bắt người ta đọc rồi gõ lại
+//    đúng con số app vừa điền — cùng lý lẽ đã dùng cho `chonCap()`.
+//
+//    ⚠ SỐ ĐIỀN SẴN LÀ GỢI Ý, KHÔNG PHẢI KẾT LUẬN. App điền *"số cặp đang có
+//    + 1"* vì đó là ca thường gặp, nhưng ô để MỞ: gia phả cũ chép thứ bậc theo
+//    lệ chứ không theo thứ tự nhập liệu — có nhà bà cưới sau vẫn là chính thất.
+//
+//    ⚠ HỎI THEO TỪNG NGƯỜI, VÀ CÓ THỂ HỎI HAI LẦN TRONG MỘT HỘP. Nối hai người
+//    đều đã có cặp thì hộp mọc HAI ô, mỗi ô một cái mốc. Đó không phải giao
+//    diện rườm rà mà là chính điều `ranks` sinh ra để chứa: *"vợ 1 / vợ 2"* của
+//    ông A có thể là CÙNG THỜI (vợ cả / vợ thứ), còn *"chồng 1 / chồng 2"* của
+//    bà C là NỐI TIẾP (hai đời chồng) — cùng một con số, hai nghĩa, và chỉ
+//    chứa nổi cả hai khi con số gắn với NGƯỜI. Ví dụ A–B–C–D ở `KE-HOACH_V43`
+//    là bài nghiệm thu của đúng chỗ này.
+//
+//    ⚠ GÕ SAI THÌ KHÔNG ĐOÁN HỘ, VÀ FORM PHẢI NÓI RA — cùng đúng luật của ô
+//    Đời (bước 32). Ô để trống hay gõ chữ thì app ghi thứ 1 và kể ra điều đó
+//    trong khối cảnh báo, chứ không lặng lẽ chọn một con số nào khác.
 
 import { state } from '../state.js';
 import { updatePerson, createPerson,
@@ -215,6 +244,16 @@ let khoiTenPhu = null;   // khối chứa các hàng, để vẽ lại một mì
 // QUAN HỆ (việc 3). Cùng lối với `tenPhu`: form giữ RIÊNG một bản làm việc,
 // không đọc ngược từ DOM. Xem ghi chú đầu khối Quan hệ.
 let quanHe    = null;
+
+// THỨ BẬC HỎI LÚC NHẬP (luật 12). Mỗi mục là { mocId, input } — một cái ô, và
+// NGƯỜI làm mốc cho con số trong ô ấy. Mảng, không phải một ô: nối hai người
+// đều đã có cặp thì hộp hỏi cả hai phía.
+//
+// ⚠ Giữ THAM CHIẾU tới ô, không đọc ngược từ `document`. `hienNhan()` xoá sạch
+// `khoiKetQua` mỗi lần nó nói một câu mới, nên sau khối cảnh báo thì mấy cái ô
+// này không còn nằm trong trang nữa — nhưng tham chiếu vẫn sống và vẫn giữ
+// đúng con số người dùng đã gõ. Cùng cơ chế mà `o.conNuoi` đã sống nhờ.
+let thuBacNhap = [];
 
 // KHO ẢNH (việc 5, nửa A). Cùng lối với `tenPhu` và `quanHe`: form giữ RIÊNG
 // một bản làm việc, không đọc ngược từ DOM và không đụng `state.tree` cho tới
@@ -369,6 +408,7 @@ export function closePersonForm() {
   tenPhu       = [];
   khoiTenPhu   = null;
   quanHe       = null;
+  thuBacNhap   = [];
   khoiAnh      = null;
   khoAnh       = [];
   anhCuaAi     = '';
@@ -505,6 +545,13 @@ function veCacO(nguoi) {
   if (cheDo === 'themChaMe' && !noiVao.unionId) {
     ra.push(veNhan('Quan hệ với ' + tenNguoi(noiVao.childId)));
     ra.push(veConNuoi('Là cha / mẹ NUÔI (không phải cha mẹ đẻ)'));
+  }
+
+  // Luật 12. Đứng ĐẦU form, cùng chỗ với hai ô quan hệ ở trên và cùng một lý
+  // do: nó nói về CHỖ ĐỨNG của người sắp thêm, không nói về bản thân họ. Người
+  // vừa được thêm luôn là cặp thứ nhất của chính họ, nên chỉ hỏi phía kia.
+  if (cheDo === 'themBanDoi' && !noiVao.unionId) {
+    ra.push(...khoiHoiThuBac(noiVao.banDoiId, ''));
   }
 
   // Ảnh chỉ hiện ở chế độ SỬA hồ sơ, cố ý. Ở các chế độ thêm người, bản ghi
@@ -2427,11 +2474,15 @@ function tenTrongCay(cay, personId) {
  * một cú chạm nhầm để lại một cái ô trống vĩnh viễn giữa sơ đồ.
  */
 function loiNhacCuaForm() {
+  const ra = [];
   const coTen = ['surname', 'middle', 'given'].some((k) => coGiaTri(docO(k)));
-  if (coTen) return [];
-  return ['Bạn chưa gõ tên nào cả. Người không tên vẫn ghi được — gia phả cũ ' +
-          'có thật những người chỉ còn nhớ là "con thứ ba của cụ" — nhưng app ' +
-          'chưa có cách xoá người đã thêm, nên xin xem lại một lần nữa.'];
+  if (!coTen) {
+    ra.push('Bạn chưa gõ tên nào cả. Người không tên vẫn ghi được — gia phả cũ ' +
+            'có thật những người chỉ còn nhớ là "con thứ ba của cụ" — nhưng app ' +
+            'chưa có cách xoá người đã thêm, nên xin xem lại một lần nữa.');
+  }
+  // Luật 12: ô thứ bậc gõ sai thì nói ra, đừng lặng lẽ ghi thứ 1.
+  return ra.concat(loiThuBacGoSai());
 }
 
 /**
@@ -3173,6 +3224,25 @@ function moHopChon(che, xuLy, c) {
   chan.append(nutChanXoa(c.chuHuy || 'Huỷ', false, () => closePersonForm()));
 }
 
+/**
+ * Gài mấy phần tử vào hộp việc, NGAY TRÊN hàng nút.
+ *
+ * ⚠ Vì sao không `khoiKetQua.append()` như ô "con nuôi" vẫn làm: `hienNhan()`
+ * XOÁ SẠCH `khoiKetQua` mỗi lần nó nói một câu mới. Với ô thứ bậc thì đó là
+ * một cái bẫy — câu app nói ra chính là *"ô ấy gõ sai, sửa lại đi"*, mà lúc
+ * người dùng đọc được câu ấy thì cái ô đã bị chính nó xoá mất. Nên ô này sống
+ * NGOÀI tầm với của `hienNhan`.
+ *
+ * (Ô "con nuôi" vẫn nằm trong `khoiKetQua` và vẫn biến mất sau một lời cảnh
+ * báo. Không đúng, nhưng khác việc: ở đó lời cảnh báo không bao giờ nói về
+ * chính cái ô ấy. Ghi lại ở nhật ký bước này, chưa sửa trong cùng phiên.)
+ */
+function gaiTruocChan(chan, cacEl) {
+  const hop = chan && chan.parentElement;
+  if (!hop) return;
+  for (const el of cacEl) hop.insertBefore(el, chan);
+}
+
 /** Hộp chỉ để báo một câu rồi đóng. Dùng cho mọi ngõ cụt. */
 function moHopBao(tieuDe, cau, laLoi, dong) {
   const chan = moHopTrang('chon', {}, tieuDe, '');
@@ -3326,6 +3396,124 @@ function chonCap(vaiTro, mocId, xuLy, tiep, doiTacId = '') {
     cacDong,
     cacMuc,
   });
+}
+
+// ============================================================
+// HỎI THỨ BẬC NGAY LÚC NHẬP — luật 12 (27/08/2026)
+// ============================================================
+//
+// Ba đường tạo ra một cuộc hôn nhân MỚI, và cả ba đi qua đúng hai hàm dưới đây:
+//
+//   · form *Thêm vợ / chồng*            → `dungCayThemBanDoi`
+//   · Kết nối hai người, cặp MỚI        → `dungCayNoi`, nhánh `createUnion`
+//   · Kết nối hai người, vào cặp CÓ SẴN → `dungCayNoi`, nhánh `addPartner`
+//
+// Đường thứ ba cần thêm một bước: `addPartner` cố ý KHÔNG nhận `ranks` (nó chỉ
+// làm đúng một việc — đưa một người vào hàng vợ/chồng), nên thứ bậc ghi bằng
+// `updateUnion` nối đuôi ngay sau. Cùng đúng lối `updateUnion` + `swapPartnerOrder`
+// đã nối đuôi nhau ở form Sửa cặp.
+//
+// ⚠ BỐN chỗ `createUnion` còn lại KHÔNG hỏi, và đó là chủ ý: cả bốn tạo ra một
+// cặp MỘT NGƯỜI để treo người con vào (`dungCayThemCon`, `dungCayThemChaMe`, và
+// hai nhánh `'child'`/`'parent'` của `dungCayNoi`). Một cặp chưa có ai làm
+// vợ/chồng thì không có vợ cả vợ thứ nào để mà hỏi — con số ấy chỉ sinh ra khi
+// có người bước vào, và lúc đó chính đường thứ ba ở trên sẽ hỏi.
+
+/**
+ * Ô hỏi *"đây là cặp thứ mấy của X?"* cho một cuộc hôn nhân SẮP TẠO RA.
+ *
+ * @param {string} mocId       người làm mốc cho con số
+ * @param {string} [boQuaCapId] cặp đang được nối vào — không tính vào số cặp
+ *        đang có, vì nó chính là cặp sắp thành cặp mới của người ấy
+ * @returns {HTMLElement[]} rỗng khi KHÔNG phải hỏi (người ấy chưa có cặp nào)
+ *
+ * Khác `oThuBac()` ở form Sửa cặp đúng một chỗ, và chỗ ấy quan trọng: ở kia có
+ * một cặp thật để `rankCua()` đọc ra con số đang lưu, ở đây thì chưa có gì cả
+ * nên app phải GỢI Ý. Vì thế hai hàm không gộp được, và cũng không nên gộp.
+ */
+function khoiHoiThuBac(mocId, boQuaCapId) {
+  const index = state.index;
+  if (!index || !mocId || !index.personById.has(mocId)) return [];
+
+  const dsCap = getPartnerUnions(index, mocId).filter((u) => u.id !== boQuaCapId);
+  if (dsCap.length === 0) return [];   // cặp đầu tiên của người này: không hỏi
+
+  const goiY = dsCap.length + 1;
+  const ten  = tenNguoi(mocId);
+
+  const boc = document.createElement('div');
+  boc.style.cssText = 'margin-top:6px';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.inputMode = 'numeric';
+  input.value = String(goiY);
+  input.dataset.thuBacCua = mocId;   // mốc cho bài kiểm, xem kiem-thu-bac-nhap.mjs
+  input.setAttribute('aria-label', 'Đây là cặp thứ mấy của ' + ten + '?');
+  input.style.cssText = KIEU_O;
+
+  const nhac = document.createElement('div');
+  nhac.textContent =
+    '1 là vợ cả / chồng đầu, 2 là vợ thứ hai… tính riêng theo phía ' + ten +
+    '. App điền sẵn ' + goiY + ' vì ' + ten + ' đang có ' + dsCap.length +
+    ' cặp, nhưng SỬA ĐƯỢC: gia phả cũ chép thứ bậc theo lệ chứ không theo thứ ' +
+    'tự nhập liệu, có nhà bà cưới sau vẫn là chính thất.';
+  nhac.style.cssText = 'font-size:11px;line-height:1.45;color:#8a8078;margin-top:4px';
+
+  // Kể ra những cặp đang có, kèm thứ bậc ĐANG LƯU của chính người này. Không kể
+  // thì con số gợi ý là một lời khẳng định không có căn cứ nhìn thấy được, và
+  // người dùng không có cách nào kiểm nó đúng hay sai trước khi bấm.
+  //
+  // Kể tên NGƯỜI KIA, không gọi `keTenPartner()`: câu ấy kể cả cặp, tức đọc lên
+  // thành *"Đang có: Ông A và Bà B"* trong khi mốc chính là Ông A. Người đọc
+  // cần biết *"đã có với AI"*, còn tên mình thì đang nằm ngay trên nhãn.
+  const dsCu = document.createElement('div');
+  dsCu.textContent = 'Đang có: ' + dsCap
+    .map((u) => tenBanDoiTrongCap(index, u, mocId) +
+                ' (thứ ' + rankCua(u, mocId) + ')')
+    .join('  ·  ');
+  dsCu.style.cssText = 'font-size:11px;line-height:1.45;color:#8a8078;margin-top:3px';
+
+  thuBacNhap.push({ mocId, input });
+  boc.append(input, nhac, dsCu);
+
+  return [veNhan('Đây là cặp thứ mấy của ' + ten + '?'), boc];
+}
+
+/**
+ * Bảng `ranks` đọc từ những ô vừa hỏi, đúng khuôn `createUnion`/`updateUnion`.
+ *
+ * Giá trị 1 và mọi thứ gõ sai đều KHÔNG sinh ra khoá — vắng khoá đã có nghĩa là
+ * 1 (`union.locRanks`). Chỗ nói ra chuyện gõ sai là `loiThuBacGoSai()`, không
+ * phải ở đây: hàm này chỉ đọc, không mắng.
+ */
+function docThuBacNhap() {
+  const ra = {};
+  for (const m of thuBacNhap) {
+    const n = Number(String(m.input.value || '').trim());
+    if (Number.isFinite(n) && n > 1) ra[m.mocId] = Math.floor(n);
+  }
+  return ra;
+}
+
+/**
+ * Lời nhắc khi ô thứ bậc mang thứ không đọc ra số được — một dòng cho mỗi ô.
+ *
+ * Cùng luật với ô Đời (bước 32): app KHÔNG đoán hộ, và form phải NÓI RA rằng
+ * mình không đoán. Im lặng ghi thứ 1 cho một ô người dùng vừa gõ nhầm là đúng
+ * cái lỗi mà cả việc này sinh ra để chữa.
+ */
+function loiThuBacGoSai() {
+  const ra = [];
+  for (const m of thuBacNhap) {
+    const chu = String(m.input.value || '').trim();
+    const n   = Number(chu);
+    if (chu !== '' && Number.isFinite(n) && n >= 1 && Math.floor(n) === n) continue;
+    ra.push('Ô "đây là cặp thứ mấy của ' + tenNguoi(m.mocId) + '" đang mang "' +
+            chu + '", không phải một số nguyên từ 1 trở lên. App sẽ ghi là ' +
+            'thứ 1. Muốn con số khác thì sửa lại ô ấy rồi bấm lần nữa.');
+  }
+  return ra;
 }
 
 // ============================================================
@@ -3545,7 +3733,11 @@ function dungCayThemBanDoi(cay, thayDoi, ghiNhan) {
              laUnionMoi: false, diff };
   }
 
-  const kqU = createUnion(tree, [noiVao.banDoiId, kqP.person.id], {});
+  // Thứ bậc do người dùng trả lời, không do app đoán (luật 12). Ô chỉ mọc ra
+  // khi `noiVao.banDoiId` đã có cặp khác, nên ca thường gặp — lấy vợ/chồng lần
+  // đầu — vẫn đi qua đây với một bảng rỗng, đúng như trước.
+  const kqU = createUnion(tree, [noiVao.banDoiId, kqP.person.id],
+                          { ranks: docThuBacNhap() });
   if (!kqU) return null;
   Object.assign(diff, kqU.diff);
 
@@ -3684,6 +3876,20 @@ function moHopXacNhanNoi(ctx, xuLy) {
     o.conNuoi = null;
   }
 
+  // Luật 12 — chỉ đường VỢ/CHỒNG mới sinh ra một cuộc hôn nhân. Hai vai kia nối
+  // quan hệ cha mẹ – con, thứ không có thứ bậc vợ cả vợ thứ nào.
+  //
+  // Cặp có sẵn: chỉ người BƯỚC VÀO mới có thứ bậc mới — người đang đứng trong
+  // đó đã có con số của mình từ trước, hỏi lại là mời họ đổi một thứ không ai
+  // định đụng. Cặp mới: hỏi cả hai phía, và `khoiHoiThuBac` tự im với người
+  // chưa có cặp nào.
+  if (loai === 'spouse') {
+    const ds = unionId
+      ? [aiVaoCap(unionId, personId, targetId)]
+      : [personId, targetId];
+    for (const id of ds) gaiTruocChan(chan, khoiHoiThuBac(id, unionId));
+  }
+
   nutLuu = nutChanXoa('Nối hai người này', false, () => chayNoi());
   chan.append(nutLuu, nutChanXoa('Không nối', false, () => closePersonForm()));
 }
@@ -3802,7 +4008,7 @@ async function chayNoi() {
     return;
   }
 
-  const canhBao = raSoat.warnings.map((m) => m.message);
+  const canhBao = loiThuBacGoSai().concat(raSoat.warnings.map((m) => m.message));
   if (canhBao.length > 0 && !daXemCanhBao) {
     daXemCanhBao = true;
     nutLuu.textContent = 'Vẫn nối';
@@ -3855,14 +4061,29 @@ function dungCayNoi(quanHe) {
   const diff = {};
 
   if (loai === 'spouse') {
+    const bac = docThuBacNhap();   // luật 12; rỗng khi không có ô nào phải hỏi
+
     if (unionId) {
       // Cặp ấy có thể là cặp của NGƯỜI KIA (`chonCap` nay gom cả hai phía), nên
       // người bước vào là người chưa đứng trong đó — không mặc định là `targetId`.
       const kq = addPartner(tree, unionId, aiVaoCap(unionId, personId, targetId));
       if (!kq) return null;
-      return { tree: kq.tree, union: kq.union, laUnionMoi: false, diff: kq.diff };
+      Object.assign(diff, kq.diff);
+
+      // `addPartner` cố ý không nhận `ranks`, nên thứ bậc ghi bằng một hàm nữa
+      // NỐI ĐUÔI ngay sau — trên cây MỚI, không phải cây cũ. Khoá phải là người
+      // đã nằm trong `partners`, mà `updateUnion` chỉ thấy điều đó sau khi
+      // `addPartner` chạy xong.
+      if (Object.keys(bac).length === 0) {
+        return { tree: kq.tree, union: kq.union, laUnionMoi: false, diff };
+      }
+      const kqR = updateUnion(kq.tree, unionId, { ranks: bac });
+      if (!kqR) return null;
+      Object.assign(diff, kqR.diff);
+      return { tree: kqR.tree, union: kqR.union, laUnionMoi: false, diff };
     }
-    const kq = createUnion(tree, [personId, targetId], {});
+
+    const kq = createUnion(tree, [personId, targetId], { ranks: bac });
     if (!kq) return null;
     return { tree: kq.tree, union: kq.union, laUnionMoi: true, diff: kq.diff };
   }
@@ -6102,6 +6323,12 @@ function moHopXacNhanDoiNguoi(unionId, nguoiCuId, ungVienId, personId, xuLy) {
   hienNhan('Đổi xong thì:', false,
            cauKeDoiNguoi(unionId, nguoiCuId, ungVienId));
 
+  // Luật 12, cửa thứ tư. Cửa này KHÔNG nằm trong sáu chỗ gọi `createUnion` —
+  // nó không tạo cặp nào, chỉ đưa một người vào hàng vợ/chồng của một cặp đã
+  // có. Nhưng với NGƯỜI ẤY thì đó vẫn là một cuộc hôn nhân mới, và bỏ sót chỗ
+  // này là để hở đúng cái cửa mà cả việc này sinh ra để đóng.
+  gaiTruocChan(chan, khoiHoiThuBac(ungVienId, unionId));
+
   nutLuu = nutChanXoa(nguoiCuId ? 'Đổi người' : 'Thêm vào gia đình', true,
     () => chayDoiNguoi(unionId, nguoiCuId, ungVienId, personId, xuLy, chan));
   chan.append(nutLuu, nutChanXoa('Thôi', false, () => closePersonForm()));
@@ -6215,17 +6442,48 @@ async function chayDoiNguoi(unionId, nguoiCuId, ungVienId, personId, xuLy, chan)
   if (dangLuu || !doiHT) return;
 
   const B = tenNguoi(ungVienId);
+
+  // Luật 12: ô thứ bậc gõ sai thì nói ra một lần rồi mới cho đi tiếp — cùng
+  // lối *"Vẫn nối"* của `chayNoi`. Ô vẫn còn trên màn hình để sửa lại, vì nó
+  // nằm ngoài `khoiKetQua` (xem `gaiTruocChan`).
+  const loiBac = loiThuBacGoSai();
+  if (loiBac.length > 0 && !daXemCanhBao) {
+    daXemCanhBao = true;
+    if (nutLuu) nutLuu.textContent = nguoiCuId ? 'Vẫn đổi' : 'Vẫn thêm';
+    hienNhan('Có chỗ đáng xem lại:', false, loiBac);
+    return;
+  }
+
+  // Thứ bậc ghi bằng một hàm NỐI ĐUÔI trên cây đã dựng ở hộp, chứ không dựng
+  // lại từ đầu.
+  //
+  // ⚠ Chỗ này đi chệch luật 1 (*"thứ được rà đúng là thứ được ghi"*) một cách
+  // CÓ CÂN NHẮC, và lý lẽ y hệt quyết định 6 của màn hình Sắp thứ tự: đã soát
+  // `validate.js` — không luật rà nào đọc `ranks`, nên con số này không sinh ra
+  // được một vi phạm mới nào để mà rà. Dựng lại cả cây rồi rà lần nữa chỉ để
+  // nhận về đúng kết quả cũ.
+  let banGhi = doiHT.union;
+  let ghiDiff = doiHT.diff;
+  const bac = docThuBacNhap();
+  if (Object.keys(bac).length > 0) {
+    const kqR = updateUnion(doiHT.tree, unionId, { ranks: bac });
+    if (kqR) {
+      banGhi  = kqR.union;
+      ghiDiff = Object.assign({}, ghiDiff, kqR.diff);
+    }
+  }
+
   dangLuu = true;
   if (nutLuu) { nutLuu.disabled = true; nutLuu.style.opacity = '.45'; }
   hienNhan('Đang ghi…', false);
 
-  const ketQua = await ghiBanGhi(null, [doiHT.union], {
+  const ketQua = await ghiBanGhi(null, [banGhi], {
     action: 'update',
     target: unionId,
     note:   (nguoiCuId
               ? 'Đổi ' + tenNguoi(nguoiCuId) + ' thành ' + B + ' trong cặp ' + unionId
               : 'Thêm ' + B + ' vào cặp ' + unionId) + '.',
-    diff:   doiHT.diff,
+    diff:   ghiDiff,
   });
 
   dangLuu = false;
