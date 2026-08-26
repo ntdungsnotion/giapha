@@ -103,17 +103,22 @@ export function rankCua(u, personId) {
  * số nguyên > 1. Giá trị 1 KHÔNG lưu — vắng khoá đã có nghĩa là 1, lưu thêm
  * chỉ làm file phình và mở đường cho hai cách viết cùng một sự thật.
  * Khoá lạ (người không ở trong cặp) là dữ liệu hỏng, bỏ đi không báo.
+ *
+ * @returns {object|undefined} `undefined` khi không còn khoá hợp lệ nào — nơi
+ *          gọi ĐỪNG gán trường `ranks` trong ca ấy. Cùng lý do: 23 trên 25 cặp
+ *          trong dữ liệu làm việc không cần trường này, và một bảng rỗng nằm
+ *          trong mọi bản ghi chỉ làm file to ra mà không nói thêm điều gì.
  */
 function locRanks(tho, partners) {
   const ra = {};
-  if (!tho || typeof tho !== 'object') return ra;
+  if (!tho || typeof tho !== 'object') return undefined;
   const cho = new Set((Array.isArray(partners) ? partners : []).filter(Boolean));
   for (const khoa of Object.keys(tho)) {
     if (!cho.has(khoa)) continue;
     const n = Number(tho[khoa]);
     if (Number.isFinite(n) && n > 1) ra[khoa] = Math.floor(n);
   }
-  return ra;
+  return Object.keys(ra).length > 0 ? ra : undefined;
 }
 
 /**
@@ -158,7 +163,7 @@ export function createUnion(tree, partnerIds, data) {
     // tính theo giới tính (nam trái, nữ phải); `partnerOrder` chỉ được dùng khi
     // hai người cùng giới hoặc thiếu giới — xem QUY-TAC-VE §2.
     partnerOrder: ds.slice(),
-    ranks:        locRanks(d.ranks, ds),
+    // `ranks` KHÔNG nằm ở đây — nó chỉ được gán bên dưới khi thật sự có khoá.
     status:       typeof d.status === 'string' && d.status !== '' ? d.status : 'married',
     marriage: {
       iso:   chuoi(d.marriage && d.marriage.iso),
@@ -169,6 +174,9 @@ export function createUnion(tree, partnerIds, data) {
     note:     chuoi(d.note),
     deleted:  false,
   };
+
+  const ranks = locRanks(d.ranks, ds);
+  if (ranks) union.ranks = ranks;   // vắng hẳn khi không có khoá hợp lệ nào
 
   const cayMoi = Object.assign({}, tree, { unions: tree.unions.concat([union]) });
   const diff = {};
@@ -356,6 +364,9 @@ export function updateUnion(tree, unionId, changes) {
       else         delete moi.ranks[khoa];
       ghi('ranks.' + khoa, truoc, sau);
     }
+
+    // Không để lại bảng RỖNG: vắng trường đã có nghĩa là "ai cũng thứ nhất".
+    if (Object.keys(moi.ranks).length === 0) delete moi.ranks;
   }
 
   if (ch.note !== undefined) {
@@ -984,7 +995,8 @@ export function mergeUnions(tree, unionIdA, unionIdB, luaChon) {
       else                                         n = 1;
       if (Number.isFinite(n) && n > 1) rMoi[id] = Math.floor(n);
     }
-    moi.ranks = rMoi;
+    if (Object.keys(rMoi).length > 0) moi.ranks = rMoi;
+    else if (moi.ranks !== undefined)  delete moi.ranks;
     // Cầu tạm của `rankCua` đọc `rank` cũ. Bảng vừa dựng đã mang đủ sự thật
     // của cả hai cặp, nên để `rank` nằm lại là để một con số không mốc có cơ
     // hội nói chen — xoá đi.
