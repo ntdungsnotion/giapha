@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
 //            utils/{text,date,image,avatar,glyph}, config
-// Phiên bản: 1.27.0 · Cập nhật: 22/08/2026 20:10
+// Phiên bản: 1.28.0 · Cập nhật: 23/08/2026 (Vòng 3/5 của DAC-TA-RANK_V01)
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -104,7 +104,7 @@
 import { state } from '../state.js';
 import { suaDuoc } from '../services/repo.js';
 import { getAlternateNames } from '../domains/person.js';
-import { getParentUnions, getPartnerUnions } from '../domains/union.js';
+import { getParentUnions, getPartnerUnions, rankCua } from '../domains/union.js';
 import { getMediaFor } from '../domains/media.js';
 import { mauVien } from '../domains/render.js';
 import { fullName, coGiaTri, doiSongNguoi, ngayGio } from '../utils/text.js';
@@ -603,21 +603,24 @@ function veHangThongTinCap(u) {
 //
 //   *"nếu xét góc độ Dũng thì Lan là vợ 2, nếu xét Lan thì Dũng là chồng 1"*
 //
-// `rank` là một con số BẤT ĐỐI XỨNG đang nằm ở một chỗ ĐỐI XỨNG. Nó chỉ có
-// nghĩa khi đọc *từ phía một người*: "cặp thứ mấy CỦA AI". Thẻ gia đình không
-// đứng về phía ai cả — nó nói về cả cặp — nên ở đây con số ấy không có mốc để
-// bám vào, và một con số không mốc thì đọc lên thế nào cũng có một nửa sai.
+// Thứ bậc là một con số CHỈ CÓ NGHĨA khi đọc từ phía một người: "cặp thứ mấy
+// CỦA AI". Thẻ gia đình không đứng về phía ai cả — nó nói về cả cặp — nên ở
+// đây con số ấy không có mốc để bám vào, và một con số không mốc thì đọc lên
+// thế nào cũng có một nửa sai. Quyết định này KHÔNG đổi dù lược đồ dữ liệu
+// đổi (xem ngay dưới): chỗ đúng để đọc thứ bậc mãi mãi là thẻ NGƯỜI, nơi
+// người đang xem chính là cái mốc — `ghiChuHonNhan(u, personId)` in nó cạnh
+// tên người bạn đời.
 //
-// Chỗ `rank` đọc lên ĐÚNG là thẻ NGƯỜI: ở đó `ghiChuHonNhan()` in nó cạnh tên
-// người bạn đời, mà người đang xem chính là cái mốc.
+// --- ĐÃ SỬA (23/08/2026, DAC-TA-RANK_V01, Vòng 1–3) --------------------
 //
-// ⚠ **VÀ CHÍNH VÌ THẾ CÒN MỘT KHIẾM KHUYẾT CHƯA XỬ LÝ, ĐỪNG MÔ TẢ NHƯ ĐÃ XONG:**
-// dữ liệu chỉ lưu MỘT số `rank` cho cả hai phía. Cặp Dũng–Lan mang `rank: 2`
-// vì Lan là vợ thứ hai của Dũng; nhưng nếu Lan cũng có hai đời chồng thì thẻ
-// của Lan sẽ đọc con số ấy lên thành "Dũng là chồng thứ 2" — sai. Bản dữ liệu
-// hôm nay chưa có ca nào như vậy, nên lỗi chưa lộ. Sửa cho đúng thì phải tách
-// `rank` thành thứ bậc THEO TỪNG PARTNER, và đó là một thay đổi lược đồ dữ
-// liệu, không phải một thay đổi giao diện — chưa làm, chưa hẹn.
+// Câu của chủ dự án ở trên còn lộ ra một khiếm khuyết LƯỢC ĐỒ, không chỉ
+// chuyện thẻ gia đình: `rank` cũ lưu MỘT số cho CẢ HAI phía, nên nếu Lan
+// cũng có hai đời chồng thì thẻ của Lan sẽ đọc con số ấy thành "Dũng là
+// chồng thứ 2" — sai. Đã chữa bằng cách thay `rank` (một số) bằng `ranks`
+// (bảng tra khoá theo `personId`, vắng khoá = 1), đọc qua đúng một cửa
+// `rankCua(u, personId)` ở `domains/union.js`. `ghiChuHonNhan()` trong file
+// này nay BẮT BUỘC nhận `personId` — người đang xem thẻ — làm mốc; xem hàm
+// đó và hai nơi gọi nó ngay dưới. Chi tiết đầy đủ: `DAC-TA-RANK_V01.md`.
 
 /**
  * Hai nhóm của thẻ gia đình: Vợ/chồng và Con.
@@ -1168,7 +1171,7 @@ function veQuanHe(index, p, xuLy) {
     const u = index.unionById.get(unionId);
     if (!u) continue;
     for (const id of Array.isArray(u.partners) ? u.partners : []) {
-      if (id !== p.id) themNguoi(banDoi, index, id, ghiChuHonNhan(u));
+      if (id !== p.id) themNguoi(banDoi, index, id, ghiChuHonNhan(u, p.id));
     }
     for (const c of Array.isArray(u.children) ? u.children : []) {
       themNguoi(con, index, c && c.personId,
@@ -1199,14 +1202,20 @@ function veQuanHe(index, p, xuLy) {
 }
 
 /**
- * Ghi chú cạnh tên bạn đời. `rank` là thứ bậc vợ cả/vợ thứ — KHÔNG phải
- * `partnerOrder`, thứ chỉ nói vị trí trái/phải trên sơ đồ. Hai cái khác nhau,
- * lẫn vào nhau là nói sai về gia đình người ta.
+ * Ghi chú cạnh tên bạn đời. Thứ bậc vợ cả/vợ thứ đọc qua `rankCua(u, personId)`
+ * — KHÔNG phải `partnerOrder`, thứ chỉ nói vị trí trái/phải trên sơ đồ. Hai
+ * cái khác nhau, lẫn vào nhau là nói sai về gia đình người ta.
+ *
+ * `personId` BẮT BUỘC và PHẢI là người đang xem thẻ — chính người đó là cái
+ * mốc. Truyền nhầm thành người bạn đời thì câu chữ đổi phía, đúng lỗi mà
+ * DAC-TA-RANK mục 1 mô tả (*"nếu xét Dũng thì Lan là vợ 2, nếu xét Lan thì
+ * Dũng là chồng 1"*).
  */
-function ghiChuHonNhan(u) {
+function ghiChuHonNhan(u, personId) {
   const phan = [];
   if (u.status === 'divorced') phan.push('đã ly hôn');
-  if (typeof u.rank === 'number' && u.rank > 1) phan.push('thứ ' + u.rank);
+  const th = rankCua(u, personId);
+  if (th > 1) phan.push('thứ ' + th);
   return phan.join(', ');
 }
 
@@ -1691,7 +1700,7 @@ function moChonCap(p, xuLy, khoiChon) {
 
     const dong2 = document.createElement('div');
     const soCon = (Array.isArray(u.children) ? u.children : []).length;
-    dong2.textContent = [ghiChuHonNhan(u), soCon > 0 ? soCon + ' con' : 'chưa có con', u.id]
+    dong2.textContent = [ghiChuHonNhan(u, p.id), soCon > 0 ? soCon + ' con' : 'chưa có con', u.id]
       .filter(coGiaTri).join('  ·  ');
     dong2.style.cssText = 'font-size:12px;color:#8a8078;margin-top:2px';
 

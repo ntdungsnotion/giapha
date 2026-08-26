@@ -4,7 +4,7 @@
 //            mỗi dòng dẫn thẳng tới việc sửa được nó
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/validate, utils/text, config
-// Phiên bản: 1.1.0 · Cập nhật: 21/08/2026 23:10
+// Phiên bản: 1.2.0 · Cập nhật: 26/08/2026 21:30
 // ============================================================
 //
 // --- Vì sao màn hình này phải có, và vì sao nó KHÔNG quay lại Cài đặt ----
@@ -37,6 +37,23 @@
 // côi thường là người THẬT vừa thêm mà quên nối — chữa bằng *Kết nối*, xoá là
 // đường cùng. Cặp thừa thì không bao giờ là thứ ai đó cố ý tạo ra, nên xoá là
 // đường thường.
+//
+// --- "Cặp trùng" (bước GỘP, 23/08/2026) đứng riêng khỏi HAI LOẠI RÁC -----
+//
+// `checkDuplicateUnion` cũng trả `warning`, và cũng là bản ghi RÁC theo nghĩa
+// nó không nói thêm điều gì mà cặp còn lại chưa nói — nhưng nó KHÔNG được gộp
+// chung nhóm rác phía trên, và KHÔNG được lọt vào tập *"Cho vào thùng rác"*
+// của chế độ CHỌN. Lý do: cách chữa của nó là GỘP (giữ lại chữ của cả hai
+// cặp), không phải XOÁ (mất chữ của một bên). Cho nó vào cùng luồng thùng rác
+// thì một cú bấm "Cho vào thùng rác" sẽ xoá một cặp có thể đang giữ ngày cưới
+// hay ghi chú riêng — đúng thứ việc GỘP sinh ra để tránh.
+//
+// Màn hình GỘP (form so hai cặp, chọn tay từng trường xung đột) CHƯA làm ở
+// bước này — domain logic (`union.timCapTrung`/`mergeUnions`) đã xong và tự
+// kiểm bằng Node, còn màn hình thật cần xem `person-detail.js` mới dựng được.
+// Nhóm "Cặp trùng" ở đây tạm thời CHỈ ĐỌC: bấm một dòng mở thẻ gia đình của
+// cặp đó (`onXemCap`, giống nhóm Cặp thừa), người dùng tự so và tự dọn tay
+// qua "Sửa cặp" trong lúc chờ màn hình GỘP.
 //
 // --- LUẬT BA KẾT QUẢ phải hiện ra, không được nuốt ----------------------
 //
@@ -217,11 +234,15 @@ function chayRaSoat() {
   // Hai loại RÁC tách khỏi phần cảnh báo còn lại — lý do ở đầu file.
   const moCoi   = kq.warnings.filter((m) => m.check === 'checkOrphanNode');
   const capThua = kq.warnings.filter((m) => m.check === 'checkUnionPointless');
+  // "Cặp trùng" cũng tách riêng — KHÔNG vào nhóm rác, KHÔNG vào conLai. Lý do
+  // ở đầu file, mục "Cặp trùng đứng riêng khỏi HAI LOẠI RÁC".
+  const capTrung = kq.warnings.filter((m) => m.check === 'checkDuplicateUnion');
   const conLai  = kq.warnings.filter((m) => m.check !== 'checkOrphanNode' &&
-                                            m.check !== 'checkUnionPointless');
+                                            m.check !== 'checkUnionPointless' &&
+                                            m.check !== 'checkDuplicateUnion');
 
   if (kq.errors.length === 0 && moCoi.length === 0 &&
-      capThua.length === 0 && conLai.length === 0) {
+      capThua.length === 0 && capTrung.length === 0 && conLai.length === 0) {
     khoiDong.append(loiNhan(
       'Không tìm thấy chỗ nào đáng ngờ.',
       'Những phép không rà được là do bản ghi chưa có đủ mốc ngày tháng — đó ' +
@@ -270,6 +291,15 @@ function chayRaSoat() {
       'không nói lên điều gì và không hiện ở đâu cả. Gỡ nối qua app không bao ' +
       'giờ để lại thứ này; sửa tay file JSON thì có.'));
     for (const muc of capThua) khoiDong.append(veMotDong(muc));
+  }
+
+  if (capTrung.length > 0) {
+    khoiDong.append(nhanNhom('Cặp trùng (' + capTrung.length + ')'));
+    khoiDong.append(loiNhanNhom(
+      'Hai bản ghi hôn nhân cùng chỉ về một đôi — thường do một lần thêm cha ' +
+      'hoặc mẹ mới quên nối vào cặp đã có sẵn. Bấm để mở thẻ gia đình rồi so ' +
+      'hai cặp; màn hình Gộp tự động chưa làm xong, tạm dọn tay qua "Sửa cặp".'));
+    for (const muc of capTrung) khoiDong.append(veMotDong(muc));
   }
 
   if (kq.errors.length > 0) {

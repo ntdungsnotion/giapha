@@ -3,7 +3,7 @@
 // Vai trò  : Rà soát dữ liệu gia phả — chặn cái sai chắc chắn, cảnh báo cái đáng ngờ
 // Lớp      : domains — được gọi bởi: pages · được phép gọi: utils, config
 // Phụ thuộc: utils/date.js, utils/graph.js, utils/text.js, domains/union.js
-// Phiên bản: 1.4.0 · Cập nhật: 21/08/2026 21:10
+// Phiên bản: 1.5.0 · Cập nhật: 26/08/2026 21:30
 // ============================================================
 //
 // HÀM THUẦN. Không gọi services, không chạm DOM, không đọc state.
@@ -58,7 +58,7 @@
 
 import { mocNgay, soSanhNgay, chenhNam, formatDate, calcAge } from '../utils/date.js';
 import { bfs } from '../utils/graph.js';
-import { conLyDoTonTai } from './union.js';
+import { conLyDoTonTai, timCapTrung } from './union.js';
 import { fullName, coGiaTri, removeDiacritics } from '../utils/text.js';
 
 /**
@@ -387,6 +387,38 @@ export function checkUnionPointless(index, unionId) {
                  'Bản ghi thừa, xoá đi không mất mối nối nào.');
 }
 
+/**
+ * CẢNH BÁO: cặp này TRÙNG với một cặp khác — cùng bộ partners, hoặc là bản
+ * MỘT NGƯỜI của một cặp đã có đủ hai người. Xem `union.timCapTrung`.
+ *
+ * Cùng vai trò với `checkUnionPointless`: không chặn gì — bản ghi trùng không
+ * làm sai điều gì đang có — chỉ là RÁC đáng dọn. Nhưng đường dọn ở đây là
+ * GỘP chứ không phải xoá: xoá thẳng mất chữ mà cặp trùng có thể đang giữ
+ * riêng (ngày cưới, ghi chú, ảnh, con...), gộp thì giữ được hết — xem
+ * `union.mergeUnions`.
+ *
+ * @param {object} tree
+ * @param {object} index
+ * @param {string} unionId
+ * @param {ReturnType<typeof timCapTrung>} [dsTrungSan]
+ *        Danh sách `timCapTrung(tree)` đã tính SẴN — truyền vào khi rà CẢ
+ *        CÂY (nhiều union liên tiếp, xem `validateAll`) để khỏi dò lại từ đầu
+ *        mỗi lần, đổi O(n³) thành O(n²). Không truyền thì hàm tự tính — dùng
+ *        thẳng được cho rà một cặp lúc lưu.
+ */
+export function checkDuplicateUnion(tree, index, unionId, dsTrungSan) {
+  const union = index && index.unionById ? index.unionById.get(unionId) : null;
+  if (!union) return boQua('thiếu bản ghi hôn nhân');
+
+  const ds = dsTrungSan || timCapTrung(tree);
+  const cacTrung = ds.filter((x) => x.unionA === unionId || x.unionB === unionId);
+  if (cacTrung.length === 0) return dat();
+
+  const banKia = cacTrung.map((x) => (x.unionA === unionId ? x.unionB : x.unionA));
+  return canhBao('Cặp ' + unionId + ' trùng với ' + banKia.join(', ') +
+                 ' — cùng người, có thể là một cặp bị ghi hai lần.');
+}
+
 // ============================================================
 // GỌI CẢ BỘ
 // ============================================================
@@ -455,8 +487,9 @@ export function validateAll(tree, index, changeType, payload) {
         { personId: p.childId });
 
   } else if (changeType === 'union') {
-    ghi(ra, 'checkSpouseAgeGap',    checkSpouseAgeGap(index, p.unionId),    { unionId: p.unionId });
-    ghi(ra, 'checkUnionPointless', checkUnionPointless(index, p.unionId), { unionId: p.unionId });
+    ghi(ra, 'checkSpouseAgeGap',     checkSpouseAgeGap(index, p.unionId),     { unionId: p.unionId });
+    ghi(ra, 'checkUnionPointless',   checkUnionPointless(index, p.unionId),   { unionId: p.unionId });
+    ghi(ra, 'checkDuplicateUnion',   checkDuplicateUnion(tree, index, p.unionId), { unionId: p.unionId });
 
   } else if (changeType === 'tree') {
     // KHÔNG rà chiều xuống ở đây: vòng lặp này đi qua mọi người, nên mỗi cạnh
@@ -466,9 +499,13 @@ export function validateAll(tree, index, changeType, payload) {
     for (const nguoi of index.personById.values()) {
       raSoatMotNguoi(ra, tree, index, nguoi, false);
     }
+    // Tính MỘT LẦN trước vòng lặp — checkDuplicateUnion nhận sẵn, khỏi dò lại
+    // từ đầu cho từng union (O(n³) → O(n²), xem ghi chú tại hàm đó).
+    const dsTrungSan = timCapTrung(tree);
     for (const unionId of index.unionById.keys()) {
-      ghi(ra, 'checkSpouseAgeGap',    checkSpouseAgeGap(index, unionId),    { unionId });
-      ghi(ra, 'checkUnionPointless', checkUnionPointless(index, unionId), { unionId });
+      ghi(ra, 'checkSpouseAgeGap',     checkSpouseAgeGap(index, unionId),     { unionId });
+      ghi(ra, 'checkUnionPointless',   checkUnionPointless(index, unionId),   { unionId });
+      ghi(ra, 'checkDuplicateUnion',   checkDuplicateUnion(tree, index, unionId, dsTrungSan), { unionId });
     }
   }
 

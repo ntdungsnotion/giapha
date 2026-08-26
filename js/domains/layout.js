@@ -3,7 +3,7 @@
 // Vai trò  : Tính TOẠ ĐỘ các ô người, đường nối và nốt cụt. Không vẽ gì cả.
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: config (LAYOUT, PHOTO)
-// Phiên bản: 1.8.0 · Cập nhật: 20/08/2026 17:20
+// Phiên bản: 1.9.0 · Cập nhật: 23/08/2026 (Vòng 2/5 của DAC-TA-RANK_V01)
 // ============================================================
 //
 // Tách khỏi render.js có chủ ý: chỉnh giao diện (màu, phông, bo góc) không
@@ -85,6 +85,7 @@
 //   nốt cụt                        → nét gạch-chấm, do render.js lo
 
 import { LAYOUT, PHOTO } from '../config.js';
+import { rankCua } from './union.js';
 
 const RONG = LAYOUT.nodeWidth;
 const DEM  = 24;                  // lề quanh sơ đồ khi tính bounds
@@ -221,7 +222,9 @@ function dungNguCanh(index, visibleSet) {
     visibleSet,
     dsNguoi:       [],           // mảng, để thứ tự duyệt luôn xác định
     unionHT:       new Map(),    // unionId -> { id, partners[], children[] } đã lọc
-    unionLamVo:    new Map(),    // personId -> [unionId] làm vợ/chồng, sắp theo rank
+    unionLamVo:    new Map(),    // personId -> [unionId] làm vợ/chồng, sắp theo
+                                  // rankCua(u, personId) — mốc là CHÍNH personId
+                                  // của khoá này, không phải người bạn đời
     unionLamCon:   new Map(),    // personId -> [unionId] làm con, chỉ union hiển thị
     unionSoHuu:    new Map(),    // personId -> unionId ĐẶT CHỖ cho người này
     hapThuBoi:     new Map(),    // personId -> { unionId, neoId }
@@ -264,7 +267,7 @@ function dungNguCanh(index, visibleSet) {
     if (partners.length < 2 && children.length === 0) continue;
 
     children.sort((a, b) => (a.order - b.order) || (a.personId < b.personId ? -1 : 1));
-    ct.unionHT.set(uid, { id: uid, rank: soRank(u), partners, children });
+    ct.unionHT.set(uid, { id: uid, partners, children });
   }
 
   // --- Bảng tra ngược ------------------------------------------------------
@@ -273,8 +276,15 @@ function dungNguCanh(index, visibleSet) {
     for (const pid of u.partners) ct.unionLamVo.get(pid).push(uid);
     for (const c of u.children)   ct.unionLamCon.get(c.personId).push(uid);
   }
-  for (const [, ds] of ct.unionLamVo) {
-    ds.sort((a, b) => (ct.unionHT.get(a).rank - ct.unionHT.get(b).rank) || (a < b ? -1 : 1));
+  // Mốc PHẢI là người đang sắp (`id`, khoá của chính vòng lặp này), không phải
+  // một con số chung của union — đây đúng là chỗ lỗi VẼ mà DAC-TA-RANK mục 1.2
+  // chỉ ra: mốc lệch thì vợ cả bị vẽ ra ngoài vợ thứ. Đọc `rankCua` từ union
+  // THẬT qua `index.unionById`, không phải từ `ct.unionHT` — bản trong `ct` đã
+  // lọc bớt trường, không còn `ranks`/`rank`.
+  for (const [id, ds] of ct.unionLamVo) {
+    ds.sort((a, b) =>
+      (rankCua(index.unionById.get(a), id) - rankCua(index.unionById.get(b), id)) ||
+      (a < b ? -1 : 1));
   }
 
   // --- Luật A: union nào ĐẶT CHỖ cho một người con -------------------------
@@ -321,10 +331,8 @@ function dungNguCanh(index, visibleSet) {
   return ct;
 }
 
-function soRank(u) {
-  const n = Number(u && u.rank);
-  return Number.isFinite(n) ? n : 9999;
-}
+// soRank() đã BỎ (Vòng 2 của DAC-TA-RANK_V01) — đọc thứ bậc nay đi qua
+// `rankCua()` nhập từ `./union.js`, đúng MỘT cửa cho cả app.
 
 // ============================================================
 // 2 · ĐỜI — đường đi dài nhất, rồi cân bằng lại
@@ -577,7 +585,8 @@ function canNhanh(ct, mucVao) {
 
 /**
  * QUY-TAC-VE §3: khung tên luôn cùng một hàng đời, không xếp dọc. Các ô bạn
- * đời xếp RA XA DẦN ô người neo theo `rank` — nam thì vợ cả sát bên phải, nữ
+ * đời xếp RA XA DẦN ô người neo theo `rankCua(u, neoId)` — mốc luôn là CHÍNH
+ * người neo của dải này; nam thì vợ cả sát bên phải, nữ
  * thì soi gương lại, chồng cả sát bên trái.
  *
  * Trả về toạ độ TƯƠNG ĐỐI trong dải (mép trái dải = 0), nên tính một lần rồi
@@ -1190,7 +1199,7 @@ function dungDuongNoi(ct, unions) {
  *                 hôn trong họ.
  *
  * Nét chéo có thể rất dài và KHÔNG rút ngắn được: thứ tự anh em đã bị `order`
- * khoá, thứ tự các nhánh đã bị `rank` khoá. Chấp nhận nét dài.
+ * khoá, thứ tự các nhánh đã bị `ranks` khoá. Chấp nhận nét dài.
  */
 function themNetVoChong(ct, links, uid, aId, bId) {
   const a = ct.nodeById.get(aId);

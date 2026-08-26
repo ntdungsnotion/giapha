@@ -8,7 +8,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate,media,purge,render},
 //            services/{repo,gas}, utils/{graph,text,date,image,avatar}, config
-// Phiên bản: 1.25.0 · Cập nhật: 22/08/2026 20:10
+// Phiên bản: 1.27.0 · Cập nhật: 26/08/2026 21:30
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -114,13 +114,17 @@
 //    mối nối là chạm vào `partners`/`children`, và mỗi lần chạm còn phải hỏi
 //    tiếp câu *"cặp này còn lý do tồn tại không"*. Khối Quan hệ chỉ đổi CHỮ
 //    trong những mục đã có — `children[].relation`, `union.status`,
-//    `union.rank` — nên không lần nào phải hỏi câu ấy.
+//    `union.ranks` — nên không lần nào phải hỏi câu ấy.
 //
-//    Hệ quả: `status` và `rank` bây giờ sửa được từ HAI CỬA — form Sửa cặp
-//    (bước 29) và khối này. Được, và chỉ được vì cả hai gọi ĐÚNG MỘT hàm
-//    `union.updateUnion()`. Chép logic so sánh sang đây là dựng bản thứ hai,
-//    và hai bản sẽ trôi lệch nhau đúng như chín luật rà soát sẽ trôi lệch nếu
-//    chép sang `Code.gs`.
+//    Hệ quả: `status` và thứ bậc (qua `ranks`/`rankCua()`) bây giờ sửa được từ
+//    HAI CỬA — form Sửa cặp (bước 29) và khối này. Được, và chỉ được vì cả hai
+//    gọi ĐÚNG MỘT hàm `union.updateUnion()`. Chép logic so sánh sang đây là
+//    dựng bản thứ hai, và hai bản sẽ trôi lệch nhau đúng như chín luật rà soát
+//    sẽ trôi lệch nếu chép sang `Code.gs`.
+//
+//    ⚠ Thứ bậc SỬA Ở ĐÂY luôn khoá theo NGƯỜI ĐANG MỞ MÀN HÌNH này (`mocId`) —
+//    xem `DAC-TA-RANK_V01.md`. Đây không phải hệ quả phụ, mà là chính lý do
+//    lược đồ đổi từ `rank` sang `ranks`: "thứ mấy" chỉ có nghĩa từ MỘT phía.
 //
 //    ⚠ `relation` THUỘC VỀ CẶP, KHÔNG THUỘC VỀ NGƯỜI. Sửa *"đứa này là con
 //    nuôi"* từ phía người cha là sửa đúng cùng một trường mà thẻ của người con
@@ -139,7 +143,8 @@ import { updatePerson, createPerson,
 import { createUnion, addChild, addPartner, removeChild, removePartner,
          softDeleteUnion, restoreUnion, conLyDoTonTai, reorderChildren,
          thuTuConTheoTuoi, updateUnion, updateChildRelation, swapPartnerOrder,
-         getParentUnions, getPartnerUnions, getSpouses, getChildren } from '../domains/union.js';
+         getParentUnions, getPartnerUnions, getSpouses, getChildren,
+         rankCua } from '../domains/union.js';
 import { validateAll, checkOrphanNode,
          checkNoAncestorCycle, checkParentAge } from '../domains/validate.js';
 import { attachMedia, detachMedia, setPortrait, clearPortrait,
@@ -179,6 +184,8 @@ let xoaHT      = null;   // chế độ xoa: kết quả doHauQuaXoa() của l�
 let noiCtx     = null;   // chế độ noi: { personId, targetId, loai, unionId }
 let goHT       = null;   // chế độ go : kết quả doHauQuaGoNoi() của lần mở này
 let capDangSua = null;   // chế độ suaCap: mã cặp đang mở trong form
+let mocDangSua = null;   // chế độ suaCap: NGƯỜI LÀM MỐC cho thứ bậc — luôn là
+                          // người đã mở form này (DAC-TA-RANK_V01, Vòng 4)
 let chuyenHT   = null;   // chế độ chuyenCon: kết quả doHauQuaChuyenCon() của lần mở này
 let giaDinhCua = null;   // chế độ giaDinh  : màn hình đang mở của AI
 let doiHT      = null;   // chế độ doiNguoi : kết quả doHauQuaDoiNguoi() của lần mở này
@@ -352,6 +359,7 @@ export function closePersonForm() {
   noiCtx       = null;
   goHT         = null;
   capDangSua   = null;
+  mocDangSua   = null;
   chuyenHT     = null;
   giaDinhCua   = null;
   doiHT        = null;
@@ -876,8 +884,8 @@ function docQuanHe(index, personId) {
       unionId: u.id,
       ten:     tenBanDoiTrongCap(index, u, personId),
       ttCu, ttMoi: ttCu,
-      bacCu:  thuBacHienTai(u),
-      bacMoi: String(thuBacHienTai(u)),
+      bacCu:  rankCua(u, personId),
+      bacMoi: String(rankCua(u, personId)),
     });
   }
 
@@ -1023,7 +1031,13 @@ function veHangBanDoi(m, i) {
   bac.type = 'text';
   bac.inputMode = 'numeric';
   bac.value = m.bacMoi;
-  bac.setAttribute('aria-label', 'Thứ bậc của cặp ' + (i + 1));
+  // Nhãn nêu TÊN NGƯỜI LÀM MỐC, không phải số thứ tự của hàng: hàng này đứng
+  // cạnh tên người BẠN ĐỜI, nên "Thứ bậc của cặp 2" trống không thì đọc lên
+  // dễ thành thứ bậc của người bạn đời ấy — đúng nửa sai mà `DAC-TA-RANK`
+  // mục 1 mô tả. Mốc luôn là người đang mở màn hình này (`quanHe.mocId`),
+  // cùng một câu chữ với form Sửa cặp (`oThuBac`).
+  bac.setAttribute('aria-label',
+    'Đây là cặp thứ mấy của ' + tenNguoi(quanHe ? quanHe.mocId : '') + '?');
   bac.style.cssText = KIEU_O + 'flex:0 0 56px;width:56px;min-width:0;text-align:center';
   bac.addEventListener('input', () => { m.bacMoi = bac.value; });
 
@@ -1075,7 +1089,7 @@ function apThayDoiQuanHe(cay) {
     if (m.ttMoi !== m.ttCu) changes.status = m.ttMoi;
 
     const n = Number(String(m.bacMoi).trim());
-    if (Number.isFinite(n) && n > 0 && n !== m.bacCu) changes.rank = n;
+    if (Number.isFinite(n) && n > 0 && n !== m.bacCu) changes.ranks = { [quanHe.mocId]: n };
 
     if (Object.keys(changes).length === 0) continue;
     nhan(updateUnion(ra.tree, m.unionId, changes));
@@ -4328,10 +4342,11 @@ async function ghiBanGhi(nguoiThem, cacUnion, moTa, anh) {
 //    Không nói ra thì người dùng bấm, lưu, nhìn sơ đồ không nhúc nhích, và kết
 //    luận là app hỏng.
 //
-// 4. **`rank` và `partnerOrder` là HAI THỨ KHÁC NHAU, và form nói rõ điều đó.**
-//    `rank` là thứ bậc vợ cả / vợ thứ — một sự thật về gia đình. `partnerOrder`
-//    là vị trí trái/phải trên hình — một chuyện của cái sơ đồ. Gộp hai cái là
-//    nói sai về gia đình người ta.
+// 4. **Thứ bậc (`ranks`) và `partnerOrder` là HAI THỨ KHÁC NHAU, và form nói
+//    rõ điều đó.** Thứ bậc là vợ cả / vợ thứ — một sự thật về gia đình, và chỉ
+//    có nghĩa khi đọc TỪ PHÍA MỘT NGƯỜI (`rankCua()`, `DAC-TA-RANK_V01.md`).
+//    `partnerOrder` là vị trí trái/phải trên hình — một chuyện của cái sơ đồ,
+//    không đứng về phía ai. Gộp hai cái là nói sai về gia đình người ta.
 
 /**
  * Mở form sửa cặp của một người. Người ấy có nhiều cặp thì hỏi cặp nào trước.
@@ -4348,7 +4363,7 @@ export function openUnionForm(mocId, xuLy = {}) {
   if (!index || !index.personById.has(mocId)) return;
 
   if (xuLy.unionId && index.unionById.has(xuLy.unionId)) {
-    moFormCap(xuLy.unionId, xuLy);
+    moFormCap(xuLy.unionId, xuLy, mocId);
     return;
   }
 
@@ -4362,7 +4377,7 @@ export function openUnionForm(mocId, xuLy = {}) {
     return;
   }
 
-  if (ds.length === 1) { moFormCap(ds[0].id, xuLy); return; }
+  if (ds.length === 1) { moFormCap(ds[0].id, xuLy, mocId); return; }
 
   moHopChon('chon', xuLy, {
     tieuDe: 'Sửa cặp nào?',
@@ -4373,12 +4388,20 @@ export function openUnionForm(mocId, xuLy = {}) {
       ma:  u.id,
       chu: 'Cặp với ' + keTenPartner(u.id),
       phu: moTaCap(u),
-      chay: () => moFormCap(u.id, xuLy),
+      chay: () => moFormCap(u.id, xuLy, mocId),
     })),
   });
 }
 
-function moFormCap(unionId, xuLy) {
+/**
+ * @param {string} unionId
+ * @param {object} xuLy
+ * @param {string} mocId  NGƯỜI ĐANG MỞ FORM NÀY — mốc của mọi con số thứ bậc
+ *        hiện ra trong form. `openUnionForm()` luôn có sẵn giá trị này (kể cả
+ *        khi vào bằng đường `xuLy.unionId` đã biết trước, từ thẻ gia đình —
+ *        xem JSDoc `openUnionForm`), nên tham số này KHÔNG tuỳ chọn.
+ */
+function moFormCap(unionId, xuLy, mocId) {
   const u = state.index && state.index.unionById.get(unionId);
   if (!u) return;
 
@@ -4386,6 +4409,7 @@ function moFormCap(unionId, xuLy) {
   xuLyNgoai  = xuLy || {};
   cheDo      = 'suaCap';
   capDangSua = unionId;
+  mocDangSua = mocId;
 
   lopPhu = document.createElement('div');
   lopPhu.style.cssText = KIEU_LOP_PHU;
@@ -4404,7 +4428,7 @@ function moFormCap(unionId, xuLy) {
     'font-size:12px;color:#b3aaa0;margin-top:3px;letter-spacing:.03em;line-height:1.45';
 
   hop.append(tieuDe, phu);
-  hop.append(...veCacOCap(u));
+  hop.append(...veCacOCap(u, mocId));
 
   khoiKetQua = document.createElement('div');
   hop.append(khoiKetQua);
@@ -4420,7 +4444,7 @@ function moFormCap(unionId, xuLy) {
   document.body.append(lopPhu);
 }
 
-function veCacOCap(u) {
+function veCacOCap(u, mocId) {
   const ra = [];
 
   ra.push(veNhan('Ngày cưới'));
@@ -4430,8 +4454,11 @@ function veCacOCap(u) {
   ra.push(veNhan('Cặp này bây giờ'));
   ra.push(veChonTrangThai(u));
 
-  ra.push(veNhan('Thứ bậc'));
-  ra.push(oThuBac(u));
+  // Nhãn PHẢI nêu tên người làm mốc — "Thứ bậc" trống không đọc được TỪ PHÍA
+  // AI, đúng cái lỗi DAC-TA-RANK mục 1 mô tả. Người làm mốc luôn là người đã
+  // mở form này (`mocId`), không phải người bạn đời.
+  ra.push(veNhan('Đây là cặp thứ mấy của ' + tenNguoi(mocId) + '?'));
+  ra.push(oThuBac(u, mocId));
 
   ra.push(veNhan('Chỗ đứng trên sơ đồ'));
   ra.push(veDoiChoTraiPhai(u));
@@ -4525,36 +4552,36 @@ function veChonTrangThai(u) {
 }
 
 /**
- * `rank` — vợ cả là 1, vợ thứ là 2, 3… KHÔNG phải vị trí trái/phải trên sơ đồ.
+ * Ô nhập thứ bậc — số nguyên ≥ 1, vợ cả là 1, vợ thứ là 2, 3…
+ * KHÔNG phải vị trí trái/phải trên sơ đồ (đó là `partnerOrder`, ô dưới).
+ *
+ * Đọc/hiện qua `rankCua(u, mocId)` — CỬA DUY NHẤT, `mocId` là người đang mở
+ * form này (xem `moFormCap`). Không đọc thẳng `u.ranks`/`u.rank` ở đây.
  *
  * Ô số chứ không phải danh sách chọn: gia phả cũ có cụ bốn đời vợ, và một danh
  * sách cứng thì lần nào cũng thiếu đúng cái con số người ta cần.
  */
-function oThuBac(u) {
+function oThuBac(u, mocId) {
   const boc = document.createElement('div');
   boc.style.cssText = 'margin-top:6px';
 
   const input = document.createElement('input');
   input.type = 'text';
   input.inputMode = 'numeric';
-  input.value = String(thuBacHienTai(u));
-  input.setAttribute('aria-label', 'Thứ bậc của cặp này');
+  input.value = String(rankCua(u, mocId));
+  input.setAttribute('aria-label', 'Đây là cặp thứ mấy của ' + tenNguoi(mocId) + '?');
   input.style.cssText = KIEU_O;
-  o.rank = input;
+  o.thuBac = input;
 
   const nhac = document.createElement('div');
   nhac.textContent =
-    '1 là vợ cả / chồng đầu, 2 là vợ thứ hai… Đây là thứ bậc trong gia đình, ' +
-    'không phải chỗ đứng trái phải trên hình.';
+    '1 là vợ cả / chồng đầu, 2 là vợ thứ hai… tính riêng theo phía ' +
+    tenNguoi(mocId) + '. Đây là thứ bậc trong gia đình, không phải chỗ đứng ' +
+    'trái phải trên hình.';
   nhac.style.cssText = 'font-size:11px;line-height:1.45;color:#8a8078;margin-top:4px';
 
   boc.append(input, nhac);
   return boc;
-}
-
-/** Thiếu `rank` thì coi như 1 — cặp duy nhất của một người là cặp thứ nhất. */
-function thuBacHienTai(u) {
-  return (typeof u.rank === 'number' && u.rank > 0) ? u.rank : 1;
 }
 
 /**
@@ -4647,9 +4674,9 @@ async function handleSaveUnion() {
   const ttCu    = u.status === 'divorced' ? 'divorced' : (u.status || 'married');
   if (ttMoi !== ttCu) changes.status = ttMoi;
 
-  const bacMoi = Number(String(docO('rank')).trim());
-  if (Number.isFinite(bacMoi) && bacMoi > 0 && bacMoi !== thuBacHienTai(u)) {
-    changes.rank = bacMoi;
+  const bacMoi = Number(String(docO('thuBac')).trim());
+  if (Number.isFinite(bacMoi) && bacMoi > 0 && bacMoi !== rankCua(u, mocDangSua)) {
+    changes.ranks = { [mocDangSua]: bacMoi };
   }
 
   const kq = updateUnion(state.tree, capDangSua, changes);
