@@ -335,23 +335,44 @@ export function updateUnion(tree, unionId, changes) {
     const cho = new Set((Array.isArray(moi.partners) ? moi.partners : []).filter(Boolean));
 
     // --- Dọn `rank` cũ trước khi ghi, nếu bản ghi này còn mang nó ------------
-    // Bản ghi cũ chỉ có MỘT số cho cả cặp, và `rankCua()` đang cho mọi người
-    // trong cặp đọc chung số ấy (cầu tạm). Ghi đè khoá của một người rồi để
-    // `rank` nằm lại là mở đường cho một lỗi câm: đặt người ấy VỀ 1 thì khoá
-    // bị xoá, cầu tạm sống lại, và con số cũ hiện ra như chưa ai sửa gì.
+    // Bản ghi cũ chỉ có MỘT số cho cả cặp, và `rankCua()` cho mọi người trong
+    // cặp đọc chung số ấy (cầu tạm). Ghi đè khoá của một người rồi để `rank`
+    // nằm lại là mở đường cho một lỗi câm: đặt người ấy VỀ 1 thì khoá bị xoá,
+    // cầu tạm sống lại, và con số cũ hiện ra như chưa ai sửa gì.
     //
-    // Nên cố định cầu tạm thành khoá thật cho MỌI người trong cặp rồi xoá
-    // `rank`. Đọc ra không đổi một chữ nào so với trước khi sửa — chỉ là thôi
-    // đoán. Có thể sinh ra "cả hai cùng thứ 2", nhưng đó đúng là điều bản ghi
-    // cũ vẫn nói mà không phân biệt nổi; luật 5 của `DAC-TA-RANK` cho phép,
-    // `/kiem-tra` cảnh báo chứ không chặn.
+    // Nên di trú `rank` thành khoá thật rồi xoá nó. Nhưng KHÔNG gán cho mọi
+    // người — chủ dự án chỉ ra ngày 26/08/2026 vì sao: cặp `U0005` mang
+    // `rank: 2` là nói về ÔNG (hai đời vợ); gán cả cho BÀ là đóng băng vĩnh
+    // viễn một câu sai — *"chồng thứ 2"* trong khi bà chỉ có một đời chồng.
+    //
+    // Mốc suy ra bằng đúng quy tắc ngầm mà bản mã cũ vẫn sống nhờ, nay viết
+    // thành lời (`DAC-TA-RANK` mục 1.1): **`rank` cũ nói về người có NHIỀU
+    // HƠN MỘT cặp**. Đếm được vì hàm này có cả `tree` trong tay.
+    //
+    // Ba ca, và cả ba đều xác định:
+    //   - đúng một người nhiều cặp  → số ấy là của họ, người kia về 1
+    //   - không ai nhiều cặp        → `rank > 1` vô nghĩa, bỏ hẳn
+    //   - cả hai đều nhiều cặp      → mơ hồ THẬT, không cứu được bằng suy
+    //                                 luận: giữ cho cả hai, đúng như bản ghi
+    //                                 cũ vẫn nói mà không phân biệt nổi.
+    //                                 Luật 5 của `DAC-TA-RANK` cho phép ca
+    //                                 này, `/kiem-tra` cảnh báo chứ không chặn
     const cuMoc = Number(moi.rank);
     if (Number.isFinite(cuMoc) && cuMoc > 1) {
       for (const id of cho) {
+        if (demCapCuaNguoi(tree, id, unionId) === 0) continue;   // chỉ một cặp: không phải mốc
         if (moi.ranks[id] === undefined) moi.ranks[id] = cuMoc;
       }
     }
-    if (moi.rank !== undefined) delete moi.rank;
+    if (moi.rank !== undefined) {
+      // PHẢI ghi vào `diff`, kể cả khi không khoá nào đổi giá trị đọc ra được.
+      // Bản ghi đã đổi thật (bỏ `rank`, thêm `ranks`) — không ghi thì
+      // `thayDoi` trả về false và nơi gọi bỏ qua không lưu, tức phép di trú
+      // chạy rồi mất. Người dùng bấm Lưu, màn hình báo "không có gì thay đổi",
+      // và lần mở sau con số cũ vẫn ngồi đó.
+      ghi('rank', cuMoc, null);
+      delete moi.rank;
+    }
 
     for (const khoa of Object.keys(ch.ranks)) {
       if (!cho.has(khoa)) continue;                 // khoá lạ: bỏ, không ghi
@@ -1231,6 +1252,24 @@ function quanHeCua(union, personId) {
 
 function chuoi(v) {
   return (v === undefined || v === null) ? '' : String(v).trim();
+}
+
+/**
+ * Đếm số cặp KHÁC (chưa xoá mềm) mà `personId` đứng làm vợ/chồng, không kể
+ * cặp `trUnionId`. Dùng đúng một chỗ: đoán mốc của `rank` cũ khi di trú sang
+ * `ranks` — xem ghi chú trong `updateUnion`.
+ *
+ * ⚠ Không phải phép duyệt đồ thị nên không cần `visited`: nó đọc thẳng mảng
+ * `unions` một lượt rồi dừng, không đi tiếp từ ai cả.
+ */
+function demCapCuaNguoi(tree, personId, trUnionId) {
+  const ds = (tree && Array.isArray(tree.unions)) ? tree.unions : [];
+  let n = 0;
+  for (const u of ds) {
+    if (!u || u.deleted || u.id === trUnionId) continue;
+    if (Array.isArray(u.partners) && u.partners.indexOf(personId) >= 0) n++;
+  }
+  return n;
 }
 
 /** Bộ partner (khử rỗng, khử trùng) của một union — dùng cho dò/gộp cặp trùng. */
