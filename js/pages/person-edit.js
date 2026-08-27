@@ -8,7 +8,7 @@
 //            xoa,anh}.js, state,
 //            domains/{person,union,validate,media,purge,render},
 //            services/{repo,gas}, utils/{graph,text,date,image,avatar}, config
-// Phiên bản: 1.39.0 · Cập nhật: 27/08/2026 21:15
+// Phiên bản: 1.40.0 · Cập nhật: 28/08/2026 00:20
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -325,6 +325,24 @@ export function quickAddChild(vao, xuLy = {}) {
   moForm('themCon', NGUOI_TRONG, nv, xuLy);
 }
 
+/**
+ * Mở form THÊM NGƯỜI ĐẦU TIÊN của một gia phả còn rỗng.
+ *
+ * Chế độ duy nhất KHÔNG nối vào đâu cả, vì chưa có gì để nối. Ba đường thêm
+ * người kia đều đi từ một người sẵn có — thêm con, thêm vợ/chồng, thêm cha/mẹ —
+ * nên gia phả 0 người trước hôm nay là một cánh cửa khoá từ bên trong: file
+ * `taoFileDuLieuMoi()` vừa sinh ra không có cách nào nhập người vào.
+ *
+ * Người này thành luôn `tree.rootPersonId` — gốc cây ghi trong file. Không
+ * hỏi lại: người đầu tiên của một gia phả rỗng thì đằng nào cũng là người duy
+ * nhất, và `repo.chonNguoiTrungTam` cần một mã để mở sơ đồ ở lần sau.
+ *
+ * @param {{onDaLuu?:function(string)}} [xuLy]
+ */
+export function themNguoiDauTien(xuLy = {}) {
+  moForm('themDauTien', NGUOI_TRONG, null, xuLy);
+}
+
 /** Đọc và kiểm chỗ nối. Trả null nếu chỗ ấy không có thật trong chỉ mục. */
 function chuanNoiVao(vao) {
   const index = state.index;
@@ -425,9 +443,10 @@ function canTroLuu() {
 // Các mảng của form
 // ============================================================
 
-/** Ba chế độ dựng một bản ghi MỚI. Chế độ 'sua' đọc một bản ghi đã có. */
+/** Bốn chế độ dựng một bản ghi MỚI. Chế độ 'sua' đọc một bản ghi đã có. */
 function laCheDoThem() {
-  return N.cheDo === 'themCon' || N.cheDo === 'themChaMe' || N.cheDo === 'themBanDoi';
+  return N.cheDo === 'themCon' || N.cheDo === 'themChaMe' ||
+         N.cheDo === 'themBanDoi' || N.cheDo === 'themDauTien';
 }
 
 /**
@@ -436,8 +455,9 @@ function laCheDoThem() {
  * phải kiểm lại xem mình bấm trúng chưa.
  */
 function tieuDeForm() {
-  if (N.cheDo === 'themCon')    return 'Thêm người con';
-  if (N.cheDo === 'themBanDoi') return 'Thêm vợ / chồng';
+  if (N.cheDo === 'themCon')     return 'Thêm người con';
+  if (N.cheDo === 'themBanDoi')  return 'Thêm vợ / chồng';
+  if (N.cheDo === 'themDauTien') return 'Thêm người đầu tiên';
   // Không còn "Thêm cha" / "Thêm mẹ" riêng: từ 20/08/2026 chính ô GIỚI TÍNH
   // trong form là chỗ nói ra điều đó, và tiêu đề không được nói trước một thứ
   // người dùng chưa chọn.
@@ -470,6 +490,13 @@ function veDauForm(nguoi) {
  */
 function moTaChoNoi() {
   const index = state.index;
+
+  // Chế độ duy nhất không có chỗ nối, nên phải trả lời TRƯỚC phép kiểm dưới.
+  if (N.cheDo === 'themDauTien') {
+    return 'Gia phả này chưa có ai. Người vừa nhập sẽ đứng giữa sơ đồ, và ' +
+           'mọi người sau đó nối vào từ chính họ.';
+  }
+
   if (!noiVao || !index) return '';
 
   if (N.cheDo === 'themChaMe') {
@@ -1378,6 +1405,7 @@ function veChan(nguoi, luuDuoc) {
       if (N.cheDo === 'suaCap') handleSaveUnion();
       else if (N.cheDo === 'themCon') handleAddChild();
       else if (N.cheDo === 'themChaMe' || N.cheDo === 'themBanDoi') handleAddNguoiThan();
+      else if (N.cheDo === 'themDauTien') handleAddDauTien();
       else handleSave(nguoi);
     });
   }
@@ -1748,6 +1776,113 @@ async function handleAddChild() {
     hienNhan('Người khác vừa sửa gia phả trong lúc bạn đang gõ, nên app KHÔNG ' +
              'ghi đè lên bản của họ. Người con này CHƯA được thêm. Chép lại ' +
              'phần vừa gõ ra chỗ khác, tải lại trang, rồi thêm lại.', true);
+    return;
+  }
+  hienNhan((ketQua && ketQua.loi) || 'Chưa thêm được, mà máy chủ không nói rõ vì sao.', true);
+}
+
+/**
+ * Lưu NGƯỜI ĐẦU TIÊN của một gia phả rỗng.
+ *
+ * Đường ngắn nhất trong bốn đường thêm người, vì không có cặp nào phải dựng:
+ * `createPerson` một lần là xong. Nhưng nó có một việc mà ba đường kia không
+ * có — ghi `tree.rootPersonId`. Không ghi thì lần mở app sau,
+ * `repo.chonNguoiTrungTam` phải rơi xuống nước thứ ba *"lấy đại người đầu
+ * tiên trong chỉ mục"*, và cái gốc mà người dùng vừa cố ý dựng lên thành ra
+ * do thứ tự trong mảng quyết định.
+ *
+ * Không rà quan hệ (`validateAll` nhánh `'child'`) vì chưa có quan hệ nào để
+ * rà; nhánh `'person'` vẫn chạy đủ — ngày sinh sau ngày mất là lỗi kể cả khi
+ * người ấy đứng một mình.
+ */
+async function handleAddDauTien() {
+  if (N.dangLuu) return;
+
+  const luc = stampNow();
+  const boi = (state.phien && state.phien.email) || '';
+
+  const kqP = createPerson(state.tree, gomThayDoi(), { boi, luc });
+  if (!kqP) {
+    hienNhan('Không dựng được bản ghi. Tải lại trang rồi thử lại.', true);
+    return;
+  }
+
+  const indexMoi = buildIndex(kqP.tree);
+  const raSoat   = validateAll(kqP.tree, indexMoi, 'person',
+                               { personId: kqP.person.id });
+
+  if (!raSoat.canSave) {
+    hienNhan('Chưa thêm được — có chỗ không thể đúng được:', true,
+             raSoat.errors.map((m) => m.message));
+    return;
+  }
+
+  const canhBao = loiNhacCuaForm().concat(raSoat.warnings.map((m) => m.message));
+  if (canhBao.length > 0 && !N.daXemCanhBao) {
+    N.daXemCanhBao = true;
+    N.nutLuu.textContent = 'Vẫn thêm';
+    hienNhan('Có chỗ đáng xem lại. Gia phả cũ có những chuyện thật mà nghe như ' +
+             'lỗi, nên app không chặn — bấm "Vẫn thêm" nếu bạn biết là đúng:',
+             false, canhBao);
+    return;
+  }
+
+  N.dangLuu = true;
+  N.nutLuu.disabled = true;
+  N.nutLuu.style.opacity = '.45';
+  hienNhan('Đang lưu…', false);
+
+  const nguoiMoi = kqP.person;
+  const tenMoi   = coGiaTri(fullName(nguoiMoi)) ? fullName(nguoiMoi) : nguoiMoi.id;
+
+  let ketQua;
+  try {
+    ketQua = await luuCay(
+      (cay) => {
+        if (!Array.isArray(cay.persons)) cay.persons = [];
+
+        // Cùng chốt chặn với `handleAddChild`, và ở đây nó bắt thêm một ca
+        // riêng: hai người cùng mở một gia phả rỗng, cả hai cùng bấm thêm
+        // người đầu tiên. Cả hai đều sinh ra P0001.
+        if (cay.persons.some((p) => p && p.id === nguoiMoi.id)) {
+          throw new Error('Mã ' + nguoiMoi.id + ' vừa được dùng cho một người khác. ' +
+                          'Tải lại trang rồi thêm lại.');
+        }
+        cay.persons.push(JSON.parse(JSON.stringify(nguoiMoi)));
+
+        // Chỉ nhận gốc khi chỗ ấy còn trống. Cây đáng lẽ rỗng, nhưng bản sao
+        // dùng ở đây là cây LÚC LƯU chứ không phải cây lúc mở form — và ghi đè
+        // gốc của một gia phả đã có người là việc hàm này không được phép làm.
+        if (!cay.tree || typeof cay.tree !== 'object') cay.tree = {};
+        if (!cay.tree.rootPersonId) cay.tree.rootPersonId = nguoiMoi.id;
+      },
+      {
+        action: 'create',
+        target: nguoiMoi.id,
+        note:   'Thêm người đầu tiên của gia phả: ' + tenMoi + '.',
+        diff:   kqP.diff,
+      }
+    );
+  } catch (e) {
+    ketQua = { ok: false, loi: e && e.message ? e.message : String(e) };
+  }
+
+  N.dangLuu = false;
+  if (!N.lopPhu) return;   // người dùng đã đóng form trong lúc chờ máy chủ
+
+  if (ketQua && ketQua.ok) {
+    closePersonForm();
+    if (N.xuLyNgoai.onDaLuu) N.xuLyNgoai.onDaLuu(nguoiMoi.id);
+    return;
+  }
+
+  N.nutLuu.disabled = false;
+  N.nutLuu.style.opacity = '1';
+
+  if (ketQua && ketQua.lyDo === 'xungdot') {
+    hienNhan('Người khác vừa sửa gia phả trong lúc bạn đang gõ, nên app KHÔNG ' +
+             'ghi đè lên bản của họ. Người này CHƯA được thêm. Tải lại trang ' +
+             'rồi xem lại — có thể họ đã thêm người đầu tiên rồi.', true);
     return;
   }
   hienNhan((ketQua && ketQua.loi) || 'Chưa thêm được, mà máy chủ không nói rõ vì sao.', true);

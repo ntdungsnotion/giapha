@@ -4,7 +4,7 @@
 //            đường sang màn hình Sao lưu & khôi phục
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, services/gas, utils/text
-// Phiên bản: 1.10.0 · Cập nhật: 22/08/2026 18:40
+// Phiên bản: 1.11.0 · Cập nhật: 28/08/2026 00:20
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
@@ -427,6 +427,11 @@ function veKhoiPhien(vao) {
   hang(bang, 'Vai trò', phien.vaiTro);
   hang(bang, 'Quyền', quyenBangChu(phien));
   hang(bang, 'Người quản lý', phien.nguoiQuanLy);
+  // File dữ liệu đang mở. Chỉ có một dòng này nói ra được nó: hai gia phả
+  // khác nhau trông y hệt nhau trên mọi màn hình còn lại. Đứng ở đây vì đây
+  // là chỗ duy nhất người cài đặt mở ra sau khi vừa đổi FILE_ID — nếu tên
+  // hiện lên vẫn là tên cũ thì bản triển khai Apps Script chưa được cập nhật.
+  if (phien.tenFileDuLieu) hang(bang, 'File dữ liệu', phien.tenFileDuLieu);
   khoi.append(bang);
 
   const nhac = document.createElement('div');

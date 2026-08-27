@@ -6,7 +6,7 @@
 //            utils/{text,glyph}, config,
 //            pages/{person-detail,person-edit,person-list,review,settings,
 //            backup}
-// Phiên bản: 1.30.0 · Cập nhật: 27/08/2026 23:30
+// Phiên bản: 1.31.0 · Cập nhật: 28/08/2026 00:20
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -73,7 +73,7 @@ import { openPersonMenu, openPersonDetail, openUnionDetail,
 import { openPersonForm, closePersonForm, quickAddChild, quickAddParent,
          quickAddSpouse, linkExisting, goNoiNguoi, xoaNguoi,
          openUnionForm, openMergeForm, openSapThuTu, openSuaCon, openFamilyForm,
-         khoiPhucNhieu, donThungRac,
+         khoiPhucNhieu, donThungRac, themNguoiDauTien,
          chuyenVaoThungRac } from './person-edit.js';
 import { openPersonList, closePersonList, openThungRac,
          openDanhSachGiaDinh } from './person-list.js';
@@ -168,6 +168,25 @@ export function refresh() {
 
   const index = state.index;
   const focus = state.focusPersonId;
+
+  // GIA PHẢ RỖNG đứng riêng, TRƯỚC lời nhắn "chưa chọn được người trung tâm" —
+  // câu ấy bảo người dùng bấm 🔍 đi tìm, mà ở đây không có ai để tìm. Đó là
+  // trạng thái một file vừa sinh ra từ `taoFileDuLieuMoi()` luôn đi qua, và
+  // trước 27/08/2026 nó là cánh cửa khoá từ bên trong: mọi đường thêm người
+  // đều đi từ một người sẵn có.
+  if (index && index.personById.size === 0) {
+    const suaDuoc = !!(state.phien && state.phien.suaDuoc);
+    hienLoiNhan(
+      'Gia phả này chưa có ai.',
+      suaDuoc
+        ? 'Bắt đầu bằng một người bất kỳ — thường là người cao tuổi nhất còn ' +
+          'nhớ được, hoặc chính bạn. Những người khác nối vào sau, từ người này.'
+        : 'Bạn chỉ có quyền xem, nên chưa nhập được ai. Nhờ người quản lý nhập ' +
+          'người đầu tiên, hoặc đổi quyền cho bạn trên Google Drive.',
+      suaDuoc ? { chu: 'Thêm người đầu tiên', bam: moThemDauTien } : null
+    );
+    return;
+  }
 
   if (!index || !focus) {
     hienLoiNhan('Chưa chọn được người trung tâm.',
@@ -1246,8 +1265,17 @@ function donKhung() {
   khungCuon.append(svgEl);
 }
 
-/** Màn hình thay thế khi không vẽ được gì. Nói rõ phải làm gì, không hiện lỗi thô. */
-function hienLoiNhan(tieuDe, giaiThich) {
+/**
+ * Màn hình thay thế khi không vẽ được gì. Nói rõ phải làm gì, không hiện lỗi thô.
+ *
+ * @param {string} tieuDe
+ * @param {string} giaiThich
+ * @param {{chu:string, bam:function}} [nut]  nút hành động, khi lời nhắn ấy có
+ *        một việc làm được ngay tại chỗ. Bỏ trống thì màn hình chỉ có chữ, đúng
+ *        như trước — ba lời nhắn cũ đều là "đi chỗ khác mà làm", không có việc
+ *        nào để làm ở đây.
+ */
+function hienLoiNhan(tieuDe, giaiThich, nut) {
   layoutHT = null;
   donKhung();
   // Trả lề căn giữa của lần vẽ trước về 0: không có bước này thì lời nhắn bị
@@ -1256,8 +1284,15 @@ function hienLoiNhan(tieuDe, giaiThich) {
   padY = 0;
   if (khungCuon) khungCuon.style.padding = '0';
 
+  // ⚠ `min(…, 100%)` và `box-sizing` là BẮT BUỘC, không phải cho đẹp.
+  // `rongHop(420, 620)` có SÀN 420px — trên điện thoại dọc 380px thì hộp rộng
+  // hơn khung 40px, cộng 24px padding mỗi bên nữa, và chữ bị cắt cụt ở mép
+  // phải. Ba lời nhắn cũ dính lỗi này từ lâu mà không ai thấy vì chúng hiếm
+  // khi hiện ra; màn hình "gia phả chưa có ai" thì ngược lại — nó là màn hình
+  // ĐẦU TIÊN của mọi gia phả mới lập.
   const hop = document.createElement('div');
-  hop.style.cssText = 'max-width:' + rongHop(420, 620) + ';' +
+  hop.style.cssText = 'max-width:min(' + rongHop(420, 620) + ', 100%);' +
+                      'box-sizing:border-box;' +
                       'margin:48px auto;padding:0 24px;line-height:1.6';
 
   const h = document.createElement('h2');
@@ -1269,7 +1304,31 @@ function hienLoiNhan(tieuDe, giaiThich) {
   p.style.cssText = 'margin:0;font-size:14px;color:#8a8078';
 
   hop.append(h, p);
+
+  if (nut && typeof nut.bam === 'function') {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = nut.chu;
+    b.style.cssText =
+      'margin-top:18px;padding:10px 18px;font-size:15px;font-family:inherit;' +
+      'border:1px solid #2a2622;border-radius:8px;background:#2a2622;' +
+      'color:#fffdf9;font-weight:600;cursor:pointer';
+    b.addEventListener('click', nut.bam);
+    hop.append(b);
+  }
+
   khungCuon.prepend(hop);
+}
+
+/**
+ * Mở form người đầu tiên, rồi đứng ngay vào người vừa nhập.
+ *
+ * Đặt `focusPersonId` tại đây chứ không đợi lần mở app sau đọc `rootPersonId`:
+ * người dùng vừa gõ xong một bản ghi, thứ họ mong thấy là bản ghi ấy hiện ra
+ * giữa màn hình — không phải cùng cái màn hình trống vừa nãy.
+ */
+function moThemDauTien() {
+  themNguoiDauTien({ onDaLuu: (personId) => setFocusPerson(personId) });
 }
 
 /**

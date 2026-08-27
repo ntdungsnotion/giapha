@@ -1,7 +1,7 @@
 // ============================================================
 // giapha · gas/Code.gs   (đặt trong Apps Script)
 // Vai trò  : API máy chủ. Trình duyệt gọi qua google.script.run.
-// Phiên bản: 0.8.0 · Cập nhật: 22/08/2026 00:40
+// Phiên bản: 0.9.0 · Cập nhật: 28/08/2026 00:20
 // ============================================================
 //
 // Triển khai BẮT BUỘC đặt:
@@ -62,6 +62,7 @@ function doGet() {
  *   nguoiTrungTamMacDinh: string|null,
  *   tenHo: string,
  *   nguoiQuanLy: string,
+ *   tenFileDuLieu: string,
  *   loi: string|null
  * }}
  */
@@ -82,6 +83,7 @@ function layPhien() {
     loiUserProperties:    null,   // chỉ dùng cho phép thử 0.11
     tenHo:                TEN_HO,
     nguoiQuanLy:          NGUOI_QUAN_LY,
+    tenFileDuLieu:        '',
     loi:                  null,
   };
 
@@ -93,7 +95,11 @@ function layPhien() {
   var file;
   try {
     file = DriveApp.getFileById(FILE_ID);
-    file.getName();          // chạm thật vào file mới biết có đọc được không
+    // Chạm thật vào file mới biết có đọc được không. Từ việc 9 thì tên ấy đi
+    // luôn về trình duyệt: sau một lần đổi FILE_ID, thứ người dùng cần thấy
+    // ngay là app đang mở file NÀO — hai gia phả trông giống hệt nhau trên
+    // màn hình cho tới lúc nhìn vào tên file.
+    phien.tenFileDuLieu = file.getName();
     phien.docDuoc = true;
   } catch (e) {
     // Không đọc được = chưa được chia sẻ. Đây là đường đi bình thường
@@ -1233,6 +1239,27 @@ function khoiPhucSaoLuu(fileId, vanTayDaBiet) {
       return kq;
     }
 
+    // Bản sao lưu này có phải của CHÍNH gia phả đang mở không?
+    //
+    // Trước việc 9 câu hỏi ấy thừa — cả hệ thống chỉ có một gia phả. Từ việc 9
+    // thì `taoFileDuLieuMoi()` sinh ra được gia phả thứ hai, và nếu người cài
+    // đặt đổi `FILE_ID` mà quên đổi `THU_MUC_SAO_LUU_ID` thì bản sao lưu của
+    // hai cây nằm chung một thư mục. Tên file sao lưu là
+    // `giapha-sao-luu_<ngày>_rev<n>.json`, không mang tên gia phả nào, nên
+    // nhìn danh sách không tài nào phân biệt được — và khôi phục nhầm là ghi
+    // đè cả gia phả này bằng gia phả khác.
+    var tenCu  = String((cayCu.tree  && cayCu.tree.name)  || '');
+    var tenLuu = String((doc.cay.tree && doc.cay.tree.name) || '');
+    if (tenCu !== '' && tenLuu !== '' && tenCu !== tenLuu) {
+      kq.lyDo = 'khaccaypha';
+      kq.loi  = 'CHƯA khôi phục gì cả. Bản sao lưu "' + doc.ten + '" là của gia ' +
+                'phả "' + tenLuu + '", còn app đang mở gia phả "' + tenCu + '". ' +
+                'Nhiều khả năng Config.gs đang trỏ FILE_ID sang gia phả này ' +
+                'nhưng THU_MUC_SAO_LUU_ID vẫn là thư mục của gia phả kia — mỗi ' +
+                'gia phả phải có thư mục Sao_luu riêng.';
+      return kq;
+    }
+
     // --- 5. CẤT BẢN HIỆN TẠI — ĐIỀU KIỆN ---------------------------------
     // Giống hệt lệnh dọn thùng rác, và vì đúng một lý do: sau dòng ghi ở dưới,
     // bản hiện tại là thứ KHÔNG còn ở đâu nữa. Không cất được nó thì thà không
@@ -1538,8 +1565,130 @@ function donBanSaoLuuCu_(thuMuc) {
 // 5. CHẠY TAY MỘT LẦN KHI CÀI ĐẶT
 // ============================================================
 
-/** Chạy tay một lần khi cài đặt: tạo file dữ liệu rỗng, in ra ID. */
-function taoFileDuLieuMoi() { /* TODO */ }
+/**
+ * TẠO MỘT BỘ DỮ LIỆU MỚI, RỖNG. Chạy tay một lần, từ trình soạn thảo
+ * Apps Script — KHÔNG gọi được từ trình duyệt, và cố ý như vậy: hàm này
+ * sinh ra thư mục trên Drive, không phải việc mà một cú bấm nhầm nên làm được.
+ *
+ * Nó tạo BA thứ, không phải một:
+ *
+ *   Gia_pha_<tên họ>/
+ *     ├── giapha-<tên họ>.json     ← file dữ liệu rỗng, đúng lược đồ V04
+ *     ├── Anh/                      ← ảnh của riêng gia phả này
+ *     └── Sao_luu/                  ← bản sao lưu của riêng gia phả này
+ *
+ * ⚠ HAI THƯ MỤC KIA KHÔNG PHẢI CHO ĐỦ BỘ — chúng là chốt chặn.
+ * Tên file sao lưu là `giapha-sao-luu_<ngày>_rev<n>.json`, KHÔNG mang tên
+ * gia phả nào. Hai gia phả dùng chung một thư mục Sao_luu thì bản của cây này
+ * nằm lẫn với bản của cây kia, `layDanhSachSaoLuu` kể ra cả hai loại, và
+ * `khoiPhucSaoLuu` sẽ ghi đè gia phả này bằng nội dung gia phả khác — mất
+ * trắng, không có đường lùi. Mỗi gia phả một thư mục riêng thì chuyện ấy
+ * không xảy ra được nữa.
+ *
+ * KHÔNG đụng một chữ nào vào file dữ liệu đang dùng. Sau khi chạy xong, app
+ * VẪN mở file cũ cho tới khi bạn tự tay dán ba mã mới vào `Config.gs`.
+ *
+ * Cách dùng:
+ *   1. Sửa `TEN_HO` trong `Config.gs` thành tên họ của gia phả MỚI
+ *   2. Chọn hàm `taoFileDuLieuMoi` rồi bấm Chạy
+ *   3. Mở Nhật ký thực thi, chép ba dòng in ra vào `Config.gs`
+ *   4. Chia sẻ thư mục mới cho người trong họ (xem dòng nhắc cuối nhật ký)
+ */
+function taoFileDuLieuMoi() {
+  var slug   = slugTenHo_(TEN_HO);
+  var tenThu = 'Gia_pha_' + slug;
+  var goc    = DriveApp.getRootFolder();
+
+  // Đã có thư mục cùng tên thì DỪNG, không tạo chồng. Chạy nhầm hai lần mà
+  // hàm cứ tạo tiếp thì trên Drive mọc ra hai thư mục trông y hệt nhau, và
+  // người đi dán ID không có cách nào biết mình đang dán mã của cái nào.
+  if (goc.getFoldersByName(tenThu).hasNext()) {
+    Logger.log('DỪNG — trong My Drive đã có thư mục tên "' + tenThu + '".\n' +
+               'Chưa tạo gì cả. Hoặc bạn đã chạy hàm này rồi (mở thư mục ấy ra ' +
+               'lấy ID), hoặc đổi TEN_HO trong Config.gs rồi chạy lại.');
+    return;
+  }
+
+  var email = '';
+  try { email = Session.getActiveUser().getEmail() || ''; } catch (e) { email = ''; }
+
+  var thuMuc  = goc.createFolder(tenThu);
+  var thuAnh  = thuMuc.createFolder('Anh');
+  var thuLuu  = thuMuc.createFolder('Sao_luu');
+  var luc     = bayGio_();
+
+  var cay = {
+    format:  'giapha-json',
+    version: 1,
+    tree: {
+      id:            'T0001',
+      name:          TEN_HO,
+      rootPersonId:  null,          // chưa có ai; app hỏi khi thêm người đầu tiên
+      photoFolderId: thuAnh.getId(),
+      note:          '',
+      createdAt:     luc,
+      updatedAt:     luc,
+      updatedBy:     email,
+      revision:      0,
+    },
+    persons:   [],
+    unions:    [],
+    media:     [],
+    sources:   [],
+    changeLog: [
+      mucNhatKy_({ action: 'create', target: 'T0001',
+                   note: 'Tạo file gia phả mới, chưa có người nào.' }, luc, email),
+    ],
+  };
+
+  var file = thuMuc.createFile(
+    'giapha-' + slug + '.json',
+    JSON.stringify(cay, null, 2),
+    'application/json'
+  );
+
+  Logger.log(
+    'ĐÃ TẠO XONG. Chép ba dòng dưới đây đè lên ba dòng cũ trong Config.gs:\n\n' +
+    "var FILE_ID            = '" + file.getId()   + "';\n" +
+    "var THU_MUC_ANH_ID     = '" + thuAnh.getId() + "';\n" +
+    "var THU_MUC_SAO_LUU_ID = '" + thuLuu.getId() + "';\n\n" +
+    '--- Rồi làm ba việc này, theo đúng thứ tự ---\n' +
+    '1. Lưu Config.gs, chạy hàm kiemTraConfig() — phải thấy đủ ba dòng ĐẠT.\n' +
+    '2. Triển khai → Quản lý các bản triển khai → bút chì →\n' +
+    '   Phiên bản: "Phiên bản mới" → Triển khai.\n' +
+    '3. Trên Drive, chia sẻ thư mục "' + tenThu + '" cho người trong họ.\n' +
+    '   ⚠ Thư mục "Sao_luu" thì chia sẻ RIÊNG cho mình bạn thôi — khôi phục\n' +
+    '   là việc ghi đè cả gia phả, không nên nằm trong tay nhiều người.\n\n' +
+    '--- Cho tới lúc bạn làm xong bước 2, app VẪN đang mở file CŨ ---\n' +
+    'Hàm này không đụng gì vào file dữ liệu đang dùng.\n\n' +
+    'Thư mục vừa tạo : ' + tenThu + '  ·  ' + thuMuc.getId() + '\n' +
+    'File dữ liệu    : ' + file.getName()
+  );
+}
+
+/**
+ * Tên họ → mảnh chữ đặt được tên file: bỏ dấu, thay khoảng trắng bằng gạch nối.
+ *
+ * `normalize('NFD')` không có trong Apps Script (máy chạy ES5 cũ), nên bảng
+ * tra tay là đường duy nhất. Bảng chỉ cần đủ cho tên họ người Việt.
+ */
+function slugTenHo_(ten) {
+  var chu = String(ten || 'gia-pha').toLowerCase();
+  var bang = [
+    ['[àáạảãâầấậẩẫăằắặẳẵ]', 'a'],
+    ['[èéẹẻẽêềếệểễ]',       'e'],
+    ['[ìíịỉĩ]',             'i'],
+    ['[òóọỏõôồốộổỗơờớợởỡ]', 'o'],
+    ['[ùúụủũưừứựửữ]',       'u'],
+    ['[ỳýỵỷỹ]',             'y'],
+    ['đ',                   'd'],
+  ];
+  for (var i = 0; i < bang.length; i++) {
+    chu = chu.replace(new RegExp(bang[i][0], 'g'), bang[i][1]);
+  }
+  chu = chu.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return chu || 'gia-pha';
+}
 
 /**
  * Chạy tay để soi nhanh máy chủ đang thấy gì.
