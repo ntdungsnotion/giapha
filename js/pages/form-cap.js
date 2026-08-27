@@ -5,7 +5,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: pages/person-edit.js (nền dùng chung + kho ảnh), state,
 //            domains/{union,validate}, utils/{graph,date,text}, config
-// Phiên bản: 1.0.0 · Cập nhật: 27/08/2026 21:25
+// Phiên bản: 1.1.0 · Cập nhật: 27/08/2026 22:30
 // ============================================================
 //
 // Tách khỏi `person-edit.js` ngày 27/08/2026 (bước 48, đợt 5 của
@@ -176,7 +176,7 @@ function veCacOCap(u, mocId) {
   ra.push(oNgayCuoi(u));
   ra.push(oChu('marriagePlace', 'Nơi cưới', (u.marriage || {}).place, 'Làng, xã, tỉnh'));
 
-  ra.push(veNhan('Cặp này bây giờ'));
+  ra.push(veNhan('Tình trạng hôn nhân'));
   ra.push(veChonTrangThai(u));
 
   // Nhãn PHẢI nêu tên người làm mốc — "Thứ bậc" trống không đọc được TỪ PHÍA

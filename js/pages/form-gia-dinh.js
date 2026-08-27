@@ -5,7 +5,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: pages/{person-edit,form-sua-con,form-go-noi}.js, state,
 //            domains/{union,validate}, services/repo, utils/{graph,text}, config
-// Phiên bản: 1.0.0 · Cập nhật: 27/08/2026 21:00
+// Phiên bản: 1.1.0 · Cập nhật: 27/08/2026 22:30
 // ============================================================
 //
 // Tách khỏi `person-edit.js` ngày 27/08/2026 (bước 48, đợt 4 của
@@ -216,7 +216,7 @@ function veDongNguoi(vai, id, ghiChu, chay, chuChinh) {
   const nhan = document.createElement('span');
   nhan.textContent = vai;
   nhan.style.cssText =
-    'flex:0 0 62px;font-size:12px;color:#8a8078;letter-spacing:.03em';
+    'flex:0 0 78px;font-size:12px;line-height:1.35;color:#8a8078;letter-spacing:.03em';
   nut.append(nhan);
 
   const cot = document.createElement('span');
@@ -405,7 +405,7 @@ function nutTheCap(u, xuLy) {
 // một cái hộp phải kể tên trước.
 
 /**
- * Hàng *Bây giờ* của một khối gia đình.
+ * Hàng *Tình trạng hôn nhân* của một khối gia đình.
  *
  * @returns {HTMLElement[]} rỗng khi cặp chưa đủ hai người — xem ghi chú trên.
  */
@@ -416,7 +416,7 @@ function veDongTrangThai(u, personId, xuLy) {
   if (cacNguoi.length < 2) return [];
 
   const ma   = maTrangThaiCap(u);
-  const dong = veDongNguoi('Bây giờ', '', '',
+  const dong = veDongNguoi('Tình trạng hôn nhân', '', '',
     () => moHopTrangThaiCap(u.id, personId, xuLy), nhanTrangThaiCap(ma));
   dong.dataset.trangThai = ma;   // mốc cho bài kiểm hành vi
   dong.dataset.cap       = u.id;
@@ -424,7 +424,7 @@ function veDongTrangThai(u, personId, xuLy) {
   // ⚠ MÃ KHÁC 'married' THÌ IN ĐẬM — cùng bài học của `chuThichQuanHe`: một
   // chú thích chỉ có nghĩa khi nó nói điều KHÁC lệ thường. Ảnh `fg-7.png` cho
   // thấy vì sao: người có hai cặp cha mẹ và một gia đình riêng thì màn hình có
-  // BA hàng *Bây giờ* trông y hệt nhau, và cái hàng duy nhất đáng đọc chìm
+  // BA hàng *Tình trạng hôn nhân* trông y hệt nhau, và cái hàng duy nhất đáng đọc chìm
   // giữa hai hàng kia. Đậm chứ KHÔNG đỏ: đỏ trong app này nghĩa là *nguy hiểm*
   // hoặc *sai*, mà ly hôn thì chẳng phải cái nào cả.
   //
@@ -450,16 +450,16 @@ function moHopTrangThaiCap(unionId, personId, xuLy) {
     'con đứng dưới, và sơ đồ vẫn vẽ đúng như thế.';
 
   if (!suaDuoc()) {
-    moHopBao('Cặp này bây giờ', 'Bạn chỉ có quyền xem gia phả nên chưa sửa được ' +
+    moHopBao('Tình trạng hôn nhân', 'Bạn chỉ có quyền xem gia phả nên chưa sửa được ' +
              'gì ở đây.', false, [dangLa, nhacLyHon]);
     return;
   }
 
-  // Tiêu đề đã là *Cặp này bây giờ* và phụ đề đã kể tên hai người, nên câu mở
+  // Tiêu đề đã là *Tình trạng hôn nhân* và phụ đề đã kể tên hai người, nên câu mở
   // KHÔNG hỏi lại "hai người ấy bây giờ thế nào" — ảnh `fg-6.png` cho thấy ba
   // khối chữ liền nhau nói cùng một điều. Câu mở nói thẳng thứ đang ghi.
   moHopChon('chon', xuLy, {
-    tieuDe: 'Cặp này bây giờ',
+    tieuDe: 'Tình trạng hôn nhân',
     phu:    keTenPartner(unionId) + '  ·  ' + unionId,
     cauMo:  dangLa,
     cacDong: [nhacLyHon],
@@ -488,7 +488,7 @@ async function chayDoiTrangThai(unionId, maMoi, personId, xuLy) {
     return;
   }
 
-  const chan = moHopTrang('chon', xuLy, 'Cặp này bây giờ', ten + '  ·  ' + unionId);
+  const chan = moHopTrang('chon', xuLy, 'Tình trạng hôn nhân', ten + '  ·  ' + unionId);
 
   const canTro = canTroLuu();
   if (canTro) {

@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
 //            utils/{text,date,image,avatar,glyph}, config
-// Phiên bản: 1.28.0 · Cập nhật: 23/08/2026 (Vòng 3/5 của DAC-TA-RANK_V01)
+// Phiên bản: 1.29.0 · Cập nhật: 27/08/2026 22:30
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -555,7 +555,7 @@ function veDauTheCap(u) {
 /**
  * Bảng của cặp, cùng công tắc "Còn N mục chưa điền" với thẻ người.
  *
- * ⚠ Hàng *"Cặp này bây giờ"* KHÔNG BAO GIỜ trống: thiếu `status` thì coi là
+ * ⚠ Hàng *"Tình trạng hôn nhân"* KHÔNG BAO GIỜ trống: thiếu `status` thì coi là
  * đang là vợ chồng, đúng cùng phép chuẩn hoá của `union.updateUnion`. Cho nó
  * rơi vào nhóm "chưa điền" là hỏi người dùng một câu mà dữ liệu đã trả lời.
  */
@@ -579,7 +579,7 @@ function veHangThongTinCap(u) {
 
     const m = (u && typeof u.marriage === 'object' && u.marriage) ? u.marriage : {};
     hang('Ngày cưới', ghepNgayNoi(m));
-    hang('Bây giờ', u.status === 'divorced' ? 'Đã ly hôn' : 'Đang là vợ chồng');
+    hang('Tình trạng hôn nhân', u.status === 'divorced' ? 'Đã ly hôn' : 'Đang là vợ chồng');
     hang('Ghi chú', u.note, true);
 
     nut.style.display = soTrong === 0 ? 'none' : '';
@@ -1072,7 +1072,7 @@ function veHang(bang, nhan, giaTri, coTheDai) {
 
   const n = document.createElement('div');
   n.textContent = nhan;
-  n.style.cssText = 'flex:0 0 82px;font-size:12px;' +
+  n.style.cssText = 'flex:0 0 72px;font-size:12px;line-height:1.35;' +
     (trong ? 'color:#c4bcb2' : 'color:#8a8078');
 
   const g = document.createElement('div');
