@@ -8,7 +8,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,validate,media,purge,render},
 //            services/{repo,gas}, utils/{graph,text,date,image,avatar}, config
-// Phiên bản: 1.28.0 · Cập nhật: 27/08/2026 10:15
+// Phiên bản: 1.29.0 · Cập nhật: 27/08/2026 16:20
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -189,7 +189,8 @@ import { compressImage, driveThumbUrl, dataUri, moTaCo }
   from '../utils/image.js';
 import { anhMacDinhUri } from '../utils/avatar.js';
 import { LOAI_TEN_PHU, nhanLoaiTenPhu, QUAN_HE_CON_NHAN, nhanQuanHeCon,
-         chuThichQuanHe, rongHop, caoHop, leLopPhu,
+         chuThichQuanHe, TRANG_THAI_CAP, nhanTrangThaiCap,
+         rongHop, caoHop, leLopPhu,
          RONG_NUT_TOI_DA } from '../config.js';
 
 let lopPhu     = null;   // lớp phủ đang mở, hoặc null
@@ -923,10 +924,10 @@ function docQuanHe(index, personId) {
   }
 
   for (const u of getPartnerUnions(index, personId)) {
-    // Cùng phép chuẩn hoá với `handleSaveUnion`: thiếu `status` thì coi là
-    // 'married', nhưng một mã khác hai mã quen thì GIỮ NGUYÊN chứ không ép về
-    // 'married' — cùng lối với mã loại tên lạ ở bước 33.
-    const ttCu = u.status === 'divorced' ? 'divorced' : (u.status || 'married');
+    // `maTrangThaiCap` giữ đúng phép chuẩn hoá của `handleSaveUnion`: thiếu
+    // `status` thì coi là 'married', nhưng một mã khác hai mã quen thì GIỮ
+    // NGUYÊN chứ không ép về 'married' — cùng lối với mã loại tên lạ ở bước 33.
+    const ttCu = maTrangThaiCap(u);
     ra.banDoi.push({
       unionId: u.id,
       ten:     tenBanDoiTrongCap(index, u, personId),
@@ -1059,10 +1060,7 @@ function veHangBanDoi(m, i) {
   chon.setAttribute('aria-label', 'Cặp ' + (i + 1) + ' bây giờ');
   chon.style.cssText = KIEU_O + 'width:auto;flex:1 1 auto;min-width:0;padding-right:6px';
 
-  const CAC = [
-    { ma: 'married',  chu: 'Đang là vợ chồng' },
-    { ma: 'divorced', chu: 'Đã ly hôn' },
-  ];
+  const CAC = TRANG_THAI_CAP.slice();
   if (!CAC.some((x) => x.ma === m.ttCu)) CAC.push({ ma: m.ttCu, chu: m.ttCu });
 
   for (const c of CAC) {
@@ -4731,10 +4729,7 @@ function veChonTrangThai(u) {
   const hang = document.createElement('div');
   hang.style.cssText = 'display:flex;gap:6px;margin-top:6px';
 
-  const CAC = [
-    { ma: 'married',  chu: 'Đang là vợ chồng' },
-    { ma: 'divorced', chu: 'Đã ly hôn' },
-  ];
+  const CAC = TRANG_THAI_CAP;
   let dangChon = u.status === 'divorced' ? 'divorced' : 'married';
   const cacNut = [];
 
@@ -5562,7 +5557,7 @@ async function chayChuyenCon(unionId, conId, capMoi, xuLy, chan) {
 // Màn hình này trả lời đúng một câu: ***người này đứng ở những gia đình nào, và
 // mỗi nhà có những ai?*** — rồi cho sửa ngay tại đó.
 //
-// --- SÁU quyết định --------------------------------------------------------
+// --- BẢY quyết định --------------------------------------------------------
 //
 // 1. **HIỆN HẾT TRÊN MỘT MÀN, KHÔNG HỎI "GIA ĐÌNH NÀO" TRƯỚC** (chủ dự án chọn
 //    22/08/2026). Mọi cặp người ấy dính tới đổ ra thành từng khối, cuộn xuống
@@ -5594,6 +5589,12 @@ async function chayChuyenCon(unionId, conId, capMoi, xuLy, chan) {
 //    sách chọn người hiện ĐỦ MỌI NGƯỜI, kèm dấu ⛔ hoặc ⚠ ngay trên dòng. Lọc
 //    sẵn cho khuất mắt thì người dùng chỉ thấy người mình cần biến mất khỏi
 //    danh sách mà không hiểu vì sao — mất luôn cái dòng chữ giải thích.
+//
+// 7. **MÀN HÌNH NÀY NÓI LUÔN CẶP ẤY BÂY GIỜ THẾ NÀO** (chủ dự án yêu cầu
+//    27/08/2026). Đang là vợ chồng hay đã ly hôn là một điều thuộc về chính
+//    cái gia đình đang bày ra trước mắt, mà trước hôm nay nó chỉ sửa được ở
+//    form Sửa cặp và ở khối Quan hệ của form hồ sơ — hai cửa nằm SAU màn hình
+//    này. Chi tiết ở mục *TRẠNG THÁI CỦA CẶP* dưới đây.
 
 /**
  * Mở màn hình *Sửa thông tin gia đình* của một người.
@@ -5707,7 +5708,11 @@ function veDongNguoi(vai, id, ghiChu, chay, chuChinh) {
     'display:flex;gap:10px;align-items:baseline;width:100%;text-align:left;' +
     'padding:9px 11px;margin-top:6px;font-family:inherit;font-size:14px;' +
     'border-radius:8px;cursor:pointer;touch-action:manipulation;' +
-    (id
+    // Viền GẠCH ĐỨT chỉ dành cho một CHỖ TRỐNG. Dòng có `chuChinh` nói một
+    // điều gia phả ĐANG GHI (*"Đã ly hôn"*) mà không phải một con người, nên
+    // nó cũng phải có viền liền — không thì một sự thật đã chép trông y hệt
+    // một chỗ chưa ai điền.
+    (id || coGiaTri(chuChinh)
       ? 'color:#2a2622;border:1px solid #e6e0d8;background:#fff'
       : 'color:#8a8078;border:1px dashed #e6e0d8;background:none');
 
@@ -5778,6 +5783,9 @@ function veKhoiChaMe(u, personId, xuLy) {
       () => moHopChonNguoiVaoCap(u.id, '', personId, xuLy)));
   }
 
+  // Cha mẹ còn là vợ chồng, hay đã ly hôn — quyết định 7.
+  boc.append(...veDongTrangThai(u, personId, xuLy));
+
   // Quan hệ của CHÍNH người đang xem với cặp cha mẹ này.
   const muc = (Array.isArray(u.children) ? u.children : [])
     .find((c) => c && c.personId === personId);
@@ -5824,6 +5832,9 @@ function veKhoiVoChong(u, personId, xuLy) {
     boc.append(veDongNguoi(vaiBanDoiThieu(personId), '', '',
       () => moHopChonNguoiVaoCap(u.id, '', personId, xuLy)));
   }
+
+  // Đang là vợ chồng, hay đã ly hôn — quyết định 7.
+  boc.append(...veDongTrangThai(u, personId, xuLy));
 
   const cacCon = (Array.isArray(u.children) ? u.children : [])
     .filter((c) => c && c.personId && index.personById.has(c.personId))
@@ -5872,6 +5883,157 @@ function nutTheCap(u, xuLy) {
       ? 'Ngày cưới · ảnh cưới · sắp thứ tự các con →'
       : 'Ngày cưới · ảnh cưới · ghi chú của gia đình này →',
     () => { closePersonForm(); xuLy.onXemCap(u.id); })];
+}
+
+// --- TRẠNG THÁI CỦA CẶP: đang là vợ chồng, hay đã ly hôn -----------------
+//
+// Quyết định 7 (27/08/2026, chủ dự án yêu cầu). Trước hôm nay câu ấy chỉ SỬA
+// được ở hai chỗ — form Sửa cặp và khối Quan hệ của form hồ sơ — mà màn hình
+// người ta thật sự mở ra để nhìn một gia đình lại không nói lấy một chữ. Mở
+// màn hình gia đình rồi vẫn phải đi tiếp hai cửa nữa mới sửa nổi một điều
+// thuộc về chính cái gia đình đang bày ra trước mắt.
+//
+// ⚠ **HÀNG NÀY ĐỌC ĐƯỢC TRƯỚC, SỬA ĐƯỢC SAU.** Ly hôn là thứ nhìn một cái là
+// phải thấy — nó đổi nghĩa của cả khối, kể cả với người chỉ có quyền xem. Nên
+// hàng vẫn hiện đủ cho mọi người; thiếu quyền sửa thì bấm vào nghe app nói ra
+// điều đó, chứ hàng không biến mất.
+//
+// ⚠ **CẶP MỘT NGƯỜI THÌ KHÔNG HỎI.** `U0024` là ca thật — một người cha nhận
+// con nuôi, không có vợ trong gia phả. *"Đang là vợ chồng"* với ai? Một cái
+// nhãn không có nghĩa nằm giữa màn hình còn tệ hơn không có nhãn nào.
+//
+// ⚠ **GHI THẲNG, KHÔNG QUA HỘP XÁC NHẬN** — cùng lối với `chayDoiQuanHe`: việc
+// này đổi MỘT chữ trong một mục đã có, không thêm không bớt ai, và chọn lại mã
+// cũ là lùi được. Ly hôn KHÔNG gỡ ai ra khỏi cặp, nên không có hậu quả nào để
+// một cái hộp phải kể tên trước.
+
+/**
+ * Hàng *Bây giờ* của một khối gia đình.
+ *
+ * @returns {HTMLElement[]} rỗng khi cặp chưa đủ hai người — xem ghi chú trên.
+ */
+function veDongTrangThai(u, personId, xuLy) {
+  const index = state.index;
+  const cacNguoi = (Array.isArray(u.partners) ? u.partners : [])
+    .filter((id) => id && index.personById.has(id));
+  if (cacNguoi.length < 2) return [];
+
+  const ma   = maTrangThaiCap(u);
+  const dong = veDongNguoi('Bây giờ', '', '',
+    () => moHopTrangThaiCap(u.id, personId, xuLy), nhanTrangThaiCap(ma));
+  dong.dataset.trangThai = ma;   // mốc cho bài kiểm hành vi
+  dong.dataset.cap       = u.id;
+
+  // ⚠ MÃ KHÁC 'married' THÌ IN ĐẬM — cùng bài học của `chuThichQuanHe`: một
+  // chú thích chỉ có nghĩa khi nó nói điều KHÁC lệ thường. Ảnh `fg-7.png` cho
+  // thấy vì sao: người có hai cặp cha mẹ và một gia đình riêng thì màn hình có
+  // BA hàng *Bây giờ* trông y hệt nhau, và cái hàng duy nhất đáng đọc chìm
+  // giữa hai hàng kia. Đậm chứ KHÔNG đỏ: đỏ trong app này nghĩa là *nguy hiểm*
+  // hoặc *sai*, mà ly hôn thì chẳng phải cái nào cả.
+  //
+  // Chữ lớn là con đầu của cột chữ, tức con cuối của cả dòng — xem `veDongNguoi`.
+  if (ma !== 'married') {
+    const chuLon = dong.lastElementChild && dong.lastElementChild.firstElementChild;
+    if (chuLon) chuLon.style.fontWeight = '600';
+  }
+
+  return [dong];
+}
+
+/**
+ * Mã trạng thái đang lưu của một cặp, đã chuẩn hoá.
+ *
+ * Cùng đúng phép mà `docQuanHe` và `handleSaveUnion` dùng: thiếu `status` thì
+ * coi là `married`, nhưng một mã LẠ thì giữ nguyên chứ không ép về `married` —
+ * ép là lặng lẽ đổi một thứ gia phả đã chép.
+ */
+function maTrangThaiCap(u) {
+  return u && u.status === 'divorced' ? 'divorced' : ((u && u.status) || 'married');
+}
+
+function moHopTrangThaiCap(unionId, personId, xuLy) {
+  const u = state.index && state.index.unionById.get(unionId);
+  if (!u) return;
+
+  const dang   = maTrangThaiCap(u);
+  const dangLa = 'Đang ghi: ' + nhanTrangThaiCap(dang) + '.';
+  // ⚠ Câu này nói TRƯỚC, không phải sau: người ta bấm "Đã ly hôn" mà tưởng nó
+  // gỡ hai người ra khỏi nhau thì đã bấm sai rồi mới đọc.
+  const nhacLyHon =
+    'Ly hôn KHÔNG gỡ ai ra khỏi cặp: hai người vẫn là cha mẹ của những người ' +
+    'con đứng dưới, và sơ đồ vẫn vẽ đúng như thế.';
+
+  if (!suaDuoc()) {
+    moHopBao('Cặp này bây giờ', 'Bạn chỉ có quyền xem gia phả nên chưa sửa được ' +
+             'gì ở đây.', false, [dangLa, nhacLyHon]);
+    return;
+  }
+
+  // Tiêu đề đã là *Cặp này bây giờ* và phụ đề đã kể tên hai người, nên câu mở
+  // KHÔNG hỏi lại "hai người ấy bây giờ thế nào" — ảnh `fg-6.png` cho thấy ba
+  // khối chữ liền nhau nói cùng một điều. Câu mở nói thẳng thứ đang ghi.
+  moHopChon('chon', xuLy, {
+    tieuDe: 'Cặp này bây giờ',
+    phu:    keTenPartner(unionId) + '  ·  ' + unionId,
+    cauMo:  dangLa,
+    cacDong: [nhacLyHon],
+    cacMuc: TRANG_THAI_CAP.map((x) => ({
+      ma:  x.ma,
+      chu: x.chu + (x.ma === dang ? '   ← đang ghi' : ''),
+      chay: () => chayDoiTrangThai(unionId, x.ma, personId, xuLy),
+    })),
+  });
+}
+
+async function chayDoiTrangThai(unionId, maMoi, personId, xuLy) {
+  const ten = keTenPartner(unionId);
+  const kq  = updateUnion(state.tree, unionId, { status: maMoi });
+
+  if (!kq) {
+    moHopBao('Không đổi được',
+             'Không tìm thấy cặp ' + unionId + ' nữa. Có thể gia phả vừa thay ' +
+             'đổi trong lúc hộp đang mở. Tải lại trang rồi thử lại.', true);
+    return;
+  }
+  if (!kq.thayDoi) {
+    moHopBao('Không có gì đổi',
+             ten + ' vốn đã được ghi là ' + nhanTrangThaiCap(maMoi).toLowerCase() +
+             '.', false);
+    return;
+  }
+
+  const chan = moHopTrang('chon', xuLy, 'Cặp này bây giờ', ten + '  ·  ' + unionId);
+
+  const canTro = canTroLuu();
+  if (canTro) {
+    hienNhan(canTro, true);
+    chan.append(nutChanXoa('Đóng', false, () => closePersonForm()));
+    return;
+  }
+
+  dangLuu = true;
+  hienNhan('Đang ghi…', false);
+
+  const ketQua = await ghiBanGhi(null, [kq.union], {
+    action: 'update',
+    target: unionId,
+    note:   'Ghi cặp ' + ten + ' là ' + nhanTrangThaiCap(maMoi).toLowerCase() + '.',
+    diff:   kq.diff,
+  });
+
+  dangLuu = false;
+  if (!lopPhu) return;
+
+  if (!(ketQua && ketQua.ok)) {
+    hienLoiGhi(ketQua, 'Cặp này VẪN như cũ.');
+    chan.append(nutChanXoa('Đóng', false, () => closePersonForm()));
+    return;
+  }
+
+  // Vẽ lại màn hình gia đình rồi mới nói — `hienNhan` viết vào `khoiKetQua` của
+  // màn hình vừa mở lại, nên câu báo đứng ngay trên cái hàng vừa đổi.
+  veLaiSauKhiGhi(personId, xuLy)(personId);
+  hienNhan('Đã ghi: ' + ten + ' — ' + nhanTrangThaiCap(maMoi).toLowerCase() + '.', false);
 }
 
 function veKhoiChuaCoChaMe(personId, xuLy) {

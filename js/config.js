@@ -3,7 +3,7 @@
 // Vai trò  : Hằng số hiển thị phía trình duyệt.
 // Lớp      : config — không gọi file nào khác
 // Phụ thuộc: (không)
-// Phiên bản: 0.12.0 · Cập nhật: 21/08/2026 16:00
+// Phiên bản: 0.13.0 · Cập nhật: 27/08/2026 16:20
 // ============================================================
 //
 // LƯU Ý: từ khi chuyển sang kiến trúc Apps Script, file này KHÔNG còn
@@ -258,6 +258,39 @@ export function chuThichQuanHe(ma, phia) {
   if (m === '' || m === 'birth') return '';
   const chu = nhanQuanHeCon(m, phia);
   return chu ? chu.charAt(0).toLowerCase() + chu.slice(1) : '';
+}
+
+// ============================================================
+// TRẠNG THÁI CỦA MỘT CẶP (27/08/2026)
+// ============================================================
+//
+// ⚠ **Bảng này ở `config` cùng đúng lý lẽ của `QUAN_HE_CON_NHAN`:** form GHI mã
+// `divorced` xuống dữ liệu, thẻ gia đình và màn hình *Sửa thông tin gia đình*
+// ĐỌC mã ấy lên để kể. Trước hôm nay câu *"Đang là vợ chồng / Đã ly hôn"* nằm
+// rải ở bốn nơi, mỗi nơi một bản `u.status === 'divorced' ? … : …`.
+//
+// ⚠ **CHỈ HAI MỤC, dù `CAU-TRUC-DU-LIEU_V04` cho phép bốn** (`widowed` ·
+// `unknown`). Hai mã kia chưa có cửa nào ghi được và app chưa hỏi ai câu ấy;
+// bày một mục ra rồi không chỗ nào đọc lên là hứa một việc chưa làm. Mã lạ —
+// dữ liệu cũ, hoặc file GEDCOM nhập từ phần mềm khác — thì GIỮ NGUYÊN và hiện
+// chính cái mã, cùng lối với `nhanQuanHeCon`.
+export const TRANG_THAI_CAP = [
+  { ma: 'married',  chu: 'Đang là vợ chồng' },
+  { ma: 'divorced', chu: 'Đã ly hôn' },
+];
+
+/**
+ * Mã trạng thái của một cặp, đọc ra chữ.
+ *
+ * @param {string} ma  thiếu hoặc rỗng thì coi là `married` — cùng phép chuẩn
+ *        hoá mà `union.updateUnion` dùng khi ghi, nên chữ hiện ra luôn đúng
+ *        thứ sắp được ghi xuống.
+ * @returns {string} mã lạ trả về CHÍNH CÁI MÃ.
+ */
+export function nhanTrangThaiCap(ma) {
+  const m = String(ma || '').trim() || 'married';
+  const muc = TRANG_THAI_CAP.find((x) => x.ma === m);
+  return muc ? muc.chu : m;
 }
 
 // ============================================================
