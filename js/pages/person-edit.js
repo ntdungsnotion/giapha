@@ -193,17 +193,30 @@ import { LOAI_TEN_PHU, nhanLoaiTenPhu, QUAN_HE_CON_NHAN, nhanQuanHeCon,
          rongHop, caoHop, leLopPhu,
          RONG_NUT_TOI_DA } from '../config.js';
 
-let lopPhu     = null;   // lớp phủ đang mở, hoặc null
-let o          = {};     // các ô nhập, tra theo tên trường
-let khoiKetQua = null;   // chỗ hiện lỗi, cảnh báo, lời máy chủ
-let nutLuu     = null;
-let xuLyNgoai  = {};
-let dangLuu    = false;
-let daXemCanhBao = false;   // đã hiện cảnh báo và người dùng vẫn muốn lưu
-// 'sua' · 'themCon' · 'themChaMe' · 'themBanDoi' · 'xoa' · 'chon' · 'noi' · 'go'
-// · 'suaCap' (bước 29) · 'sapThuTu' (21/08/2026) · 'chuyenCon' (22/08/2026)
-// · 'giaDinh' · 'chonNguoi' · 'doiNguoi' (màn hình Sửa thông tin gia đình)
-let cheDo      = 'sua';
+// --- TRẠNG THÁI CỦA LỚP PHỦ, gom vào MỘT object -------------------------
+//
+// ⚠ Bảy thứ này là trạng thái dùng chung của MỌI màn hình trong file — và từ
+// việc tách file (27/08/2026) là của mọi màn hình trong CẢ NHÓM `form-*.js`.
+// Chúng phải nằm trong một object chứ không phải bảy biến rời: ES Modules gốc
+// KHÔNG cho hai file cùng ghi vào một biến `let` của nhau, nhưng thuộc tính
+// của một object thì dùng chung được. Đây là điều kiện để tách file mà không
+// dựng ra bản trạng thái thứ hai.
+const N = {
+  lopPhu:       null,   // lớp phủ đang mở, hoặc null
+  khoiKetQua:   null,   // chỗ hiện lỗi, cảnh báo, lời máy chủ
+  nutLuu:       null,
+  xuLyNgoai:    {},
+  dangLuu:      false,
+  daXemCanhBao: false,  // đã hiện cảnh báo và người dùng vẫn muốn lưu
+  // 'sua' · 'themCon' · 'themChaMe' · 'themBanDoi' · 'xoa' · 'chon' · 'noi' · 'go'
+  // · 'suaCap' (bước 29) · 'sapThuTu' (21/08/2026) · 'chuyenCon' (22/08/2026)
+  // · 'giaDinh' · 'chonNguoi' · 'doiNguoi' (màn hình Sửa thông tin gia đình)
+  cheDo:        'sua',
+};
+
+// Các ô nhập, tra theo tên trường. KHÔNG BAO GIỜ gán lại object này — nơi dọn
+// (`closePersonForm`) xoá từng khoá, để mọi file cùng nhìn đúng một cái bảng.
+const o = {};
 // themCon    : { unionId } hoặc { chaMeId }
 // themChaMe  : { childId, unionId, gioi }   — unionId rỗng = tạo cặp cha mẹ mới
 // themBanDoi : { banDoiId, unionId }        — unionId rỗng = tạo cặp mới
@@ -251,7 +264,7 @@ let quanHe    = null;
 // đều đã có cặp thì hộp hỏi cả hai phía.
 //
 // ⚠ Giữ THAM CHIẾU tới ô, không đọc ngược từ `document`. `hienNhan()` xoá sạch
-// `khoiKetQua` mỗi lần nó nói một câu mới, nên sau khối cảnh báo thì mấy cái ô
+// `N.khoiKetQua` mỗi lần nó nói một câu mới, nên sau khối cảnh báo thì mấy cái ô
 // này không còn nằm trong trang nữa — nhưng tham chiếu vẫn sống và vẫn giữ
 // đúng con số người dùng đã gõ. Cùng cơ chế mà `o.conNuoi` đã sống nhờ.
 let thuBacNhap = [];
@@ -352,12 +365,12 @@ function chuanNoiVao(vao) {
 
 function moForm(che, nguoi, chonNoi, xuLy) {
   closePersonForm();
-  xuLyNgoai = xuLy || {};
-  cheDo     = che;
+  N.xuLyNgoai = xuLy || {};
+  N.cheDo     = che;
   noiVao    = chonNoi;
 
-  lopPhu = document.createElement('div');
-  lopPhu.style.cssText = KIEU_LOP_PHU;
+  N.lopPhu = document.createElement('div');
+  N.lopPhu.style.cssText = KIEU_LOP_PHU;
 
   const hop = document.createElement('div');
   hop.id = 'giapha-form-nguoi';   // mốc cho bài kiểm hành vi, xem kiem-noi-go.mjs
@@ -368,8 +381,8 @@ function moForm(che, nguoi, chonNoi, xuLy) {
 
   hop.append(...veKhoiXoaNguoi(nguoi));
 
-  khoiKetQua = document.createElement('div');
-  hop.append(khoiKetQua);
+  N.khoiKetQua = document.createElement('div');
+  hop.append(N.khoiKetQua);
 
   const canTro = canTroLuu();
   if (canTro) hienNhan(canTro, true);
@@ -379,19 +392,19 @@ function moForm(che, nguoi, chonNoi, xuLy) {
   // Bấm ra ngoài KHÔNG đóng form. Khác thẻ thông tin có chủ ý: thẻ chỉ để đọc,
   // đóng nhầm thì mở lại là xong; form thì đang giữ những gì người ta vừa gõ,
   // và một cú chạm trượt làm mất cả là chuyện không tha thứ được.
-  lopPhu.append(hop);
-  document.body.append(lopPhu);
+  N.lopPhu.append(hop);
+  document.body.append(N.lopPhu);
 }
 
 export function closePersonForm() {
-  if (lopPhu) lopPhu.remove();
-  lopPhu       = null;
-  o            = {};
-  khoiKetQua   = null;
-  nutLuu       = null;
-  dangLuu      = false;
-  daXemCanhBao = false;
-  cheDo        = 'sua';
+  if (N.lopPhu) N.lopPhu.remove();
+  N.lopPhu       = null;
+  for (const k of Object.keys(o)) delete o[k];
+  N.khoiKetQua   = null;
+  N.nutLuu       = null;
+  N.dangLuu      = false;
+  N.daXemCanhBao = false;
+  N.cheDo        = 'sua';
   noiVao       = null;
   daXemThuTu   = false;
   sapXepLai    = false;
@@ -446,7 +459,7 @@ function canTroLuu() {
 
 /** Ba chế độ dựng một bản ghi MỚI. Chế độ 'sua' đọc một bản ghi đã có. */
 function laCheDoThem() {
-  return cheDo === 'themCon' || cheDo === 'themChaMe' || cheDo === 'themBanDoi';
+  return N.cheDo === 'themCon' || N.cheDo === 'themChaMe' || N.cheDo === 'themBanDoi';
 }
 
 /**
@@ -455,12 +468,12 @@ function laCheDoThem() {
  * phải kiểm lại xem mình bấm trúng chưa.
  */
 function tieuDeForm() {
-  if (cheDo === 'themCon')    return 'Thêm người con';
-  if (cheDo === 'themBanDoi') return 'Thêm vợ / chồng';
+  if (N.cheDo === 'themCon')    return 'Thêm người con';
+  if (N.cheDo === 'themBanDoi') return 'Thêm vợ / chồng';
   // Không còn "Thêm cha" / "Thêm mẹ" riêng: từ 20/08/2026 chính ô GIỚI TÍNH
   // trong form là chỗ nói ra điều đó, và tiêu đề không được nói trước một thứ
   // người dùng chưa chọn.
-  if (cheDo === 'themChaMe') return 'Thêm cha / mẹ';
+  if (N.cheDo === 'themChaMe') return 'Thêm cha / mẹ';
   return 'Sửa hồ sơ';
 }
 
@@ -491,7 +504,7 @@ function moTaChoNoi() {
   const index = state.index;
   if (!noiVao || !index) return '';
 
-  if (cheDo === 'themChaMe') {
+  if (N.cheDo === 'themChaMe') {
     if (!noiVao.unionId) {
       return 'Cha / mẹ của ' + tenNguoi(noiVao.childId) +
              ' — app sẽ tạo thêm một cặp cha mẹ mới rồi nối ' +
@@ -502,7 +515,7 @@ function moTaChoNoi() {
            '  ·  ' + noiVao.unionId;
   }
 
-  if (cheDo === 'themBanDoi') {
+  if (N.cheDo === 'themBanDoi') {
     return 'Vợ / chồng của ' + tenNguoi(noiVao.banDoiId) +
            ' — app tạo một cặp mới cho hai người. Người này KHÔNG tự thành ' +
            'cha/mẹ của con sẵn có của ' + tenNguoi(noiVao.banDoiId) + '.';
@@ -536,14 +549,14 @@ function veCacO(nguoi) {
   const ra = [];
   const ten = mucTenChinh(nguoi);
 
-  if (cheDo === 'themCon') {
+  if (N.cheDo === 'themCon') {
     ra.push(veNhan('Quan hệ với cặp này'));
     ra.push(veConNuoi('Là con nuôi (không phải con đẻ)'));
   }
   // Chỉ hỏi khi đang TẠO cặp cha mẹ mới. Nối thêm một người vào cặp đã có thì
   // quan hệ đẻ/nuôi của người con với cặp ấy đã ghi từ trước, và hỏi lại ở đây
   // là mời người dùng đổi một thứ họ không định đụng tới.
-  if (cheDo === 'themChaMe' && !noiVao.unionId) {
+  if (N.cheDo === 'themChaMe' && !noiVao.unionId) {
     ra.push(veNhan('Quan hệ với ' + tenNguoi(noiVao.childId)));
     ra.push(veConNuoi('Là cha / mẹ NUÔI (không phải cha mẹ đẻ)'));
   }
@@ -551,7 +564,7 @@ function veCacO(nguoi) {
   // Luật 12. Đứng ĐẦU form, cùng chỗ với hai ô quan hệ ở trên và cùng một lý
   // do: nó nói về CHỖ ĐỨNG của người sắp thêm, không nói về bản thân họ. Người
   // vừa được thêm luôn là cặp thứ nhất của chính họ, nên chỉ hỏi phía kia.
-  if (cheDo === 'themBanDoi' && !noiVao.unionId) {
+  if (N.cheDo === 'themBanDoi' && !noiVao.unionId) {
     ra.push(...khoiHoiThuBac(noiVao.banDoiId, ''));
   }
 
@@ -559,7 +572,7 @@ function veCacO(nguoi) {
   // chưa tồn tại nên chưa có mã để gắn ảnh vào, mà dựng đường gắn ảnh cho một
   // người chưa có mã là mở thêm một nhánh nữa trong một hàm lưu vốn đã nhiều
   // nhánh. Thêm người xong, mở lại hồ sơ rồi gắn ảnh — thêm đúng một cú chạm.
-  if (cheDo === 'sua') {
+  if (N.cheDo === 'sua') {
     ra.push(veNhan('Ảnh'));
     ra.push(veKhoiAnh(nguoi.id, nguoi));
   }
@@ -589,7 +602,7 @@ function veCacO(nguoi) {
   // Thêm vợ/chồng: giới tính suy ra được từ người kia, nên điền sẵn và KHOÁ.
   // Thêm cha/mẹ: KHÔNG khoá — từ bước 27 chính ô này là chỗ nói đây là cha hay
   // là mẹ, nên khoá nó là bịt mất câu hỏi duy nhất của cả cái form.
-  const khoaGioi = cheDo === 'themBanDoi' && !!(noiVao && noiVao.gioiNguoc);
+  const khoaGioi = N.cheDo === 'themBanDoi' && !!(noiVao && noiVao.gioiNguoc);
   ra.push(veChonGioi(nguoi.sex, khoaGioi));
   if (khoaGioi) ra.push(veDongGioi(noiVao.gioiMoc, noiVao.gioiNguoc, tenNguoi(noiVao.banDoiId)));
 
@@ -659,7 +672,7 @@ function veCacO(nguoi) {
   //
   // Chỉ có ở chế độ SỬA, cùng lý do với khối ảnh: ở các chế độ thêm người, bản
   // ghi chưa có mã, mà quan hệ thì tra theo mã.
-  if (cheDo === 'sua') ra.push(...veKhoiQuanHe(nguoi));
+  if (N.cheDo === 'sua') ra.push(...veKhoiQuanHe(nguoi));
 
   return ra;
 }
@@ -1356,7 +1369,7 @@ function veTamAnh(muc, nguoi) {
   const nut = document.createElement('button');
   nut.type = 'button';
   nut.dataset.anh = muc.khoa;
-  nut.disabled = anhDangTai || dangLuu;
+  nut.disabled = anhDangTai || N.dangLuu;
   nut.style.cssText =
     'position:relative;width:' + co + 'px;height:' + co + 'px;padding:0;' +
     'border-radius:10px;overflow:hidden;cursor:pointer;touch-action:manipulation;' +
@@ -1407,7 +1420,7 @@ function veHangNutAnh(muc, nguoi) {
     'display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;padding:10px;' +
     'background:#faf8f5;border-radius:10px';
 
-  const batDuoc = suaDuoc() && !anhDangTai && !dangLuu;
+  const batDuoc = suaDuoc() && !anhDangTai && !N.dangLuu;
 
   if (muc.boDi) {
     hang.append(nutNhoAnh('Giữ lại tấm này', batDuoc, false, () => {
@@ -1460,7 +1473,7 @@ function nutNhoAnh(chu, batDuoc, laDo, chay) {
 // ============================================================
 
 function nutChonAnh(nguoi) {
-  const batDuoc = suaDuoc() && !anhDangTai && !dangLuu;
+  const batDuoc = suaDuoc() && !anhDangTai && !N.dangLuu;
 
   const nhan = document.createElement('label');
   nhan.style.cssText =
@@ -1491,7 +1504,7 @@ function nutBoAnh(nguoi) {
   const b = document.createElement('button');
   b.type = 'button';
   b.textContent = 'Bỏ ảnh đại diện';
-  b.disabled = anhDangTai || dangLuu;
+  b.disabled = anhDangTai || N.dangLuu;
   b.style.cssText =
     'min-height:36px;padding:7px 12px;font-size:13px;font-family:inherit;' +
     'border-radius:9px;border:1px solid #e6e0d8;background:#fffdf9;color:#8a3a2a;' +
@@ -1591,7 +1604,7 @@ async function chonVaTaiAnh(file, nguoi) {
     veLaiKhoiAnh(nguoi);
     // Dọn lời nhắn cũ, KHÔNG gọi `hienNhan('')` — hàm ấy dựng ra một cái hộp
     // xám rỗng, trông như app vừa định nói gì đó rồi thôi.
-    if (khoiKetQua) khoiKetQua.innerHTML = '';
+    if (N.khoiKetQua) N.khoiKetQua.innerHTML = '';
   } catch (e) {
     anhDangTai = false;
     veLaiKhoiAnh(nguoi);
@@ -1918,20 +1931,20 @@ function veChan(nguoi, luuDuoc) {
     'display:flex;gap:8px;margin-top:18px;position:sticky;bottom:-18px;' +
     'padding:10px 0;background:#fffdf9;justify-content:center';
 
-  nutLuu = document.createElement('button');
-  nutLuu.type = 'button';
-  nutLuu.textContent = laCheDoThem() ? tieuDeForm() : 'Lưu';
-  nutLuu.disabled = !luuDuoc;
-  nutLuu.style.cssText = KIEU_NUT_CHAN +
+  N.nutLuu = document.createElement('button');
+  N.nutLuu.type = 'button';
+  N.nutLuu.textContent = laCheDoThem() ? tieuDeForm() : 'Lưu';
+  N.nutLuu.disabled = !luuDuoc;
+  N.nutLuu.style.cssText = KIEU_NUT_CHAN +
     'flex:1 1 auto;max-width:' + RONG_NUT_TOI_DA + ';' +
     (luuDuoc
       ? 'background:#2a2622;color:#fffdf9;border:1px solid #2a2622;font-weight:600'
       : 'background:#2a2622;color:#fffdf9;border:1px solid #2a2622;opacity:.45;cursor:not-allowed');
   if (luuDuoc) {
-    nutLuu.addEventListener('click', () => {
-      if (cheDo === 'suaCap') handleSaveUnion();
-      else if (cheDo === 'themCon') handleAddChild();
-      else if (cheDo === 'themChaMe' || cheDo === 'themBanDoi') handleAddNguoiThan();
+    N.nutLuu.addEventListener('click', () => {
+      if (N.cheDo === 'suaCap') handleSaveUnion();
+      else if (N.cheDo === 'themCon') handleAddChild();
+      else if (N.cheDo === 'themChaMe' || N.cheDo === 'themBanDoi') handleAddNguoiThan();
       else handleSave(nguoi);
     });
   }
@@ -1943,7 +1956,7 @@ function veChan(nguoi, luuDuoc) {
     'flex:0 0 auto;background:#faf8f5;color:#2a2622;border:1px solid #e6e0d8';
   huy.addEventListener('click', () => closePersonForm());
 
-  chan.append(nutLuu, huy);
+  chan.append(N.nutLuu, huy);
   return chan;
 }
 
@@ -1973,7 +1986,7 @@ function veChan(nguoi, luuDuoc) {
  * @returns {HTMLElement[]} rỗng khi không phải chế độ sửa, hoặc không đủ quyền.
  */
 function veKhoiXoaNguoi(nguoi) {
-  if (cheDo !== 'sua' || !nguoi || !nguoi.id) return [];
+  if (N.cheDo !== 'sua' || !nguoi || !nguoi.id) return [];
   if (!suaDuoc()) return [];
 
   const vach = document.createElement('div');
@@ -1998,10 +2011,10 @@ function veKhoiXoaNguoi(nguoi) {
     'width:100%;text-align:center;' +
     'background:#fbf0ec;color:#8a3a2a;border:1px solid #f0d8d0;font-weight:600';
 
-  // ⚠ Giữ lấy `xuLyNgoai` TRƯỚC khi đóng form: `closePersonForm()` đặt nó về
+  // ⚠ Giữ lấy `N.xuLyNgoai` TRƯỚC khi đóng form: `closePersonForm()` đặt nó về
   // rỗng, nên đọc sau đó thì đường `onDaLuu` biến mất và sơ đồ không vẽ lại.
   nut.addEventListener('click', () => {
-    const xuLy = xuLyNgoai;
+    const xuLy = N.xuLyNgoai;
     closePersonForm();
     xoaNguoi(nguoi.id, xuLy);
   });
@@ -2024,7 +2037,7 @@ function veKhoiXoaNguoi(nguoi) {
  *      tải lại trước khi lưu", KHÔNG ghi đè
  */
 async function handleSave(nguoi) {
-  if (dangLuu) return;
+  if (N.dangLuu) return;
 
   const luc = stampNow();
   const boi = (state.phien && state.phien.email) || '';
@@ -2074,18 +2087,18 @@ async function handleSave(nguoi) {
     return;
   }
 
-  if (raSoat.warnings.length > 0 && !daXemCanhBao) {
-    daXemCanhBao = true;
-    nutLuu.textContent = 'Vẫn lưu';
+  if (raSoat.warnings.length > 0 && !N.daXemCanhBao) {
+    N.daXemCanhBao = true;
+    N.nutLuu.textContent = 'Vẫn lưu';
     hienNhan('Có chỗ đáng xem lại. Gia phả cũ có những chuyện thật mà nghe như ' +
              'lỗi, nên app không chặn — bấm "Vẫn lưu" nếu bạn biết là đúng:', false,
              raSoat.warnings.map((m) => m.message));
     return;
   }
 
-  dangLuu = true;
-  nutLuu.disabled = true;
-  nutLuu.style.opacity = '.45';
+  N.dangLuu = true;
+  N.nutLuu.disabled = true;
+  N.nutLuu.style.opacity = '.45';
   hienNhan('Đang lưu…', false);
 
   // Luật 3: `repo.luuCay()` nhận HÀM SỬA và chạy nó trên bản sao của cây. Bản
@@ -2155,17 +2168,17 @@ async function handleSave(nguoi) {
     ketQua = { ok: false, loi: e && e.message ? e.message : String(e) };
   }
 
-  dangLuu = false;
-  if (!lopPhu) return;   // người dùng đã đóng form trong lúc chờ máy chủ
+  N.dangLuu = false;
+  if (!N.lopPhu) return;   // người dùng đã đóng form trong lúc chờ máy chủ
 
   if (ketQua && ketQua.ok) {
     closePersonForm();
-    if (xuLyNgoai.onDaLuu) xuLyNgoai.onDaLuu(nguoi.id);
+    if (N.xuLyNgoai.onDaLuu) N.xuLyNgoai.onDaLuu(nguoi.id);
     return;
   }
 
-  nutLuu.disabled = false;
-  nutLuu.style.opacity = '1';
+  N.nutLuu.disabled = false;
+  N.nutLuu.style.opacity = '1';
 
   if (ketQua && ketQua.lyDo === 'xungdot') {
     hienNhan('Người khác vừa sửa gia phả trong lúc bạn đang gõ, nên app KHÔNG ' +
@@ -2183,7 +2196,7 @@ async function handleSave(nguoi) {
  *   - gửi lên MỘT lần lưu duy nhất, mang cả người lẫn union — luật 4.
  */
 async function handleAddChild() {
-  if (dangLuu) return;
+  if (N.dangLuu) return;
 
   const luc    = stampNow();
   const boi    = (state.phien && state.phien.email) || '';
@@ -2228,9 +2241,9 @@ async function handleAddChild() {
   }
 
   const canhBao = loiNhacCuaForm().concat(raSoat.warnings.map((m) => m.message));
-  if (canhBao.length > 0 && !daXemCanhBao) {
-    daXemCanhBao = true;
-    nutLuu.textContent = 'Vẫn thêm';
+  if (canhBao.length > 0 && !N.daXemCanhBao) {
+    N.daXemCanhBao = true;
+    N.nutLuu.textContent = 'Vẫn thêm';
     hienNhan('Có chỗ đáng xem lại. Gia phả cũ có những chuyện thật mà nghe như ' +
              'lỗi, nên app không chặn — bấm "Vẫn thêm" nếu bạn biết là đúng:', false, canhBao);
     return;
@@ -2243,9 +2256,9 @@ async function handleAddChild() {
     return;
   }
 
-  dangLuu = true;
-  nutLuu.disabled = true;
-  nutLuu.style.opacity = '.45';
+  N.dangLuu = true;
+  N.nutLuu.disabled = true;
+  N.nutLuu.style.opacity = '.45';
   hienNhan('Đang lưu…', false);
 
   const nguoiMoi = dung.person;
@@ -2286,17 +2299,17 @@ async function handleAddChild() {
     ketQua = { ok: false, loi: e && e.message ? e.message : String(e) };
   }
 
-  dangLuu = false;
-  if (!lopPhu) return;   // người dùng đã đóng form trong lúc chờ máy chủ
+  N.dangLuu = false;
+  if (!N.lopPhu) return;   // người dùng đã đóng form trong lúc chờ máy chủ
 
   if (ketQua && ketQua.ok) {
     closePersonForm();
-    if (xuLyNgoai.onDaLuu) xuLyNgoai.onDaLuu(nguoiMoi.id);
+    if (N.xuLyNgoai.onDaLuu) N.xuLyNgoai.onDaLuu(nguoiMoi.id);
     return;
   }
 
-  nutLuu.disabled = false;
-  nutLuu.style.opacity = '1';
+  N.nutLuu.disabled = false;
+  N.nutLuu.style.opacity = '1';
 
   if (ketQua && ketQua.lyDo === 'xungdot') {
     hienNhan('Người khác vừa sửa gia phả trong lúc bạn đang gõ, nên app KHÔNG ' +
@@ -2433,12 +2446,12 @@ function hoiThuTuAnhEm(thuTu, dung) {
       // muốn sửa lại một con số năm sinh. Đóng form ở đây là lấy mất công của họ.
       daXemThuTu   = false;
       sapXepLai    = false;
-      daXemCanhBao = false;
-      nutLuu.textContent = 'Thêm người con';
+      N.daXemCanhBao = false;
+      N.nutLuu.textContent = 'Thêm người con';
       hienNhan('Chưa thêm gì cả. Sửa lại rồi bấm "Thêm người con".', false);
     }),
   );
-  khoiKetQua.append(hang);
+  N.khoiKetQua.append(hang);
 }
 
 /** Một nút trong khối kết quả. `chinh` = nút được khuyên dùng. */
@@ -2533,8 +2546,8 @@ function docO(khoa) {
 
 /** @param {string[]} [dong] mỗi dòng một lời của bộ rà soát */
 function hienNhan(chu, laLoi, dong) {
-  if (!khoiKetQua) return;
-  khoiKetQua.innerHTML = '';
+  if (!N.khoiKetQua) return;
+  N.khoiKetQua.innerHTML = '';
 
   const d = document.createElement('div');
   d.textContent = chu;
@@ -2543,7 +2556,7 @@ function hienNhan(chu, laLoi, dong) {
     (laLoi
       ? 'color:#8a3a2a;background:#fbf0ec;border:1px solid #f0d8d0'
       : 'color:#8a8078;background:#faf8f5;border:1px solid #f0ebe4');
-  khoiKetQua.append(d);
+  N.khoiKetQua.append(d);
 
   for (const chuDong of (dong || [])) {
     const m = document.createElement('div');
@@ -2551,7 +2564,7 @@ function hienNhan(chu, laLoi, dong) {
     m.style.cssText =
       'margin-top:6px;padding:7px 10px;font-size:12px;line-height:1.5;' +
       'border-radius:8px;background:#faf8f5;border:1px solid #f0ebe4;color:#5c554e';
-    khoiKetQua.append(m);
+    N.khoiKetQua.append(m);
   }
 }
 
@@ -2660,8 +2673,8 @@ export function xoaNguoi(personId, xuLy = {}) {
   if (!nguoi) return;
 
   closePersonForm();
-  xuLyNgoai = xuLy || {};
-  cheDo     = 'xoa';
+  N.xuLyNgoai = xuLy || {};
+  N.cheDo     = 'xoa';
 
   const luc = stampNow();
   const boi = (state.phien && state.phien.email) || '';
@@ -2671,8 +2684,8 @@ export function xoaNguoi(personId, xuLy = {}) {
   // của luật 1.
   xoaHT = doHauQuaXoa(personId, { boi, luc });
 
-  lopPhu = document.createElement('div');
-  lopPhu.style.cssText = KIEU_LOP_PHU;
+  N.lopPhu = document.createElement('div');
+  N.lopPhu.style.cssText = KIEU_LOP_PHU;
 
   const hop = document.createElement('div');
   hop.style.cssText = KIEU_HOP;
@@ -2687,8 +2700,8 @@ export function xoaNguoi(personId, xuLy = {}) {
 
   hop.append(tieuDe, ten);
 
-  khoiKetQua = document.createElement('div');
-  hop.append(khoiKetQua);
+  N.khoiKetQua = document.createElement('div');
+  hop.append(N.khoiKetQua);
 
   const chan = document.createElement('div');
   chan.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:18px';
@@ -2700,8 +2713,8 @@ export function xoaNguoi(personId, xuLy = {}) {
   } else {
     hienNhan('Xoá xong thì:', false, cauKeHauQua(personId));
 
-    nutLuu = nutChanXoa('Xoá người này', true, () => chayXoa(personId));
-    chan.append(nutLuu);
+    N.nutLuu = nutChanXoa('Xoá người này', true, () => chayXoa(personId));
+    chan.append(N.nutLuu);
 
     // Lối thoát thứ ba, chỉ mọc ra khi có người THẬT SỰ mất đường về. Không có
     // ai bị cắt đứt thì đừng bày thêm nút — mỗi nút thừa là một lần người dùng
@@ -2713,8 +2726,8 @@ export function xoaNguoi(personId, xuLy = {}) {
   }
   chan.append(nutChanXoa('Không xoá', false, () => closePersonForm()));
 
-  lopPhu.append(hop);
-  document.body.append(lopPhu);
+  N.lopPhu.append(hop);
+  document.body.append(N.lopPhu);
 }
 
 /**
@@ -2832,7 +2845,7 @@ function cauKeHauQua(personId) {
   }
 
   if (state.focusPersonId === personId) {
-    const thay = xuLyNgoai.nguoiThayThe;
+    const thay = N.xuLyNgoai.nguoiThayThe;
     dong.push('Đây đang là người đứng giữa sơ đồ, nên xoá xong app sẽ chuyển sang ' +
               (thay ? tenNguoi(thay) : 'một người khác') + '.');
   }
@@ -2847,11 +2860,11 @@ function cauKeHauQua(personId) {
 }
 
 async function chayXoa(personId) {
-  if (dangLuu || !xoaHT) return;
+  if (N.dangLuu || !xoaHT) return;
 
-  dangLuu = true;
-  nutLuu.disabled = true;
-  nutLuu.style.opacity = '.45';
+  N.dangLuu = true;
+  N.nutLuu.disabled = true;
+  N.nutLuu.style.opacity = '.45';
   hienNhan('Đang xoá…', false);
 
   // Đúng bản ghi đã dùng để đọc hậu quả ở trên, không phải một bản tính lại.
@@ -2865,21 +2878,21 @@ async function chayXoa(personId) {
     diff:   xoaHT.kq.diff,
   });
 
-  dangLuu = false;
-  if (!lopPhu) return;
+  N.dangLuu = false;
+  if (!N.lopPhu) return;
 
   if (!(ketQua && ketQua.ok)) {
-    nutLuu.disabled = false;
-    nutLuu.style.opacity = '1';
+    N.nutLuu.disabled = false;
+    N.nutLuu.style.opacity = '1';
     hienLoiGhi(ketQua, 'Người này CHƯA bị xoá.');
     return;
   }
 
   // Sơ đồ vẽ lại ngay, trong lúc hộp vẫn mở: người dùng nhìn thấy kết quả rồi
   // mới quyết định có hoàn tác hay không.
-  if (xuLyNgoai.onDaXoa) xuLyNgoai.onDaXoa(personId);
+  if (N.xuLyNgoai.onDaXoa) N.xuLyNgoai.onDaXoa(personId);
 
-  nutLuu = null;
+  N.nutLuu = null;
   hienNhan('Đã xoá ' + ten + ' khỏi sơ đồ.', false,
            ['Bản ghi vẫn nằm trong file gia phả, mang dấu "đã xoá".']);
 
@@ -2889,7 +2902,7 @@ async function chayXoa(personId) {
     nutChon('Hoàn tác — đưa ' + ten + ' trở lại', true, () => chayHoanTac(personId)),
     nutChon('Xong', false, () => closePersonForm()),
   );
-  khoiKetQua.append(hang);
+  N.khoiKetQua.append(hang);
 }
 
 /**
@@ -2921,7 +2934,7 @@ async function chayXoa(personId) {
  * khi tin chắc quan hệ, chỉ không chắc con người.
  */
 async function chayGiuMatXich(personId) {
-  if (dangLuu) return;
+  if (N.dangLuu) return;
 
   const cu = state.index && state.index.personById.get(personId);
   if (!cu) {
@@ -2954,9 +2967,9 @@ async function chayGiuMatXich(personId) {
     return;
   }
 
-  dangLuu = true;
-  nutLuu.disabled = true;
-  nutLuu.style.opacity = '.45';
+  N.dangLuu = true;
+  N.nutLuu.disabled = true;
+  N.nutLuu.style.opacity = '.45';
   hienNhan('Đang xoá thông tin…', false);
 
   const tenCu = tenNguoi(personId);
@@ -2967,21 +2980,21 @@ async function chayGiuMatXich(personId) {
     diff:   kq.diff,
   });
 
-  dangLuu = false;
-  if (!lopPhu) return;
+  N.dangLuu = false;
+  if (!N.lopPhu) return;
 
   if (!(ketQua && ketQua.ok)) {
-    nutLuu.disabled = false;
-    nutLuu.style.opacity = '1';
+    N.nutLuu.disabled = false;
+    N.nutLuu.style.opacity = '1';
     hienLoiGhi(ketQua, 'Hồ sơ này CHƯA bị đụng tới.');
     return;
   }
 
   // `onDaDoi`, KHÔNG phải `onDaXoa`: người này vẫn còn trong cây, nên nơi gọi
   // tuyệt đối không được dời người trung tâm đi chỗ khác.
-  if (xuLyNgoai.onDaDoi) xuLyNgoai.onDaDoi(personId);
+  if (N.xuLyNgoai.onDaDoi) N.xuLyNgoai.onDaDoi(personId);
 
-  nutLuu = null;
+  N.nutLuu = null;
   hienNhan('Đã xoá thông tin của ' + tenCu + '. Ô ' + personId +
            ' nay là một mắt xích không tên.', false,
            ['Con cháu phía dưới vẫn nối được lên ông bà qua ô này.',
@@ -2993,13 +3006,13 @@ async function chayGiuMatXich(personId) {
     nutChon('Hoàn tác — trả lại hồ sơ cũ', true, () => chayTraLaiHoSo(personId, banCu, tenCu)),
     nutChon('Xong', false, () => closePersonForm()),
   );
-  khoiKetQua.append(hang);
+  N.khoiKetQua.append(hang);
 }
 
 /** Hoàn tác của `chayGiuMatXich`: đặt nguyên bản ghi cũ trở lại. */
 async function chayTraLaiHoSo(personId, banCu, tenCu) {
-  if (dangLuu) return;
-  dangLuu = true;
+  if (N.dangLuu) return;
+  N.dangLuu = true;
   hienNhan('Đang trả lại hồ sơ cũ…', false);
 
   const ketQua = await ghiMotNguoi(banCu, {
@@ -3009,25 +3022,25 @@ async function chayTraLaiHoSo(personId, banCu, tenCu) {
     diff:   {},
   });
 
-  dangLuu = false;
-  if (!lopPhu) return;
+  N.dangLuu = false;
+  if (!N.lopPhu) return;
 
   if (!(ketQua && ketQua.ok)) {
     hienLoiGhi(ketQua, 'Hồ sơ VẪN đang trống.');
     return;
   }
 
-  if (xuLyNgoai.onDaDoi) xuLyNgoai.onDaDoi(personId);
+  if (N.xuLyNgoai.onDaDoi) N.xuLyNgoai.onDaDoi(personId);
 
   hienNhan('Đã trả lại hồ sơ của ' + tenCu + '.', false);
   const hang = document.createElement('div');
   hang.style.cssText = 'margin-top:10px';
   hang.append(nutChon('Đóng', true, () => closePersonForm()));
-  khoiKetQua.append(hang);
+  N.khoiKetQua.append(hang);
 }
 
 async function chayHoanTac(personId) {
-  if (dangLuu) return;
+  if (N.dangLuu) return;
 
   // Dựng lại từ `state.tree` LÚC NÀY, không dùng lại cây cũ: lần xoá vừa rồi đã
   // thay `state.tree` bằng bản của máy chủ, và trong lúc hộp còn mở thì người
@@ -3041,7 +3054,7 @@ async function chayHoanTac(personId) {
     return;
   }
 
-  dangLuu = true;
+  N.dangLuu = true;
   hienNhan('Đang đưa trở lại…', false);
 
   const ten = tenTrongCay(kq.tree, personId);
@@ -3051,21 +3064,21 @@ async function chayHoanTac(personId) {
     note:   'Hoàn tác: đưa ' + ten + ' trở lại gia phả.',
     diff:   kq.diff,
   });
-  dangLuu = false;
-  if (!lopPhu) return;
+  N.dangLuu = false;
+  if (!N.lopPhu) return;
 
   if (!(ketQua && ketQua.ok)) {
     hienLoiGhi(ketQua, 'Người này VẪN đang bị xoá.');
     return;
   }
 
-  if (xuLyNgoai.onDaHoanTac) xuLyNgoai.onDaHoanTac(personId);
+  if (N.xuLyNgoai.onDaHoanTac) N.xuLyNgoai.onDaHoanTac(personId);
 
   hienNhan('Đã đưa ' + ten + ' trở lại gia phả.', false);
   const hang = document.createElement('div');
   hang.style.cssText = 'margin-top:10px';
   hang.append(nutChon('Đóng', true, () => closePersonForm()));
-  khoiKetQua.append(hang);
+  N.khoiKetQua.append(hang);
 }
 
 /**
@@ -3141,11 +3154,11 @@ function nutChanXoa(chu, nguyHiem, chay) {
  */
 function moHopTrang(che, xuLy, tieuDe, phu) {
   closePersonForm();
-  xuLyNgoai = xuLy || {};
-  cheDo     = che;
+  N.xuLyNgoai = xuLy || {};
+  N.cheDo     = che;
 
-  lopPhu = document.createElement('div');
-  lopPhu.style.cssText = KIEU_LOP_PHU;
+  N.lopPhu = document.createElement('div');
+  N.lopPhu.style.cssText = KIEU_LOP_PHU;
 
   const hop = document.createElement('div');
   hop.id = 'giapha-hop-viec';   // mốc cho bài kiểm hành vi, xem kiem-noi-go.mjs
@@ -3164,15 +3177,15 @@ function moHopTrang(che, xuLy, tieuDe, phu) {
     hop.append(d);
   }
 
-  khoiKetQua = document.createElement('div');
-  hop.append(khoiKetQua);
+  N.khoiKetQua = document.createElement('div');
+  hop.append(N.khoiKetQua);
 
   const chan = document.createElement('div');
   chan.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:18px';
   hop.append(chan);
 
-  lopPhu.append(hop);
-  document.body.append(lopPhu);
+  N.lopPhu.append(hop);
+  document.body.append(N.lopPhu);
   return chan;
 }
 
@@ -3217,7 +3230,7 @@ function moHopChon(che, xuLy, c) {
   const hang = document.createElement('div');
   hang.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:10px';
   for (const m of c.cacMuc) hang.append(nutMuc(m));
-  khoiKetQua.append(hang);
+  N.khoiKetQua.append(hang);
 
   chan.append(nutChanXoa(c.chuHuy || 'Huỷ', false, () => closePersonForm()));
 }
@@ -3225,13 +3238,13 @@ function moHopChon(che, xuLy, c) {
 /**
  * Gài mấy phần tử vào hộp việc, NGAY TRÊN hàng nút.
  *
- * ⚠ Vì sao không `khoiKetQua.append()` như ô "con nuôi" vẫn làm: `hienNhan()`
- * XOÁ SẠCH `khoiKetQua` mỗi lần nó nói một câu mới. Với ô thứ bậc thì đó là
+ * ⚠ Vì sao không `N.khoiKetQua.append()` như ô "con nuôi" vẫn làm: `hienNhan()`
+ * XOÁ SẠCH `N.khoiKetQua` mỗi lần nó nói một câu mới. Với ô thứ bậc thì đó là
  * một cái bẫy — câu app nói ra chính là *"ô ấy gõ sai, sửa lại đi"*, mà lúc
  * người dùng đọc được câu ấy thì cái ô đã bị chính nó xoá mất. Nên ô này sống
  * NGOÀI tầm với của `hienNhan`.
  *
- * (Ô "con nuôi" vẫn nằm trong `khoiKetQua` và vẫn biến mất sau một lời cảnh
+ * (Ô "con nuôi" vẫn nằm trong `N.khoiKetQua` và vẫn biến mất sau một lời cảnh
  * báo. Không đúng, nhưng khác việc: ở đó lời cảnh báo không bao giờ nói về
  * chính cái ô ấy. Ghi lại ở nhật ký bước này, chưa sửa trong cùng phiên.)
  */
@@ -3590,12 +3603,12 @@ export function quickAddSpouse(personId, xuLy = {}) {
  * thêm là cha mẹ hoặc vợ chồng, không đứng trong hàng anh em nào.
  */
 async function handleAddNguoiThan() {
-  if (dangLuu) return;
+  if (N.dangLuu) return;
 
   const luc    = stampNow();
   const boi    = (state.phien && state.phien.email) || '';
   const quanHe = (o.conNuoi && o.conNuoi.checked) ? 'adopted' : 'birth';
-  const laChaMe = cheDo === 'themChaMe';
+  const laChaMe = N.cheDo === 'themChaMe';
 
   const dung = laChaMe
     ? dungCayThemChaMe(state.tree, gomThayDoi(), quanHe, { boi, luc })
@@ -3626,18 +3639,18 @@ async function handleAddNguoiThan() {
   }
 
   const canhBao = loiNhacCuaForm().concat(raSoat.warnings.map((m) => m.message));
-  if (canhBao.length > 0 && !daXemCanhBao) {
-    daXemCanhBao = true;
-    nutLuu.textContent = 'Vẫn thêm';
+  if (canhBao.length > 0 && !N.daXemCanhBao) {
+    N.daXemCanhBao = true;
+    N.nutLuu.textContent = 'Vẫn thêm';
     hienNhan('Có chỗ đáng xem lại. Gia phả cũ có những chuyện thật mà nghe như ' +
              'lỗi, nên app không chặn — bấm "Vẫn thêm" nếu bạn biết là đúng:',
              false, canhBao);
     return;
   }
 
-  dangLuu = true;
-  nutLuu.disabled = true;
-  nutLuu.style.opacity = '.45';
+  N.dangLuu = true;
+  N.nutLuu.disabled = true;
+  N.nutLuu.style.opacity = '.45';
   hienNhan('Đang lưu…', false);
 
   const nguoiMoi = dung.person;
@@ -3656,17 +3669,17 @@ async function handleAddNguoiThan() {
     diff:   dung.diff,
   });
 
-  dangLuu = false;
-  if (!lopPhu) return;   // người dùng đã đóng form trong lúc chờ máy chủ
+  N.dangLuu = false;
+  if (!N.lopPhu) return;   // người dùng đã đóng form trong lúc chờ máy chủ
 
   if (ketQua && ketQua.ok) {
     closePersonForm();
-    if (xuLyNgoai.onDaLuu) xuLyNgoai.onDaLuu(nguoiMoi.id);
+    if (N.xuLyNgoai.onDaLuu) N.xuLyNgoai.onDaLuu(nguoiMoi.id);
     return;
   }
 
-  nutLuu.disabled = false;
-  nutLuu.style.opacity = '1';
+  N.nutLuu.disabled = false;
+  N.nutLuu.style.opacity = '1';
   hienLoiGhi(ketQua, 'Người này CHƯA được thêm.');
 }
 
@@ -3867,7 +3880,7 @@ function moHopXacNhanNoi(ctx, xuLy) {
   // với cặp ấy đã ghi từ trước — hỏi lại là mời đổi một thứ không ai định đụng.
   const hoiNuoi = (loai === 'child') || (loai === 'parent' && !unionId);
   if (hoiNuoi) {
-    khoiKetQua.append(veConNuoi(loai === 'child'
+    N.khoiKetQua.append(veConNuoi(loai === 'child'
       ? 'Là con nuôi (không phải con đẻ)'
       : 'Là cha / mẹ NUÔI (không phải cha mẹ đẻ)'));
   } else {
@@ -3888,8 +3901,8 @@ function moHopXacNhanNoi(ctx, xuLy) {
     for (const id of ds) gaiTruocChan(chan, khoiHoiThuBac(id, unionId));
   }
 
-  nutLuu = nutChanXoa('Nối hai người này', false, () => chayNoi());
-  chan.append(nutLuu, nutChanXoa('Không nối', false, () => closePersonForm()));
+  N.nutLuu = nutChanXoa('Nối hai người này', false, () => chayNoi());
+  chan.append(N.nutLuu, nutChanXoa('Không nối', false, () => closePersonForm()));
 }
 
 /**
@@ -3978,7 +3991,7 @@ function cauKeNoi() {
  * dưới đây đúng là thứ được ghi ở cuối hàm.
  */
 async function chayNoi() {
-  if (dangLuu || !noiCtx) return;
+  if (N.dangLuu || !noiCtx) return;
 
   const quanHe = (o.conNuoi && o.conNuoi.checked) ? 'adopted' : 'birth';
   const dung = dungCayNoi(quanHe);
@@ -4007,18 +4020,18 @@ async function chayNoi() {
   }
 
   const canhBao = loiThuBacGoSai().concat(raSoat.warnings.map((m) => m.message));
-  if (canhBao.length > 0 && !daXemCanhBao) {
-    daXemCanhBao = true;
-    nutLuu.textContent = 'Vẫn nối';
+  if (canhBao.length > 0 && !N.daXemCanhBao) {
+    N.daXemCanhBao = true;
+    N.nutLuu.textContent = 'Vẫn nối';
     hienNhan('Có chỗ đáng xem lại. Gia phả cũ có những chuyện thật mà nghe như ' +
              'lỗi, nên app không chặn — bấm "Vẫn nối" nếu bạn biết là đúng:',
              false, canhBao);
     return;
   }
 
-  dangLuu = true;
-  nutLuu.disabled = true;
-  nutLuu.style.opacity = '.45';
+  N.dangLuu = true;
+  N.nutLuu.disabled = true;
+  N.nutLuu.style.opacity = '.45';
   hienNhan('Đang nối…', false);
 
   const ketQua = await ghiBanGhi(null, [dung.union], {
@@ -4030,26 +4043,26 @@ async function chayNoi() {
     diff:   dung.diff,
   });
 
-  dangLuu = false;
-  if (!lopPhu) return;
+  N.dangLuu = false;
+  if (!N.lopPhu) return;
 
   if (!(ketQua && ketQua.ok)) {
-    nutLuu.disabled = false;
-    nutLuu.style.opacity = '1';
+    N.nutLuu.disabled = false;
+    N.nutLuu.style.opacity = '1';
     hienLoiGhi(ketQua, 'Hai người này CHƯA được nối.');
     return;
   }
 
-  if (xuLyNgoai.onDaLuu) xuLyNgoai.onDaLuu(targetId);
+  if (N.xuLyNgoai.onDaLuu) N.xuLyNgoai.onDaLuu(targetId);
 
-  nutLuu = null;
+  N.nutLuu = null;
   hienNhan('Đã nối ' + tenNguoi(targetId) + ' làm ' + TEN_QUAN_HE[loai] +
            ' của ' + tenNguoi(personId) + '.', false);
 
   const hang = document.createElement('div');
   hang.style.cssText = 'margin-top:10px';
   hang.append(nutChon('Xong', true, () => closePersonForm()));
-  khoiKetQua.append(hang);
+  N.khoiKetQua.append(hang);
 }
 
 /** @returns {{tree, union, laUnionMoi, diff}|null} */
@@ -4268,8 +4281,8 @@ function moHopXacNhanGo(personId, targetId, loai, unionId, xuLy) {
 
   hienNhan('Gỡ xong thì:', false, cauKeHauQuaGoNoi(personId, targetId, loai, unionId));
 
-  nutLuu = nutChanXoa('Gỡ mối nối này', true, () => chayGoNoi(personId, targetId, loai));
-  chan.append(nutLuu, nutChanXoa('Không gỡ', false, () => closePersonForm()));
+  N.nutLuu = nutChanXoa('Gỡ mối nối này', true, () => chayGoNoi(personId, targetId, loai));
+  chan.append(N.nutLuu, nutChanXoa('Không gỡ', false, () => closePersonForm()));
 }
 
 /**
@@ -4389,11 +4402,11 @@ function cauKeHauQuaGoNoi(personId, targetId, loai, unionId) {
 }
 
 async function chayGoNoi(personId, targetId, loai) {
-  if (dangLuu || !goHT) return;
+  if (N.dangLuu || !goHT) return;
 
-  dangLuu = true;
-  nutLuu.disabled = true;
-  nutLuu.style.opacity = '.45';
+  N.dangLuu = true;
+  N.nutLuu.disabled = true;
+  N.nutLuu.style.opacity = '.45';
   hienNhan('Đang gỡ…', false);
 
   const unionId = goHT.union.id;
@@ -4411,21 +4424,21 @@ async function chayGoNoi(personId, targetId, loai) {
     diff:   goHT.diff,
   });
 
-  dangLuu = false;
-  if (!lopPhu) return;
+  N.dangLuu = false;
+  if (!N.lopPhu) return;
 
   if (!(ketQua && ketQua.ok)) {
-    nutLuu.disabled = false;
-    nutLuu.style.opacity = '1';
+    N.nutLuu.disabled = false;
+    N.nutLuu.style.opacity = '1';
     hienLoiGhi(ketQua, 'Mối nối này CHƯA bị gỡ.');
     return;
   }
 
   // Vẽ lại ngay, trong lúc hộp vẫn mở: người dùng nhìn thấy kết quả rồi mới
   // quyết định có hoàn tác hay không. Cùng lối của đường xoá (bước 21).
-  if (xuLyNgoai.onDaLuu) xuLyNgoai.onDaLuu(personId);
+  if (N.xuLyNgoai.onDaLuu) N.xuLyNgoai.onDaLuu(personId);
 
-  nutLuu = null;
+  N.nutLuu = null;
   hienNhan('Đã gỡ mối nối.', false,
            goHT.capChet
              ? ['Cặp ' + unionId + ' cũng đã được xoá mềm cùng lúc.']
@@ -4437,7 +4450,7 @@ async function chayGoNoi(personId, targetId, loai) {
     nutChon('Hoàn tác — nối lại như cũ', true, () => chayHoanTacGoNoi(personId, banCu)),
     nutChon('Xong', false, () => closePersonForm()),
   );
-  khoiKetQua.append(hang);
+  N.khoiKetQua.append(hang);
 }
 
 /**
@@ -4449,8 +4462,8 @@ async function chayGoNoi(personId, targetId, loai) {
  * chỉ lật một cờ chứ không dọn mảng nào.
  */
 async function chayHoanTacGoNoi(personId, banCu) {
-  if (dangLuu) return;
-  dangLuu = true;
+  if (N.dangLuu) return;
+  N.dangLuu = true;
   hienNhan('Đang nối lại…', false);
 
   const ketQua = await ghiBanGhi(null, [banCu], {
@@ -4460,21 +4473,21 @@ async function chayHoanTacGoNoi(personId, banCu) {
     diff:   {},
   });
 
-  dangLuu = false;
-  if (!lopPhu) return;
+  N.dangLuu = false;
+  if (!N.lopPhu) return;
 
   if (!(ketQua && ketQua.ok)) {
     hienLoiGhi(ketQua, 'Mối nối VẪN đang bị gỡ.');
     return;
   }
 
-  if (xuLyNgoai.onDaLuu) xuLyNgoai.onDaLuu(personId);
+  if (N.xuLyNgoai.onDaLuu) N.xuLyNgoai.onDaLuu(personId);
 
   hienNhan('Đã nối lại như cũ.', false);
   const hang = document.createElement('div');
   hang.style.cssText = 'margin-top:10px';
   hang.append(nutChon('Đóng', true, () => closePersonForm()));
-  khoiKetQua.append(hang);
+  N.khoiKetQua.append(hang);
 }
 
 // ============================================================
@@ -4625,13 +4638,13 @@ function moFormCap(unionId, xuLy, mocId) {
   if (!u) return;
 
   closePersonForm();
-  xuLyNgoai  = xuLy || {};
-  cheDo      = 'suaCap';
+  N.xuLyNgoai  = xuLy || {};
+  N.cheDo      = 'suaCap';
   capDangSua = unionId;
   mocDangSua = mocId;
 
-  lopPhu = document.createElement('div');
-  lopPhu.style.cssText = KIEU_LOP_PHU;
+  N.lopPhu = document.createElement('div');
+  N.lopPhu.style.cssText = KIEU_LOP_PHU;
 
   const hop = document.createElement('div');
   hop.id = 'giapha-form-cap';   // mốc cho bài kiểm hành vi, xem kiem-thung-rac.mjs
@@ -4649,8 +4662,8 @@ function moFormCap(unionId, xuLy, mocId) {
   hop.append(tieuDe, phu);
   hop.append(...veCacOCap(u, mocId));
 
-  khoiKetQua = document.createElement('div');
-  hop.append(khoiKetQua);
+  N.khoiKetQua = document.createElement('div');
+  hop.append(N.khoiKetQua);
 
   const canTro = canTroLuu();
   if (canTro) hienNhan(canTro, true);
@@ -4659,8 +4672,8 @@ function moFormCap(unionId, xuLy, mocId) {
 
   // Bấm ra ngoài KHÔNG đóng — cùng lý do với form hồ sơ: nó đang giữ những gì
   // người ta vừa gõ.
-  lopPhu.append(hop);
-  document.body.append(lopPhu);
+  N.lopPhu.append(hop);
+  document.body.append(N.lopPhu);
 }
 
 function veCacOCap(u, mocId) {
@@ -4868,7 +4881,7 @@ function khacGioi(partnerIds) {
  * việc KHÔNG để lại dấu vết.
  */
 async function handleSaveUnion() {
-  if (dangLuu) return;
+  if (N.dangLuu) return;
 
   // Dấu thời gian và người sửa, cho kho ảnh — `updateUnion` ở đây không nhận
   // `ghiNhan`, nhưng `attachMedia` và `detachMedia` thì có.
@@ -4933,18 +4946,18 @@ async function handleSaveUnion() {
     return;
   }
 
-  if (raSoat.warnings.length > 0 && !daXemCanhBao) {
-    daXemCanhBao = true;
-    nutLuu.textContent = 'Vẫn lưu';
+  if (raSoat.warnings.length > 0 && !N.daXemCanhBao) {
+    N.daXemCanhBao = true;
+    N.nutLuu.textContent = 'Vẫn lưu';
     hienNhan('Có chỗ đáng xem lại. Gia phả cũ có những chuyện thật mà nghe như ' +
              'lỗi, nên app không chặn — bấm "Vẫn lưu" nếu bạn biết là đúng:', false,
              raSoat.warnings.map((m) => m.message));
     return;
   }
 
-  dangLuu = true;
-  nutLuu.disabled = true;
-  nutLuu.style.opacity = '.45';
+  N.dangLuu = true;
+  N.nutLuu.disabled = true;
+  N.nutLuu.style.opacity = '.45';
   hienNhan('Đang lưu…', false);
 
   const ketQua = await ghiBanGhi(null, [capCuoi], {
@@ -4954,17 +4967,17 @@ async function handleSaveUnion() {
     diff:   diffCuoi,
   }, anh);
 
-  dangLuu = false;
-  if (!lopPhu) return;
+  N.dangLuu = false;
+  if (!N.lopPhu) return;
 
   if (!(ketQua && ketQua.ok)) {
-    nutLuu.disabled = false;
-    nutLuu.style.opacity = '1';
+    N.nutLuu.disabled = false;
+    N.nutLuu.style.opacity = '1';
     hienLoiGhi(ketQua, 'Cặp này VẪN như cũ.');
     return;
   }
 
-  if (xuLyNgoai.onDaLuu) xuLyNgoai.onDaLuu(capDangSua);
+  if (N.xuLyNgoai.onDaLuu) N.xuLyNgoai.onDaLuu(capDangSua);
   closePersonForm();
 }
 
@@ -5202,7 +5215,7 @@ async function chayDoiQuanHe(unionId, conId, maMoi, xuLy) {
     return;
   }
 
-  dangLuu = true;
+  N.dangLuu = true;
   hienNhan('Đang ghi…', false);
 
   const ketQua = await ghiBanGhi(null, [kq.union], {
@@ -5213,8 +5226,8 @@ async function chayDoiQuanHe(unionId, conId, maMoi, xuLy) {
     diff:   kq.diff,
   });
 
-  dangLuu = false;
-  if (!lopPhu) return;
+  N.dangLuu = false;
+  if (!N.lopPhu) return;
 
   if (!(ketQua && ketQua.ok)) {
     hienLoiGhi(ketQua, 'Quan hệ VẪN như cũ.');
@@ -5380,9 +5393,9 @@ function moHopXacNhanChuyen(unionId, conId, capMoi, xuLy) {
   // bắt xác nhận hai lượt cho một việc là dạy người ta bấm qua mà không đọc.
   hienNhan('Chuyển xong thì:', false, cauKeChuyenCon(unionId, conId, capMoi));
 
-  nutLuu = nutChanXoa('Chuyển sang gia đình này', true,
+  N.nutLuu = nutChanXoa('Chuyển sang gia đình này', true,
                       () => chayChuyenCon(unionId, conId, capMoi, xuLy, chan));
-  chan.append(nutLuu, nutChanXoa('Không chuyển', false, () => closePersonForm()));
+  chan.append(N.nutLuu, nutChanXoa('Không chuyển', false, () => closePersonForm()));
 }
 
 /**
@@ -5503,13 +5516,13 @@ function cauKeChuyenCon(unionId, conId, capMoi) {
 }
 
 async function chayChuyenCon(unionId, conId, capMoi, xuLy, chan) {
-  if (dangLuu || !chuyenHT) return;
+  if (N.dangLuu || !chuyenHT) return;
 
   const tenCon = tenNguoi(conId);
   const tenMoi = keTenPartner(capMoi);
 
-  dangLuu = true;
-  if (nutLuu) { nutLuu.disabled = true; nutLuu.style.opacity = '.45'; }
+  N.dangLuu = true;
+  if (N.nutLuu) { N.nutLuu.disabled = true; N.nutLuu.style.opacity = '.45'; }
   hienNhan('Đang chuyển…', false);
 
   const ketQua = await ghiBanGhi(null, [chuyenHT.unionNguon, chuyenHT.unionDich], {
@@ -5521,20 +5534,20 @@ async function chayChuyenCon(unionId, conId, capMoi, xuLy, chan) {
     diff:   chuyenHT.diff,
   });
 
-  dangLuu = false;
-  if (!lopPhu) return;
+  N.dangLuu = false;
+  if (!N.lopPhu) return;
 
   if (!(ketQua && ketQua.ok)) {
-    if (nutLuu) { nutLuu.disabled = false; nutLuu.style.opacity = '1'; }
+    if (N.nutLuu) { N.nutLuu.disabled = false; N.nutLuu.style.opacity = '1'; }
     hienLoiGhi(ketQua, tenCon + ' VẪN là con của cặp cũ.');
     return;
   }
 
-  // Dọn hẳn hàng nút xác nhận đi, không chỉ bỏ tham chiếu `nutLuu`: cái nút đỏ
+  // Dọn hẳn hàng nút xác nhận đi, không chỉ bỏ tham chiếu `N.nutLuu`: cái nút đỏ
   // ấy vẫn nằm trên màn hình và vẫn bấm được, mà bấm lần thứ hai là ghi lần thứ
   // hai một việc đã xong.
   chuyenHT = null;
-  nutLuu   = null;
+  N.nutLuu   = null;
   chan.innerHTML = '';
 
   if (xuLy.onDaLuu) xuLy.onDaLuu(conId);
@@ -5613,12 +5626,12 @@ export function openFamilyForm(personId, xuLy = {}) {
   if (!index || !index.personById.has(personId)) return;
 
   closePersonForm();
-  xuLyNgoai = xuLy || {};
-  cheDo     = 'giaDinh';
+  N.xuLyNgoai = xuLy || {};
+  N.cheDo     = 'giaDinh';
   giaDinhCua = personId;
 
-  lopPhu = document.createElement('div');
-  lopPhu.style.cssText = KIEU_LOP_PHU;
+  N.lopPhu = document.createElement('div');
+  N.lopPhu.style.cssText = KIEU_LOP_PHU;
 
   const hop = document.createElement('div');
   hop.id = 'giapha-form-gia-dinh';   // mốc cho bài kiểm hành vi
@@ -5644,8 +5657,8 @@ export function openFamilyForm(personId, xuLy = {}) {
   if (capChaMe.length === 0) hop.append(veKhoiChuaCoChaMe(personId, xuLy));
   if (capVo.length === 0)    hop.append(veKhoiChuaCoVoChong(personId, xuLy));
 
-  khoiKetQua = document.createElement('div');
-  hop.append(khoiKetQua);
+  N.khoiKetQua = document.createElement('div');
+  hop.append(N.khoiKetQua);
 
   const canTro = canTroLuu();
   if (canTro) hienNhan(canTro, true);
@@ -5655,8 +5668,8 @@ export function openFamilyForm(personId, xuLy = {}) {
   chan.append(nutChon('Xong', true, () => closePersonForm()));
   hop.append(chan);
 
-  lopPhu.append(hop);
-  document.body.append(lopPhu);
+  N.lopPhu.append(hop);
+  document.body.append(N.lopPhu);
 }
 
 /** Mở lại chính màn hình này sau khi một việc con vừa ghi xong. */
@@ -6011,7 +6024,7 @@ async function chayDoiTrangThai(unionId, maMoi, personId, xuLy) {
     return;
   }
 
-  dangLuu = true;
+  N.dangLuu = true;
   hienNhan('Đang ghi…', false);
 
   const ketQua = await ghiBanGhi(null, [kq.union], {
@@ -6021,8 +6034,8 @@ async function chayDoiTrangThai(unionId, maMoi, personId, xuLy) {
     diff:   kq.diff,
   });
 
-  dangLuu = false;
-  if (!lopPhu) return;
+  N.dangLuu = false;
+  if (!N.lopPhu) return;
 
   if (!(ketQua && ketQua.ok)) {
     hienLoiGhi(ketQua, 'Cặp này VẪN như cũ.');
@@ -6030,7 +6043,7 @@ async function chayDoiTrangThai(unionId, maMoi, personId, xuLy) {
     return;
   }
 
-  // Vẽ lại màn hình gia đình rồi mới nói — `hienNhan` viết vào `khoiKetQua` của
+  // Vẽ lại màn hình gia đình rồi mới nói — `hienNhan` viết vào `N.khoiKetQua` của
   // màn hình vừa mở lại, nên câu báo đứng ngay trên cái hàng vừa đổi.
   veLaiSauKhiGhi(personId, xuLy)(personId);
   hienNhan('Đã ghi: ' + ten + ' — ' + nhanTrangThaiCap(maMoi).toLowerCase() + '.', false);
@@ -6309,7 +6322,7 @@ function moHopChonNguoiVaoCap(unionId, nguoiCuId, personId, xuLy) {
   dan.style.cssText =
     'margin-top:14px;padding:9px 11px;font-size:12px;line-height:1.5;' +
     'border-radius:8px;color:#8a8078;background:#faf8f5;border:1px solid #f0ebe4';
-  khoiKetQua.append(dan);
+  N.khoiKetQua.append(dan);
 
   const nhac = document.createElement('div');
   nhac.textContent =
@@ -6319,7 +6332,7 @@ function moHopChonNguoiVaoCap(unionId, nguoiCuId, personId, xuLy) {
   nhac.style.cssText =
     'margin-top:6px;padding:7px 10px;font-size:11px;line-height:1.5;' +
     'border-radius:8px;color:#5c554e;background:#faf8f5;border:1px solid #f0ebe4';
-  khoiKetQua.append(nhac);
+  N.khoiKetQua.append(nhac);
 
   const oTim = document.createElement('input');
   oTim.type = 'text';
@@ -6327,15 +6340,15 @@ function moHopChonNguoiVaoCap(unionId, nguoiCuId, personId, xuLy) {
   oTim.setAttribute('aria-label', 'Tìm người');
   oTim.dataset.viec = 'tim-nguoi';
   oTim.style.cssText = KIEU_O + 'margin-top:10px';
-  khoiKetQua.append(oTim);
+  N.khoiKetQua.append(oTim);
 
   const day = document.createElement('div');
   day.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:8px';
-  khoiKetQua.append(day);
+  N.khoiKetQua.append(day);
 
   const demDong = document.createElement('div');
   demDong.style.cssText = 'font-size:11px;color:#b3aaa0;margin-top:8px';
-  khoiKetQua.append(demDong);
+  N.khoiKetQua.append(demDong);
 
   // Xét MỘT LẦN cho cả gia phả, không xét lại mỗi lần gõ một chữ: bộ quy tắc
   // không phụ thuộc vào chữ đang tìm, mà `checkNoAncestorCycle` thì có duyệt
@@ -6491,9 +6504,9 @@ function moHopXacNhanDoiNguoi(unionId, nguoiCuId, ungVienId, personId, xuLy) {
   // này là để hở đúng cái cửa mà cả việc này sinh ra để đóng.
   gaiTruocChan(chan, khoiHoiThuBac(ungVienId, unionId));
 
-  nutLuu = nutChanXoa(nguoiCuId ? 'Đổi người' : 'Thêm vào gia đình', true,
+  N.nutLuu = nutChanXoa(nguoiCuId ? 'Đổi người' : 'Thêm vào gia đình', true,
     () => chayDoiNguoi(unionId, nguoiCuId, ungVienId, personId, xuLy, chan));
-  chan.append(nutLuu, nutChanXoa('Thôi', false, () => closePersonForm()));
+  chan.append(N.nutLuu, nutChanXoa('Thôi', false, () => closePersonForm()));
 }
 
 /**
@@ -6601,17 +6614,17 @@ function cauKeDoiNguoi(unionId, nguoiCuId, ungVienId) {
 }
 
 async function chayDoiNguoi(unionId, nguoiCuId, ungVienId, personId, xuLy, chan) {
-  if (dangLuu || !doiHT) return;
+  if (N.dangLuu || !doiHT) return;
 
   const B = tenNguoi(ungVienId);
 
   // Luật 12: ô thứ bậc gõ sai thì nói ra một lần rồi mới cho đi tiếp — cùng
   // lối *"Vẫn nối"* của `chayNoi`. Ô vẫn còn trên màn hình để sửa lại, vì nó
-  // nằm ngoài `khoiKetQua` (xem `gaiTruocChan`).
+  // nằm ngoài `N.khoiKetQua` (xem `gaiTruocChan`).
   const loiBac = loiThuBacGoSai();
-  if (loiBac.length > 0 && !daXemCanhBao) {
-    daXemCanhBao = true;
-    if (nutLuu) nutLuu.textContent = nguoiCuId ? 'Vẫn đổi' : 'Vẫn thêm';
+  if (loiBac.length > 0 && !N.daXemCanhBao) {
+    N.daXemCanhBao = true;
+    if (N.nutLuu) N.nutLuu.textContent = nguoiCuId ? 'Vẫn đổi' : 'Vẫn thêm';
     hienNhan('Có chỗ đáng xem lại:', false, loiBac);
     return;
   }
@@ -6635,8 +6648,8 @@ async function chayDoiNguoi(unionId, nguoiCuId, ungVienId, personId, xuLy, chan)
     }
   }
 
-  dangLuu = true;
-  if (nutLuu) { nutLuu.disabled = true; nutLuu.style.opacity = '.45'; }
+  N.dangLuu = true;
+  if (N.nutLuu) { N.nutLuu.disabled = true; N.nutLuu.style.opacity = '.45'; }
   hienNhan('Đang ghi…', false);
 
   const ketQua = await ghiBanGhi(null, [banGhi], {
@@ -6648,19 +6661,19 @@ async function chayDoiNguoi(unionId, nguoiCuId, ungVienId, personId, xuLy, chan)
     diff:   ghiDiff,
   });
 
-  dangLuu = false;
-  if (!lopPhu) return;
+  N.dangLuu = false;
+  if (!N.lopPhu) return;
 
   if (!(ketQua && ketQua.ok)) {
-    if (nutLuu) { nutLuu.disabled = false; nutLuu.style.opacity = '1'; }
+    if (N.nutLuu) { N.nutLuu.disabled = false; N.nutLuu.style.opacity = '1'; }
     hienLoiGhi(ketQua, 'Gia đình này VẪN như cũ.');
     return;
   }
 
-  // Dọn hẳn hàng nút đi, không chỉ bỏ tham chiếu `nutLuu`: nút cũ vẫn nằm trên
+  // Dọn hẳn hàng nút đi, không chỉ bỏ tham chiếu `N.nutLuu`: nút cũ vẫn nằm trên
   // màn hình và vẫn bấm được, mà bấm lần hai là ghi lần hai một việc đã xong.
   doiHT  = null;
-  nutLuu = null;
+  N.nutLuu = null;
   chan.innerHTML = '';
 
   if (xuLy.onDaLuu) xuLy.onDaLuu(personId);
@@ -6827,12 +6840,12 @@ function moManSap(unionId, mocId, laCon, xuLy) {
   if (!u) return;
 
   closePersonForm();
-  xuLyNgoai = xuLy || {};
-  cheDo     = 'sapThuTu';
+  N.xuLyNgoai = xuLy || {};
+  N.cheDo     = 'sapThuTu';
   sapCtx    = { unionId, mocId, laCon, thuTu: thuTuDangCo(u) };
 
-  lopPhu = document.createElement('div');
-  lopPhu.style.cssText = KIEU_LOP_PHU;
+  N.lopPhu = document.createElement('div');
+  N.lopPhu.style.cssText = KIEU_LOP_PHU;
 
   const hop = document.createElement('div');
   hop.id = 'giapha-sap-thu-tu';   // mốc cho bài kiểm hành vi
@@ -6862,8 +6875,8 @@ function moManSap(unionId, mocId, laCon, xuLy) {
   hop.append(t, phu, chiDan, sapDay);
   veDayCon();
 
-  khoiKetQua = document.createElement('div');
-  hop.append(khoiKetQua);
+  N.khoiKetQua = document.createElement('div');
+  hop.append(N.khoiKetQua);
 
   const hangPhu = document.createElement('div');
   hangPhu.style.cssText = 'margin-top:14px';
@@ -6880,15 +6893,15 @@ function moManSap(unionId, mocId, laCon, xuLy) {
 
   const chan = document.createElement('div');
   chan.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:10px';
-  nutLuu = nutChanDam('Xong', () => handleSaveThuTu());
-  if (canTro) { nutLuu.disabled = true; nutLuu.style.opacity = '.45'; }
-  chan.append(nutLuu, nutChanXoa('Huỷ', false, () => closePersonForm()));
+  N.nutLuu = nutChanDam('Xong', () => handleSaveThuTu());
+  if (canTro) { N.nutLuu.disabled = true; N.nutLuu.style.opacity = '.45'; }
+  chan.append(N.nutLuu, nutChanXoa('Huỷ', false, () => closePersonForm()));
   hop.append(chan);
 
   // Bấm ra ngoài KHÔNG đóng — cùng lý do với form: hộp đang giữ một thứ tự
   // người dùng vừa sắp bằng tay mà chưa lưu.
-  lopPhu.append(hop);
-  document.body.append(lopPhu);
+  N.lopPhu.append(hop);
+  document.body.append(N.lopPhu);
 }
 
 /** Vẽ lại toàn bộ dãy thẻ từ `sapCtx.thuTu`. Rẻ: một cặp hiếm khi quá mười con. */
@@ -7091,7 +7104,7 @@ function sapTheoTuoi() {
  * Không chạy `validateAll` — xem quyết định 6 ở đầu mục.
  */
 async function handleSaveThuTu() {
-  if (dangLuu || !sapCtx) return;
+  if (N.dangLuu || !sapCtx) return;
 
   const unionId = sapCtx.unionId;
   const cu = timCapTrongCay(unionId);
@@ -7112,9 +7125,9 @@ async function handleSaveThuTu() {
     return;
   }
 
-  dangLuu = true;
-  nutLuu.disabled = true;
-  nutLuu.style.opacity = '.45';
+  N.dangLuu = true;
+  N.nutLuu.disabled = true;
+  N.nutLuu.style.opacity = '.45';
   hienNhan('Đang lưu…', false);
 
   const ketQua = await ghiBanGhi(null, [kq.union], {
@@ -7124,17 +7137,17 @@ async function handleSaveThuTu() {
     diff:   kq.diff,
   });
 
-  dangLuu = false;
-  if (!lopPhu) return;   // người dùng đã đóng hộp trong lúc chờ máy chủ
+  N.dangLuu = false;
+  if (!N.lopPhu) return;   // người dùng đã đóng hộp trong lúc chờ máy chủ
 
   if (!(ketQua && ketQua.ok)) {
-    nutLuu.disabled = false;
-    nutLuu.style.opacity = '1';
+    N.nutLuu.disabled = false;
+    N.nutLuu.style.opacity = '1';
     hienLoiGhi(ketQua, 'Thứ tự anh chị em VẪN như cũ.');
     return;
   }
 
-  if (xuLyNgoai.onDaLuu) xuLyNgoai.onDaLuu(unionId);
+  if (N.xuLyNgoai.onDaLuu) N.xuLyNgoai.onDaLuu(unionId);
   closePersonForm();
 }
 
@@ -7213,7 +7226,7 @@ function coMatTrongCap(u, personId) {
 }
 
 async function chayKhoiPhucNguoi(personId) {
-  if (dangLuu) return;
+  if (N.dangLuu) return;
 
   const luc = stampNow();
   const boi = (state.phien && state.phien.email) || '';
@@ -7223,7 +7236,7 @@ async function chayKhoiPhucNguoi(personId) {
     return;
   }
 
-  dangLuu = true;
+  N.dangLuu = true;
   hienNhan('Đang đưa trở lại…', false);
 
   const ten = tenTrongCay(kq.tree, personId);
@@ -7234,15 +7247,15 @@ async function chayKhoiPhucNguoi(personId) {
     diff:   kq.diff,
   });
 
-  dangLuu = false;
-  if (!lopPhu) return;
+  N.dangLuu = false;
+  if (!N.lopPhu) return;
 
   if (!(ketQua && ketQua.ok)) {
     hienLoiGhi(ketQua, 'Người này VẪN đang trong thùng rác.');
     return;
   }
 
-  if (xuLyNgoai.onDaLuu) xuLyNgoai.onDaLuu(personId);
+  if (N.xuLyNgoai.onDaLuu) N.xuLyNgoai.onDaLuu(personId);
   baoXongMotViec('Đã đưa ' + ten + ' trở lại gia phả.');
 }
 
@@ -7309,7 +7322,7 @@ function cauKeKhiCapTroLai(u) {
 }
 
 async function chayKhoiPhucCap(unionId) {
-  if (dangLuu) return;
+  if (N.dangLuu) return;
 
   const kq = restoreUnion(state.tree, unionId);
   if (!kq) {
@@ -7317,7 +7330,7 @@ async function chayKhoiPhucCap(unionId) {
     return;
   }
 
-  dangLuu = true;
+  N.dangLuu = true;
   hienNhan('Đang đưa trở lại…', false);
 
   const ketQua = await ghiBanGhi(null, [kq.union], {
@@ -7327,15 +7340,15 @@ async function chayKhoiPhucCap(unionId) {
     diff:   kq.diff,
   });
 
-  dangLuu = false;
-  if (!lopPhu) return;
+  N.dangLuu = false;
+  if (!N.lopPhu) return;
 
   if (!(ketQua && ketQua.ok)) {
     hienLoiGhi(ketQua, 'Cặp này VẪN đang trong thùng rác.');
     return;
   }
 
-  if (xuLyNgoai.onDaLuu) xuLyNgoai.onDaLuu(unionId);
+  if (N.xuLyNgoai.onDaLuu) N.xuLyNgoai.onDaLuu(unionId);
   baoXongMotViec('Đã đưa cặp ' + unionId + ' trở lại gia phả.');
 }
 
@@ -7454,7 +7467,7 @@ function cauKeKhiDonRac(ke) {
 }
 
 async function chayDonThungRac(xuLy, chiNhung) {
-  if (dangLuu) return;
+  if (N.dangLuu) return;
 
   const ke = planPurge(state.tree, chiNhung);
   if (ke.trong) {
@@ -7463,7 +7476,7 @@ async function chayDonThungRac(xuLy, chiNhung) {
     return;
   }
 
-  dangLuu = true;
+  N.dangLuu = true;
   hienNhan('Đang sao lưu rồi dọn…', false);
 
   // BƯỚC 2 + 3, trong MỘT lần lưu. `applyPurge` chạy lại trên BẢN NHÁP chứ
@@ -7494,8 +7507,8 @@ async function chayDonThungRac(xuLy, chiNhung) {
     ketQua = { ok: false, loi: e && e.message ? e.message : String(e) };
   }
 
-  dangLuu = false;
-  if (!lopPhu) return;
+  N.dangLuu = false;
+  if (!N.lopPhu) return;
 
   if (!(ketQua && ketQua.ok)) {
     hienLoiGhi(ketQua, 'CHƯA xoá gì cả — mọi thứ vẫn nằm nguyên trong thùng rác.');
@@ -7506,7 +7519,7 @@ async function chayDonThungRac(xuLy, chiNhung) {
   const anh = await donAnhTrenDrive(ke.fileIds);
 
   if (xuLy && xuLy.onDaLuu) xuLy.onDaLuu();
-  if (!lopPhu) return;
+  if (!N.lopPhu) return;
 
   baoXongMotViec('Đã xoá vĩnh viễn ' + moTaKePurge(ke) + '.',
                  cauKetQuaDonRac(ketQua, ke, anh));
@@ -7656,9 +7669,9 @@ export function chuyenVaoThungRac(ids, xuLy = {}) {
  * @param {boolean} vaoThungRac  true = xoá mềm · false = đưa trở lại
  */
 async function chayNhieuBanGhi(ds, xuLy, vaoThungRac) {
-  if (dangLuu) return;
+  if (N.dangLuu) return;
 
-  dangLuu = true;
+  N.dangLuu = true;
   hienNhan(vaoThungRac ? 'Đang cho vào thùng rác…' : 'Đang đưa trở lại…', false);
 
   const luc = stampNow();
@@ -7693,8 +7706,8 @@ async function chayNhieuBanGhi(ds, xuLy, vaoThungRac) {
     ketQua = { ok: false, loi: e && e.message ? e.message : String(e) };
   }
 
-  dangLuu = false;
-  if (!lopPhu) return;
+  N.dangLuu = false;
+  if (!N.lopPhu) return;
 
   if (!(ketQua && ketQua.ok)) {
     hienLoiGhi(ketQua, vaoThungRac
@@ -7754,7 +7767,7 @@ function baoXongMotViec(cau, dong) {
   const hang = document.createElement('div');
   hang.style.cssText = 'margin-top:10px';
   hang.append(nutChon('Đóng', true, () => closePersonForm()));
-  khoiKetQua.append(hang);
+  N.khoiKetQua.append(hang);
 }
 
 /** Nút chân màu đậm — việc CHÍNH của hộp. `nutChanXoa` chỉ có nhạt và đỏ. */
