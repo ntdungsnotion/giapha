@@ -4,7 +4,7 @@
 //            mỗi dòng dẫn thẳng tới việc sửa được nó
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/validate, utils/text, config
-// Phiên bản: 1.2.0 · Cập nhật: 26/08/2026 21:30
+// Phiên bản: 1.3.0 · Cập nhật: 27/08/2026 23:30
 // ============================================================
 //
 // --- Vì sao màn hình này phải có, và vì sao nó KHÔNG quay lại Cài đặt ----
@@ -48,12 +48,16 @@
 // thì một cú bấm "Cho vào thùng rác" sẽ xoá một cặp có thể đang giữ ngày cưới
 // hay ghi chú riêng — đúng thứ việc GỘP sinh ra để tránh.
 //
-// Màn hình GỘP (form so hai cặp, chọn tay từng trường xung đột) CHƯA làm ở
-// bước này — domain logic (`union.timCapTrung`/`mergeUnions`) đã xong và tự
-// kiểm bằng Node, còn màn hình thật cần xem `person-detail.js` mới dựng được.
-// Nhóm "Cặp trùng" ở đây tạm thời CHỈ ĐỌC: bấm một dòng mở thẻ gia đình của
-// cặp đó (`onXemCap`, giống nhóm Cặp thừa), người dùng tự so và tự dọn tay
-// qua "Sửa cặp" trong lúc chờ màn hình GỘP.
+// Từ 27/08/2026 nhóm này có CỬA RIÊNG: bấm một dòng mở thẳng form GỘP
+// (`onGopCap`, `pages/form-gop.js`) chứ không mở thẻ gia đình như nhóm Cặp
+// thừa. Đường cũ vẫn còn làm nền: nơi gọi không truyền `onGopCap` thì dòng ấy
+// lại mở thẻ, để người dùng tự so và tự dọn tay qua "Sửa cặp".
+//
+// ⚠ MỘT CẶP TRÙNG SINH RA HAI DÒNG — `checkDuplicateUnion` chạy cho từng
+// union, nên U0013 trùng U0025 thì cả hai đều có dòng của mình. Không gộp hai
+// dòng ấy lại làm một: người dùng tìm theo mã cặp họ đang nghĩ tới, và một
+// danh sách chỉ liệt mã nhỏ thì tra mã lớn không ra. Bấm dòng nào cũng mở
+// đúng một form GỘP ấy — `openMergeForm` tự xếp lại thứ tự hai mã.
 //
 // --- LUẬT BA KẾT QUẢ phải hiện ra, không được nuốt ----------------------
 //
@@ -96,6 +100,7 @@
 
 import { state } from '../state.js';
 import { validateAll } from '../domains/validate.js';
+import { timCapTrung } from '../domains/union.js';
 import { fullName, coGiaTri } from '../utils/text.js';
 import { rongHop, caoHop, leLopPhu, RONG_NUT_TOI_DA } from '../config.js';
 
@@ -120,10 +125,20 @@ let dangChonRac = false;
 let daChon = new Set();
 
 /**
+ * Mã cặp → mã cặp TRÙNG VỚI NÓ. Dựng lại mỗi lần rà, vì form GỘP cần cả HAI
+ * mã mà lời cảnh báo chỉ mang về một.
+ *
+ * Một cặp trùng với nhiều cặp thì ở đây chỉ giữ bạn ĐẦU TIÊN: gộp xong lượt
+ * này, lượt rà sau sẽ chỉ ra bạn tiếp theo. Dồn ba cặp vào một form là ba câu
+ * hỏi chồng lên nhau mà không câu nào trả lời được trọn.
+ */
+let banTrung = new Map();
+
+/**
  * Mở màn hình Rà soát và chạy phép rà ngay.
  *
  * @param {{onXemHoSo?:function(string), onXemCap?:function(string),
- *          onGomRac?:function(string[])}} [xuLy]
+ *          onGopCap?:function(string,string), onGomRac?:function(string[])}} [xuLy]
  *        Cả ba đều là CỬA, không phải việc: màn hình tự đóng trước khi gọi,
  *        vì thẻ thông tin mở ra sau nó và hai lớp phủ chồng nhau thì cái mở
  *        sau lại nằm dưới (bẫy đã trả giá một vòng ở `moKetNoi`).
@@ -237,6 +252,17 @@ function chayRaSoat() {
   // "Cặp trùng" cũng tách riêng — KHÔNG vào nhóm rác, KHÔNG vào conLai. Lý do
   // ở đầu file, mục "Cặp trùng đứng riêng khỏi HAI LOẠI RÁC".
   const capTrung = kq.warnings.filter((m) => m.check === 'checkDuplicateUnion');
+
+  // Tra lại DOMAIN để biết mỗi cặp trùng với cặp nào — lời cảnh báo có kể mã
+  // bạn trong câu chữ, nhưng đọc mã ra khỏi một câu tiếng Việt là thứ hỏng
+  // ngay lần đầu ai đó sửa câu ấy cho hay hơn.
+  banTrung = new Map();
+  if (capTrung.length > 0) {
+    for (const x of timCapTrung(state.tree)) {
+      if (!banTrung.has(x.unionA)) banTrung.set(x.unionA, x.unionB);
+      if (!banTrung.has(x.unionB)) banTrung.set(x.unionB, x.unionA);
+    }
+  }
   const conLai  = kq.warnings.filter((m) => m.check !== 'checkOrphanNode' &&
                                             m.check !== 'checkUnionPointless' &&
                                             m.check !== 'checkDuplicateUnion');
@@ -297,9 +323,9 @@ function chayRaSoat() {
     khoiDong.append(nhanNhom('Cặp trùng (' + capTrung.length + ')'));
     khoiDong.append(loiNhanNhom(
       'Hai bản ghi hôn nhân cùng chỉ về một đôi — thường do một lần thêm cha ' +
-      'hoặc mẹ mới quên nối vào cặp đã có sẵn. Bấm để mở thẻ gia đình rồi so ' +
-      'hai cặp; màn hình Gộp tự động chưa làm xong, tạm dọn tay qua "Sửa cặp".'));
-    for (const muc of capTrung) khoiDong.append(veMotDong(muc));
+      'hoặc mẹ mới quên nối vào cặp đã có sẵn. Bấm để gộp: cặp cũ hơn ở lại và ' +
+      'nhận hết con cái, cặp kia vào thùng rác. Không mất gì.'));
+    for (const muc of capTrung) khoiDong.append(veMotDong(muc, true));
   }
 
   if (kq.errors.length > 0) {
@@ -406,8 +432,10 @@ function moTaBaConSo(counts) {
  * một mình trong hộp báo lỗi của form. Ở đây tên đã nằm sẵn hàng trên, nên cắt
  * cái tiền tố ấy đi — không thì mỗi dòng đọc tên người hai lần.
  */
-function veMotDong(muc) {
+function veMotDong(muc, laCapTrung) {
   const laCap = !muc.personId && !!muc.unionId;
+  const ban   = laCapTrung ? banTrung.get(muc.unionId) : null;
+  const gopDuoc = !!(ban && xuLyNgoai.onGopCap);
   const ma    = muc.personId || muc.unionId || '';
   const chon  = dangChonRac && daChon.has(ma);
 
@@ -445,7 +473,9 @@ function veMotDong(muc) {
   // thêm một hàng "Bấm để chọn" dưới mỗi dòng là lặp lại cùng một câu N lần.
   if (!dangChonRac) {
     const v = document.createElement('div');
-    v.textContent = laCap ? 'Bấm để mở thẻ gia đình' : 'Bấm để mở hồ sơ';
+    v.textContent = gopDuoc ? 'Bấm để gộp với cặp ' + ban
+                  : laCap   ? 'Bấm để mở thẻ gia đình'
+                            : 'Bấm để mở hồ sơ';
     v.style.cssText = 'margin-top:4px;font-size:12px;color:#a89a86';
     khoi.append(v);
   }
@@ -461,8 +491,15 @@ function veMotDong(muc) {
       chayRaSoat();
       return;
     }
+    if (!ma) return;
+    // ⚠ CẦM LẤY HÀM TRƯỚC KHI ĐÓNG. `closeReview()` đặt lại `xuLyNgoai = {}`,
+    // nên đọc `xuLyNgoai.onGopCap` SAU khi đóng là đọc một ô đã trống — và lỗi
+    // ấy chết lặng, vì nó ném ra bên trong một trình nghe sự kiện. Đường
+    // `onXemCap` ngay dưới đã cầm sẵn từ lâu, đúng vì lý do này.
+    const gop = xuLyNgoai.onGopCap;
+    if (gopDuoc && gop) { closeReview(); gop(ma, ban); return; }
     const chay = laCap ? xuLyNgoai.onXemCap : xuLyNgoai.onXemHoSo;
-    if (!chay || !ma) return;
+    if (!chay) return;
     closeReview();
     chay(ma);
   });

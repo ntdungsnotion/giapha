@@ -8,7 +8,7 @@
 //            xoa,anh}.js, state,
 //            domains/{person,union,validate,media,purge,render},
 //            services/{repo,gas}, utils/{graph,text,date,image,avatar}, config
-// Phiên bản: 1.37.0 · Cập nhật: 27/08/2026 22:15
+// Phiên bản: 1.38.0 · Cập nhật: 27/08/2026 23:30
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -176,6 +176,8 @@ import { donDepGoNoi, unlink } from './form-go-noi.js';
 import { donDepSuaCon } from './form-sua-con.js';
 import { donDepGiaDinh } from './form-gia-dinh.js';
 import { donDepCap, handleSaveUnion } from './form-cap.js';
+
+import { donDepGop } from './form-gop.js';
 import { donDepXoa, xoaNguoi } from './form-xoa.js';
 import { donDepAnh, veKhoiAnh, apThayDoiAnh, keThayDoiAnh } from './form-anh.js';
 import { state } from '../state.js';
@@ -390,6 +392,7 @@ export function closePersonForm() {
   donDepSuaCon();
   donDepGiaDinh();
   donDepCap();
+  donDepGop();
   donDepXoa();
   donDepAnh();
   tenPhu       = [];
@@ -3271,4 +3274,5 @@ export { goNoiNguoi, unlink } from './form-go-noi.js';
 export { openSuaCon } from './form-sua-con.js';
 export { openFamilyForm } from './form-gia-dinh.js';
 export { openUnionForm } from './form-cap.js';
+export { openMergeForm } from './form-gop.js';
 export { xoaNguoi } from './form-xoa.js';

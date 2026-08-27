@@ -6,7 +6,7 @@
 //            utils/{text,glyph}, config,
 //            pages/{person-detail,person-edit,person-list,review,settings,
 //            backup}
-// Phiên bản: 1.29.0 · Cập nhật: 22/08/2026 20:10
+// Phiên bản: 1.30.0 · Cập nhật: 27/08/2026 23:30
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -72,7 +72,7 @@ import { openPersonMenu, openPersonDetail, openUnionDetail,
          closePersonDetail } from './person-detail.js';
 import { openPersonForm, closePersonForm, quickAddChild, quickAddParent,
          quickAddSpouse, linkExisting, goNoiNguoi, xoaNguoi,
-         openUnionForm, openSapThuTu, openSuaCon, openFamilyForm,
+         openUnionForm, openMergeForm, openSapThuTu, openSuaCon, openFamilyForm,
          khoiPhucNhieu, donThungRac,
          chuyenVaoThungRac } from './person-edit.js';
 import { openPersonList, closePersonList, openThungRac,
@@ -909,6 +909,13 @@ function moRaSoat() {
   openReview({
     onXemHoSo: (id) => openPersonDetail(id, xuLyThe()),
     onXemCap:  (id) => openUnionDetail(id, xuLyThe()),
+
+    // Gộp xong thì MỞ LẠI bản rà soát, cùng lý lẽ với `onGomRac`: một cặp
+    // trùng sinh ra hai dòng, và người vừa gộp cần thấy cả hai dòng ấy biến
+    // mất mới tin là xong. Nó cũng là chỗ lộ ra cặp trùng thứ hai, nếu có.
+    onGopCap:  (a, b) => openMergeForm(a, b, {
+      onDaLuu: () => { refresh(); moRaSoat(); },
+    }),
 
     // Gom rác xong thì MỞ LẠI bản rà soát: người đang dọn kho thường dọn vài
     // lượt liền nhau, và lượt sau phải nhìn được kết quả lượt trước — gom hai
