@@ -20,7 +20,8 @@
 import { N, o, KIEU_O, KIEU_NUT_CHON, KIEU_LOP_PHU, KIEU_HOP, closePersonForm,
          canTroLuu, ghiBanGhi, hienNhan, hienLoiGhi, keTenPartner, tenNguoi,
          moTaCap, moHopChon, moHopBao, veNhan, veChan, oChu, oNhieuDong, docO,
-         mayDocDuocGi, veKhoiAnh, apThayDoiAnh, keThayDoiAnh } from './person-edit.js';
+         mayDocDuocGi } from './person-edit.js';
+import { veKhoiAnh, apThayDoiAnh, keThayDoiAnh } from './form-anh.js';
 import { state } from '../state.js';
 import { updateUnion, swapPartnerOrder, getPartnerUnions,
          rankCua } from '../domains/union.js';
