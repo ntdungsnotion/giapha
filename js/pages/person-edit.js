@@ -8,7 +8,7 @@
 //            xoa,anh}.js, state,
 //            domains/{person,union,validate,media,purge,render},
 //            services/{repo,gas}, utils/{graph,text,date,image,avatar}, config
-// Phiên bản: 1.38.0 · Cập nhật: 27/08/2026 23:30
+// Phiên bản: 1.39.0 · Cập nhật: 27/08/2026 21:15
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -187,7 +187,7 @@ import { createUnion, addChild, addPartner, removeChild, removePartner,
          softDeleteUnion, restoreUnion, conLyDoTonTai, reorderChildren,
          thuTuConTheoTuoi, updateUnion, updateChildRelation, swapPartnerOrder,
          getParentUnions, getPartnerUnions, getSpouses, getChildren,
-         rankCua } from '../domains/union.js';
+         rankCua, timCapTrung } from '../domains/union.js';
 import { validateAll, checkOrphanNode,
          checkNoAncestorCycle, checkParentAge } from '../domains/validate.js';
 import { attachMedia, detachMedia, setPortrait, clearPortrait,
@@ -2575,6 +2575,14 @@ const GIOI_NGUOC = { M: 'F', F: 'M' };
  * còn một chỗ trống nên vào thẳng. Đó mới là lối đúng, vì ở đó người dùng đang
  * nhìn chính đứa con mà mình sắp gán thêm một người cha.
  *
+ * ⚠ **Vá 27/08/2026 — câu hỏi ấy quay lại, nhưng ở CUỐI chứ không ở đầu.** Bỏ
+ * hẳn nó thì người dùng đi tới cuối đường mới biết mình vừa dựng một cặp trùng,
+ * mà lúc đó chỉ còn "Vẫn thêm" hoặc "Huỷ". Nay khi — và CHỈ khi — cặp sắp dựng
+ * trùng với một cặp đã có, hộp cảnh báo mọc thêm nút *"Nối vào cặp Uxxxx sẵn
+ * có"*, kể thẳng tên từng người con mà người mới sắp thành cha/mẹ. Xem
+ * `veNutNoiVaoCapCu`. Đường mở ra vẫn đúng đường cũ, chỉ khác: nó không còn
+ * lặng lẽ, và nó chỉ hiện ra đúng lúc nó có ích.
+ *
  * **Giới tính người mới điền sẵn NGƯỢC với người kia, và ô ấy bị khoá** — mở
  * lại bằng công tắc *"hôn nhân đồng giới"*. Người kia mang `sex: 'U'` thì không
  * suy ra được gì: để ô mở, không khoá, không bày công tắc.
@@ -2636,12 +2644,22 @@ async function handleAddNguoiThan() {
   }
 
   const canhBao = loiNhacCuaForm().concat(raSoat.warnings.map((m) => m.message));
+
+  // Cặp vừa dựng TRÙNG với một cặp một người đã có — người dùng phải có đường
+  // thứ ba, không chỉ "Vẫn thêm" hoặc "Huỷ". Lý do đầy đủ ở `veNutNoiVaoCapCu`.
+  const capCu = (!laChaMe && dung.laUnionMoi)
+    ? capTrungNoiVaoDuoc(dung.tree, dung.union.id)
+    : [];
+
   if (canhBao.length > 0 && !N.daXemCanhBao) {
     N.daXemCanhBao = true;
     N.nutLuu.textContent = 'Vẫn thêm';
-    hienNhan('Có chỗ đáng xem lại. Gia phả cũ có những chuyện thật mà nghe như ' +
-             'lỗi, nên app không chặn — bấm "Vẫn thêm" nếu bạn biết là đúng:',
-             false, canhBao);
+    hienNhan(capCu.length > 0
+      ? 'Có chỗ đáng xem lại — và ở đây bạn có hai đường đi, không chỉ một:'
+      : 'Có chỗ đáng xem lại. Gia phả cũ có những chuyện thật mà nghe như ' +
+        'lỗi, nên app không chặn — bấm "Vẫn thêm" nếu bạn biết là đúng:',
+      false, canhBao);
+    veNutNoiVaoCapCu(dung.tree, capCu, dung.person);
     return;
   }
 
@@ -2733,11 +2751,27 @@ function dungCayThemBanDoi(cay, thayDoi, ghiNhan) {
   const tree = kqP.tree;
   const diff = Object.assign({}, kqP.diff);
 
+  // Nối vào một cặp ĐÃ CÓ. Từ 27/08/2026 đây không còn là nhánh chết: nút thứ
+  // ba của hộp cảnh báo trùng (`veNutNoiVaoCapCu`) đặt `noiVao.unionId` rồi gọi
+  // lại hàm lưu, và đường đi tiếp là đúng nhánh này.
   if (noiVao.unionId) {
     const kqA = addPartner(tree, noiVao.unionId, kqP.person.id);
     if (!kqA) return null;
     Object.assign(diff, kqA.diff);
-    return { tree: kqA.tree, person: kqP.person, union: kqA.union,
+
+    // `addPartner` cố ý không nhận `ranks`, nên thứ bậc ghi bằng một hàm nữa
+    // NỐI ĐUÔI ngay sau — y hệt `dungCayNoi` nhánh vợ/chồng có sẵn cặp. Câu
+    // trả lời của người dùng nói về CHỖ ĐỨNG của cặp này trong đời người kia,
+    // nên nó vẫn đúng khi cặp ấy là cặp cũ chứ không phải cặp vừa dựng.
+    const bac = docThuBacNhap();
+    if (Object.keys(bac).length === 0) {
+      return { tree: kqA.tree, person: kqP.person, union: kqA.union,
+               laUnionMoi: false, diff };
+    }
+    const kqR = updateUnion(kqA.tree, noiVao.unionId, { ranks: bac });
+    if (!kqR) return null;
+    Object.assign(diff, kqR.diff);
+    return { tree: kqR.tree, person: kqP.person, union: kqR.union,
              laUnionMoi: false, diff };
   }
 
@@ -2751,6 +2785,102 @@ function dungCayThemBanDoi(cay, thayDoi, ghiNhan) {
 
   return { tree: kqU.tree, person: kqP.person, union: kqU.union,
            laUnionMoi: true, diff };
+}
+
+/**
+ * Những cặp ĐÃ CÓ mà người vừa thêm có thể bước vào, thay vì để lại một cặp
+ * thứ hai trùng với chúng.
+ *
+ * Dò bằng `timCapTrung` trên CÂY ĐANG DỰNG — cùng nguồn với lời cảnh báo mà
+ * người dùng đang đọc, nên hai thứ không thể lệch nhau. Đọc mã cặp ra khỏi câu
+ * tiếng Việt của cảnh báo thì hỏng ngay lần đầu ai đó sửa câu ấy cho hay hơn
+ * (`review.js` đã học bài này rồi).
+ *
+ * Chỉ nhận cặp còn CHỖ TRỐNG trong hàng vợ/chồng — `addPartner` không nhét
+ * được người thứ ba, và trong gia phả này nhiều vợ/nhiều chồng là NHIỀU CẶP.
+ * Người vừa thêm là người MỚI nên không thể đã đứng sẵn trong cặp cũ; mọi cặp
+ * trùng tìm được ở đây đều là cặp một người.
+ *
+ * @returns {object[]} bản ghi cặp, đọc từ `cay` chứ không từ `state.index`
+ */
+function capTrungNoiVaoDuoc(cay, unionMoiId) {
+  const dsU = (cay && Array.isArray(cay.unions)) ? cay.unions : [];
+  const ra = [];
+
+  for (const x of timCapTrung(cay)) {
+    if (x.unionA !== unionMoiId && x.unionB !== unionMoiId) continue;
+    const banId = (x.unionA === unionMoiId) ? x.unionB : x.unionA;
+    const u = dsU.find((y) => y && y.id === banId);
+    if (u && !u.deleted && soPartner(u) < 2) ra.push(u);
+  }
+  return ra;
+}
+
+/**
+ * Đường thứ ba của hộp cảnh báo trùng: **nối vào cặp sẵn có**, không dựng thêm
+ * cặp thứ hai (chủ dự án chốt 27/08/2026).
+ *
+ * --- Vì sao câu hỏi này ở ĐÂY chứ không hỏi trước khi mở form ---------------
+ *
+ * Ngày 20/08 chủ dự án đã bỏ câu hỏi *"nối vào cặp nào"* khỏi đường thêm
+ * vợ/chồng mới, vì lối duy nhất nó mở ra là *"cho người mới vào cặp một người
+ * ĐANG CÓ CON"* — mà làm thế là lặng lẽ khẳng định người mới là cha/mẹ của mấy
+ * người con ấy, đúng thứ luật 9 cấm. Quyết định ấy vẫn đứng: app **không hỏi
+ * trước**.
+ *
+ * Nhưng cái giá của nó đo được ngày 27/08, bằng một ca thật: thêm con f cho e
+ * (app dựng cặp một người `U0039`), rồi thêm vợ g cho e (app dựng `U0040`),
+ * rồi vào sửa gia đình của f để thêm mẹ g — g bước vào `U0039`, và `U0040` ở
+ * lại làm một **nét ngang thừa** giữa e và g trên sơ đồ. Lúc cảnh báo trùng
+ * hiện ra, người dùng chỉ có "Vẫn thêm" hoặc "Huỷ": không đường nào dọn được
+ * cái sắp sinh ra.
+ *
+ * Nút này thêm đường thứ ba, và **không lặng lẽ** — nó kể thẳng tên từng người
+ * con mà người mới sắp thành cha/mẹ. Đó là điều luật 9 đòi: một việc kéo theo
+ * một việc khác thì phải nói ra, chứ không phải là không được làm.
+ *
+ * ⚠ Bấm nút là mở lại vòng rà từ đầu (`daXemCanhBao` về `false`) trên đường đi
+ * MỚI. Cặp cũ có thể có cảnh báo riêng của nó — chênh tuổi cha mẹ chẳng hạn —
+ * và người dùng phải được đọc những cảnh báo ấy, không thể thừa hưởng cú bấm
+ * "đã xem" của đường cũ.
+ */
+function veNutNoiVaoCapCu(cay, cacCap, nguoiMoi) {
+  if (!N.khoiKetQua || !cacCap || cacCap.length === 0) return;
+
+  const vai = nguoiMoi.sex === 'F' ? 'mẹ'
+            : (nguoiMoi.sex === 'M' ? 'cha' : 'cha / mẹ');
+  const tenMoi = tenTrongCay(cay, nguoiMoi.id);
+
+  for (const u of cacCap) {
+    const hang = document.createElement('div');
+    hang.style.cssText = 'margin-top:10px';
+    hang.append(nutChon('Nối vào cặp ' + u.id + ' sẵn có', false, () => {
+      noiVao.unionId = u.id;
+      N.daXemCanhBao = false;
+      handleAddNguoiThan();
+    }));
+    N.khoiKetQua.append(hang);
+
+    const con = (Array.isArray(u.children) ? u.children : [])
+      .map((c) => tenTrongCay(cay, c && c.personId));
+
+    const phu = document.createElement('div');
+    phu.textContent = con.length > 0
+      ? tenMoi + ' sẽ thành ' + vai + ' của ' + con.join(', ') + '.'
+      : 'Hai người vẫn là một cặp — app không dựng thêm cặp thứ hai.';
+    // ĐẬM hơn dòng chỉ dẫn ở cuối, cố ý: đây là câu nói ra HỆ QUẢ của cú bấm,
+    // câu duy nhất trong khối này mà đọc sót là gán nhầm cha/mẹ cho một người.
+    phu.style.cssText =
+      'margin-top:5px;padding:0 3px;font-size:11px;line-height:1.5;color:#5c554e';
+    N.khoiKetQua.append(phu);
+  }
+
+  const cuoi = document.createElement('div');
+  cuoi.textContent = 'Còn nếu đây thật sự là một cuộc hôn nhân KHÁC, bấm "Vẫn ' +
+                     'thêm" ở dưới để giữ cặp mới.';
+  cuoi.style.cssText =
+    'margin-top:10px;padding:0 3px;font-size:11px;line-height:1.5;color:#8a8078';
+  N.khoiKetQua.append(cuoi);
 }
 
 // ============================================================
