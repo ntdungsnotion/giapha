@@ -30,12 +30,30 @@
 //    `FAMC` + `PEDI`, hai bên khớp nhau.
 //
 // 3. **Ba thẻ `_` MỚI ngoài bảng: `_QUANHE` · `_RANK` · `_TRANGTHAI`.**
-//    `PEDI` của 5.5.1 chỉ có bốn giá trị (`birth` · `adopted` · `foster` ·
-//    `sealing`), mà app có năm mã — `step` và `thua_tu` không có chỗ đậu. Bỏ
-//    chúng đi là mất một sự thật về gia đình; nhét bừa vào `foster` là nói sai.
-//    Nên mã gốc luôn được ghi thêm ở `_QUANHE`, và `PEDI` chỉ hiện khi có giá
-//    trị chuẩn tương ứng. `_RANK` (vợ cả / vợ thứ) và `_TRANGTHAI` cùng lý do:
-//    GEDCOM không có thẻ nào chứa chúng.
+//
+//    ⚠ Đây KHÔNG phải đi ra ngoài chuẩn. 5.5.1 quy định hẳn: **thẻ mở đầu
+//    bằng dấu `_` là thẻ do bên xuất tự đặt**, và phần mềm nhận phải BỎ QUA
+//    thay vì báo lỗi. Đó đúng là cơ chế mà `_DOI` · `_CHI` · `_GIO` của bảng
+//    ánh xạ đã dùng từ đầu; ba thẻ này chỉ là ba thẻ mới, cùng cơ chế ấy.
+//
+//    Nhưng phải phân biệt cho rõ hai chuyện, vì lẫn chúng là hỏng file:
+//
+//    - **Thẻ tự đặt** — có, và dùng thoải mái.
+//    - **Giá trị tự đặt trong một thẻ CHUẨN** — KHÔNG có. `PEDI` là danh
+//      sách ĐÓNG đúng bốn giá trị: `birth` · `adopted` · `foster` ·
+//      `sealing`. App có năm mã quan hệ, nên `step` và `thua_tu` không có
+//      chỗ đậu ở đó. Ghi `PEDI thua_tu` không phải "dùng trường tuỳ chỉnh",
+//      nó là ghi sai giá trị vào một trường chuẩn — phần mềm nhận hoặc bỏ,
+//      hoặc báo file hỏng.
+//
+//    Nên đường đi: giá trị nào khớp chuẩn thì ra `PEDI`, còn mã gốc thì LUÔN
+//    ra `_QUANHE` bên cạnh. Bỏ mã gốc đi là mất một sự thật về gia đình;
+//    nhét `thua_tu` vào `foster` là nói sai một sự thật khác.
+//
+//    `_RANK` (vợ cả / vợ thứ) và `_TRANGTHAI` cùng một lối: GEDCOM không có
+//    thẻ CHUẨN nào chứa chúng — chỗ chứa thì có, chính là thẻ `_`. Riêng
+//    `divorced` còn ra thêm `1 DIV Y`, thẻ chuẩn, để phần mềm nào không đọc
+//    `_TRANGTHAI` vẫn biết cặp ấy đã ly hôn.
 //
 // 4. **`raw` được ghi kèm, nhưng CHỈ KHI nó nói thêm điều `iso` không nói.**
 //    `birth.raw` = "1927" cạnh `iso` = "1927" thì thừa. `raw` = "khoảng 1890"
