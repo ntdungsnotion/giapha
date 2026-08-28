@@ -4,7 +4,7 @@
 //            đường sang màn hình Chọn gia phả và Sao lưu & khôi phục
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, services/gas, utils/text
-// Phiên bản: 1.12.0 · Cập nhật: 28/08/2026 11:20
+// Phiên bản: 1.13.0 · Cập nhật: 28/08/2026 14:20
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
@@ -370,16 +370,13 @@ function veKhoiSaoLuu(vao) {
   khoi.style.cssText = 'margin-top:20px';
   khoi.append(veNhanKhoi('Sao lưu & khôi phục'));
 
-  const giaiThich = document.createElement('div');
-  giaiThich.textContent =
-    'Xem các bản phòng hờ máy chủ đã cất, cất thêm một bản ngay, hoặc đưa cả ' +
-    'gia phả quay về một bản cũ.';
-  giaiThich.style.cssText =
-    'font-size:13px;line-height:1.55;color:#8a8078;margin-bottom:10px';
-  khoi.append(giaiThich);
-
-  khoi.append(nut('Mở Sao lưu & khôi phục', false, true,
-                  () => xuLyNgoai.onMoSaoLuu()));
+  // Không có dòng giải thích: tên nút đã nói đủ, và màn hình mở ra giải thích
+  // lại lần nữa (chủ dự án bỏ 28/08/2026). `margin-top:4px` giữ đúng khoảng
+  // cách nhãn–nút của mấy khối bên cạnh, chỗ dòng giải thích từng chiếm.
+  const b = nut('Mở Sao lưu & khôi phục', false, true,
+                () => xuLyNgoai.onMoSaoLuu());
+  b.style.marginTop = '4px';
+  khoi.append(b);
 
   vao.append(khoi);
   return khoi;
@@ -415,16 +412,11 @@ function veKhoiQuanLy(vao) {
   khoi.style.cssText = 'margin-top:4px';
   khoi.append(veNhanKhoi('Quản lý gia phả'));
 
-  const giaiThich = document.createElement('div');
-  giaiThich.textContent =
-    'Hai đường vào gia phả không đi qua sơ đồ — tìm được cả người và cả gia ' +
-    'đình mà sơ đồ hiện thời không vẽ ra.';
-  giaiThich.style.cssText =
-    'font-size:13px;line-height:1.55;color:#8a8078;margin-bottom:10px';
-  khoi.append(giaiThich);
-
+  // Không có dòng giải thích: tên hai nút đã kể đủ việc chúng làm (chủ dự án
+  // bỏ 28/08/2026). `margin-top:4px` giữ đúng khoảng cách nhãn–nút cũ.
   const hang = document.createElement('div');
-  hang.style.cssText = 'display:flex;flex-direction:column;gap:8px';
+  hang.style.cssText =
+    'display:flex;flex-direction:column;gap:8px;margin-top:4px';
 
   if (xuLyNgoai.onDanhSachNguoi) {
     const b = nut('Danh sách người — xem và sửa từng người', false, true,
