@@ -4,7 +4,7 @@
 //            đường sang màn hình Chọn gia phả và Sao lưu & khôi phục
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, services/gas, utils/text
-// Phiên bản: 1.13.0 · Cập nhật: 28/08/2026 14:20
+// Phiên bản: 1.14.0 · Cập nhật: 28/08/2026 14:50
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
@@ -74,16 +74,24 @@ let khoiMacDinh = null;
  * Mở màn hình Cài đặt.
  *
  * @param {{onDoiMacDinh?:function, onDoiHienThi?:function,
- *          onMoChonGiaPha?:function, onMoSaoLuu?:function}} [xuLy]
+ *          onMoChonGiaPha?:function, onMoSaoLuu?:function,
+ *          onMoXuatGedcom?:function, onDanhSachNguoi?:function,
+ *          onDanhSachGiaDinh?:function}} [xuLy]
  *        chạy sau khi đặt hoặc bỏ mặc định thành công. Dùng callback thay vì
  *        `import` ngược `tree-view.js` — hai file cùng lớp `pages`, import
  *        vòng tròn thì một trong hai sẽ thấy hàm của file kia là `undefined`.
  *        `onDoiHienThi` chạy sau khi đổi một công tắc trong khối Hiển thị —
  *        nơi gọi phải VẼ LẠI sơ đồ, vì công tắc ngày giỗ đổi cả chiều cao ô.
  *        `onMoChonGiaPha` mở màn hình Chọn gia phả, `onMoSaoLuu` mở màn hình
- *        Sao lưu & khôi phục. KHÔNG truyền thì khối
- *        ấy không mọc ra — cùng khuôn với hai callback trên, và nhờ thế bài
- *        kiểm mở riêng màn Cài đặt không phải dựng máy chủ giả cho việc 7.
+ *        Sao lưu & khôi phục, `onMoXuatGedcom` mở màn hình Xuất GEDCOM, và
+ *        hai `onDanhSach*` mở hai danh sách của khối Quản lý gia phả.
+ *
+ *        ⚠ **KHÔNG truyền một callback thì khối của nó KHÔNG MỌC RA**, và đó
+ *        là cơ chế im lặng — màn hình vẫn mở bình thường, chỉ thiếu mất một
+ *        khối. Bài kiểm và bộ chụp ảnh vì thế phải truyền ĐỦ cả bảy, kể cả
+ *        khi chúng chỉ là hàm rỗng. Đã có lần thiếu bốn cái và `km-cai-dat.png`
+ *        chụp một màn Cài đặt thiếu ba khối suốt nhiều bước mà không ai thấy
+ *        (sửa 28/08/2026).
  */
 export function openSettings(xuLy = {}) {
   closeSettings();
@@ -115,6 +123,7 @@ export function openSettings(xuLy = {}) {
   veKhoiHienThi(hop);
   veKhoiGiaPha(hop);
   veKhoiSaoLuu(hop);
+  veKhoiXuat(hop);
   veKhoiPhien(hop);
 
   const dong = document.createElement('button');
@@ -375,6 +384,38 @@ function veKhoiSaoLuu(vao) {
   // cách nhãn–nút của mấy khối bên cạnh, chỗ dòng giải thích từng chiếm.
   const b = nut('Mở Sao lưu & khôi phục', false, true,
                 () => xuLyNgoai.onMoSaoLuu());
+  b.style.marginTop = '4px';
+  khoi.append(b);
+
+  vao.append(khoi);
+  return khoi;
+}
+
+// ============================================================
+// Khối "Xuất dữ liệu" — việc 10
+// ============================================================
+//
+// Đứng NGAY SAU *Sao lưu & khôi phục*, và đứng cạnh nhau là có chủ ý: cả hai
+// đều là *mang gia phả ra khỏi app*. Nhưng chúng khác nhau ở đúng một điều mà
+// người dùng cần phân biệt được, nên chữ trên nút phải nói ra:
+//
+// - **Sao lưu** cất một bản Ở LẠI TRÊN DRIVE, để hôm nào lỡ tay thì lấy về.
+// - **Xuất GEDCOM** đưa một bản RA KHỎI DRIVE, sang phần mềm khác, sang máy
+//   khác — và app không biết gì về nó nữa.
+//
+// ⚠ Nút này KHÔNG mờ với người chỉ có quyền xem, cùng lý lẽ của nút *Sao lưu*:
+// xuất là việc CHỈ ĐỌC, nó không sửa một chữ nào trong gia phả.
+
+function veKhoiXuat(vao) {
+  if (!xuLyNgoai.onMoXuatGedcom) return null;
+
+  const khoi = document.createElement('div');
+  khoi.style.cssText = 'margin-top:20px';
+  khoi.append(veNhanKhoi('Xuất dữ liệu'));
+
+  const b = nut('Xuất ra file GEDCOM (.ged)', false, true,
+                () => xuLyNgoai.onMoXuatGedcom());
+  b.dataset.viec = 'xuat-gedcom';
   b.style.marginTop = '4px';
   khoi.append(b);
 
