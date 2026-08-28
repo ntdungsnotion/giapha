@@ -3,9 +3,9 @@
 // Vai trò  : Cầu nối duy nhất xuống máy chủ Apps Script.
 //            Bọc google.script.run thành hàm Promise dùng await được.
 // Lớp      : services — được gọi bởi: services/repo, pages/settings,
-//            pages/backup · gọi: (không)
+//            pages/backup, pages/chon-gia-pha · gọi: (không)
 // Phụ thuộc: (không)
-// Phiên bản: 0.8.0 · Cập nhật: 28/08/2026 08:30
+// Phiên bản: 0.9.0 · Cập nhật: 28/08/2026 11:20
 // ============================================================
 //
 // ĐÂY LÀ RANH GIỚI GIỮA TRÌNH DUYỆT VÀ MÁY CHỦ.
@@ -211,4 +211,23 @@ export function chonGiaPha(fileId) {
 /** Bỏ lựa chọn, quay về gia phả mặc định trong Config.gs. { ok, loi }. */
 export function boChonGiaPha() {
   return goi('boChonGiaPha');
+}
+
+/**
+ * ⚠ DỰNG MỘT GIA PHẢ MỚI trong Google Drive của người đang gọi.
+ *
+ * Ba thứ được tạo: thư mục `Gia_pha_<tên>` chứa file JSON rỗng, thư mục `Anh`,
+ * thư mục `Sao_luu`. KHÔNG đụng gì vào gia phả đang mở.
+ *
+ * ⚠ HÀM NÀY KHÔNG TRẢ VỀ GÌ CẢ — bên máy chủ nó kể mọi thứ bằng `Logger.log`,
+ * thứ chỉ đọc được trong trình soạn thảo Apps Script. Nơi gọi muốn biết đã
+ * dựng được hay chưa thì phải CHỤP `layDanhSachGiaPha()` trước và sau, rồi tìm
+ * `fileId` mới; so theo TÊN là sai, vì hàm gặp thư mục đã chứa sẵn một gia phả
+ * thì dừng lặng lẽ và cây cũ cùng tên vẫn nằm trong danh sách.
+ * Xem `pages/chon-gia-pha.js`.
+ *
+ * @param {string} tenGiaPha  tên gia phả; bỏ trống thì máy chủ lấy `TEN_HO`
+ */
+export function taoFileDuLieuMoi(tenGiaPha) {
+  return goi('taoFileDuLieuMoi', tenGiaPha);
 }

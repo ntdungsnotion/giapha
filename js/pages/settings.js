@@ -1,10 +1,10 @@
 // ============================================================
 // giapha · js/pages/settings.js
 // Vai trò  : Màn hình Cài đặt — người trung tâm mặc định, tuỳ chọn hiển thị,
-//            đường sang màn hình Sao lưu & khôi phục
+//            đường sang màn hình Chọn gia phả và Sao lưu & khôi phục
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, services/gas, utils/text
-// Phiên bản: 1.11.0 · Cập nhật: 28/08/2026 00:20
+// Phiên bản: 1.12.0 · Cập nhật: 28/08/2026 11:20
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
@@ -74,13 +74,14 @@ let khoiMacDinh = null;
  * Mở màn hình Cài đặt.
  *
  * @param {{onDoiMacDinh?:function, onDoiHienThi?:function,
- *          onMoSaoLuu?:function}} [xuLy]
+ *          onMoChonGiaPha?:function, onMoSaoLuu?:function}} [xuLy]
  *        chạy sau khi đặt hoặc bỏ mặc định thành công. Dùng callback thay vì
  *        `import` ngược `tree-view.js` — hai file cùng lớp `pages`, import
  *        vòng tròn thì một trong hai sẽ thấy hàm của file kia là `undefined`.
  *        `onDoiHienThi` chạy sau khi đổi một công tắc trong khối Hiển thị —
  *        nơi gọi phải VẼ LẠI sơ đồ, vì công tắc ngày giỗ đổi cả chiều cao ô.
- *        `onMoSaoLuu` mở màn hình Sao lưu & khôi phục. KHÔNG truyền thì khối
+ *        `onMoChonGiaPha` mở màn hình Chọn gia phả, `onMoSaoLuu` mở màn hình
+ *        Sao lưu & khôi phục. KHÔNG truyền thì khối
  *        ấy không mọc ra — cùng khuôn với hai callback trên, và nhờ thế bài
  *        kiểm mở riêng màn Cài đặt không phải dựng máy chủ giả cho việc 7.
  */
@@ -112,6 +113,7 @@ export function openSettings(xuLy = {}) {
   veKhoiQuanLy(hop);
   veKhoiMacDinh(hop);
   veKhoiHienThi(hop);
+  veKhoiGiaPha(hop);
   veKhoiSaoLuu(hop);
   veKhoiPhien(hop);
 
@@ -302,6 +304,47 @@ function veKhoiHienThi(vao) {
     'Bật lên thì mọi ô cao thêm một hàng, kể cả ô chưa có ngày giỗ.';
   nhac.style.cssText = 'font-size:12px;line-height:1.5;color:#8a8078;margin-top:6px';
   khoi.append(nhac);
+
+  vao.append(khoi);
+  return khoi;
+}
+
+// ============================================================
+// Khối "Gia phả" — việc 9b, nửa giao diện của bước 52
+// ============================================================
+//
+// Từ 28/08/2026 app mở được NHIỀU cây, và tới hôm ấy thì đường duy nhất để đổi
+// là sửa `FILE_ID` trong `Config.gs` rồi triển khai lại — việc của người xây
+// app, không phải của người dùng. Khối này là cửa vào màn hình chọn.
+//
+// ⚠ Nó đứng DƯỚI ba khối kia, khác hẳn "Quản lý gia phả": đổi cây là việc vài
+// tháng làm một lần, và bấm nhầm thì cả app nhảy sang một gia phả khác. Việc
+// hiếm mà hậu quả rộng thì không đặt ở chỗ tay hay chạm qua.
+//
+// Nút KHÔNG mờ với người chỉ có quyền xem: danh sách do Drive lọc theo quyền
+// của chính họ, nên họ mở màn hình ấy ra là thấy đúng phần của mình — và người
+// chỉ được chia sẻ một cây vẫn cần biết mình đang mở cây nào.
+
+function veKhoiGiaPha(vao) {
+  if (!xuLyNgoai.onMoChonGiaPha) return null;
+
+  const khoi = document.createElement('div');
+  khoi.style.cssText = 'margin-top:20px';
+  khoi.append(veNhanKhoi('Gia phả'));
+
+  const dangMo = state.phien && state.phien.tenFileDuLieu;
+  const giaiThich = document.createElement('div');
+  giaiThich.textContent =
+    (dangMo ? 'Đang mở ' + dangMo + '. ' : '') +
+    'Đổi sang một cây khác được chia sẻ cho bạn. Lựa chọn này của riêng tài ' +
+    'khoản bạn.';
+  giaiThich.style.cssText =
+    'font-size:13px;line-height:1.55;color:#8a8078;margin-bottom:10px';
+  khoi.append(giaiThich);
+
+  const b = nut('Chọn gia phả khác', false, true, () => xuLyNgoai.onMoChonGiaPha());
+  b.dataset.viec = 'chon-gia-pha';
+  khoi.append(b);
 
   vao.append(khoi);
   return khoi;

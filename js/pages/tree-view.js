@@ -5,8 +5,8 @@
 // Phụ thuộc: state, domains/{bloodline,layout,render,union},
 //            utils/{text,glyph}, config,
 //            pages/{person-detail,person-edit,person-list,review,settings,
-//            backup}
-// Phiên bản: 1.31.0 · Cập nhật: 28/08/2026 00:20
+//            backup,chon-gia-pha}
+// Phiên bản: 1.32.0 · Cập nhật: 28/08/2026 11:20
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -80,6 +80,7 @@ import { openPersonList, closePersonList, openThungRac,
 import { openReview, closeReview } from './review.js';
 import { openSettings, closeSettings } from './settings.js';
 import { openBackup, closeBackup } from './backup.js';
+import { openChonGiaPha, closeChonGiaPha } from './chon-gia-pha.js';
 import { veBieuTuongTron } from '../utils/glyph.js';
 import { rongHop, caoHop, leLopPhu } from '../config.js';
 
@@ -118,6 +119,7 @@ export function mountTreeView(containerEl) {
   closeReview();
   closeSettings();
   closeBackup();
+  closeChonGiaPha();
   containerEl.innerHTML = '';
   containerEl.style.cssText =
     'position:absolute;inset:0;display:flex;flex-direction:column;' +
@@ -811,6 +813,9 @@ function veHopNutTrenPhai() {
       // chồng nhau thì cái mở sau nằm dưới và người dùng bấm vào khoảng không
       // — đúng cái bẫy đã sập một lần ở bước 26.
       onMoSaoLuu: () => { closeSettings(); openBackup(); },
+      // Việc 9b. Cùng lối: đóng Cài đặt TRƯỚC — và ở đây còn một lý do nữa,
+      // đổi cây xong là `location.reload()`, nên đừng để lại lớp phủ nào.
+      onMoChonGiaPha: () => { closeSettings(); openChonGiaPha(); },
     })),
     nutTron('🔍', 'Tìm người trong gia phả', () => moDanhSachNguoi()),
   );
