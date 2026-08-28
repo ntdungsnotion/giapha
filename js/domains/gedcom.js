@@ -13,10 +13,12 @@
 //       chỉ ĐỌC: sai thì không mất gì, mà bản xuất ra lại thành ca kiểm sẵn
 //       có cho đường nhập sau này.
 //
-// --- BẢNG ÁNH XẠ, và bốn chỗ đi khác `CAU-TRUC-DU-LIEU_V04` --------------
+// --- BẢNG ÁNH XẠ, và bốn chỗ V04 chưa đủ để đi tới file .ged -------------
 //
-// Bảng chuẩn nằm ở `tai-lieu/CAU-TRUC-DU-LIEU_V04.md` mục *Ánh xạ GEDCOM*.
-// Bốn chỗ dưới đây đi khác nó, và cả bốn đều CÓ CHỦ Ý:
+// Bảng chuẩn nay nằm ở `tai-lieu/CAU-TRUC-DU-LIEU_V05.md` mục *Ánh xạ
+// GEDCOM* — bản ấy viết SAU khi file này chạy được, và nó chốt đúng bốn
+// chỗ dưới đây vào tài liệu. Giữ lại phần giải thích ở đây vì đây là chỗ
+// người sửa mã đọc trước tiên:
 //
 // 1. **Xref mang nguyên mã, `@P0012@` chứ không `@P1@`.** Bảng viết `@P1@` là
 //    viết cho gọn. Mang nguyên mã thì mở file bằng Notepad là đọc ra ngay
@@ -106,7 +108,7 @@ const PEDI_CHUAN = { birth: 'birth', adopted: 'adopted', foster: 'foster' };
  * `luc` phải do nơi gọi đưa vào chính vì thế — đọc `new Date()` ngay trong
  * thân hàm là mất tính thuần, và bài kiểm hết so được hai lần chạy với nhau.
  *
- * @param {object} tree  cây gia phả, đúng khuôn `CAU-TRUC-DU-LIEU_V04`
+ * @param {object} tree  cây gia phả, đúng khuôn `CAU-TRUC-DU-LIEU_V05`
  * @param {{anNguoiConSong?: boolean, luc?: Date, tenFile?: string}} [tuyChon]
  *        `anNguoiConSong` mặc định TRUE — xem ghi chú đầu file.
  * @returns {string} nội dung file, dòng kết thúc bằng CRLF. KHÔNG kèm BOM;
@@ -390,7 +392,7 @@ function veTen(ds, n, laChinh) {
   const rieng = chu(n.given);
   // Không có lấy một phần nào thì không vẽ thẻ. Mục `chinh` RỖNG là ca thật —
   // *"con thứ ba của cụ Bá"* — và nó tồn tại để giữ chỗ đầu mảng, không phải
-  // để xuất ra một cái tên trống (`CAU-TRUC-DU-LIEU_V04`, quy ước 2).
+  // để xuất ra một cái tên trống (`CAU-TRUC-DU-LIEU_V05`, quy ước 2).
   if (ho === '' && dem === '' && rieng === '') return;
 
   // 5.5.1 viết tên theo lối *tên riêng /HỌ/*, ngược thứ tự người Việt đọc.

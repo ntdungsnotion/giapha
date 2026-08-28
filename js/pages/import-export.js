@@ -3,7 +3,7 @@
 // Vai trò  : Màn hình XUẤT GEDCOM (nhập GEDCOM là việc 11, xuất ảnh là việc 12)
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/gedcom, config
-// Phiên bản: 1.0.0 · Cập nhật: 28/08/2026 14:45
+// Phiên bản: 1.1.0 · Cập nhật: 28/08/2026 15:10
 // ============================================================
 //
 // Màn hình này làm đúng MỘT việc: biến gia phả đang mở thành một file `.ged`
@@ -22,14 +22,19 @@
 //
 // Nên màn hình này KHÔNG đặt cược vào một đường:
 //
-// 1. **Nút tải về** — đường thường, chạy được thì xong trong một cú bấm.
-// 2. **Ô chữ chép tay** — luôn hiện ra ngay bên dưới, kèm đúng bốn bước mở
-//    Notepad. Không giấu sau một dòng *"gặp lỗi thì bấm vào đây"*: người dùng
-//    không biết mình vừa gặp lỗi, vì cái lỗi ấy không hiện ra bao giờ.
+// 1. **Nút tải về** — đường chính, chạy được thì xong trong một cú bấm.
+// 2. **Ô chữ chép tay** — nép sau một dòng *"Không tải được file?"*, kèm
+//    năm bước mở Notepad.
 //
-// ⚠ Nếu tới ngày nào đường 1 được xác nhận là luôn chạy trên app thật, thì
-// vẫn ĐỪNG gỡ đường 2 — nó còn là đường thoát cho người mở app bằng trình
-// duyệt lạ trên điện thoại.
+// ✓ **28/08/2026 — chủ dự án đã bấm trên app thật và TẢI VỀ ĐƯỢC**, mở bằng
+// Notepad ra đúng cấu trúc. Tức iframe của Apps Script CÓ `allow-downloads`.
+// Bản đầu bày cả khối chép tay ra giữa màn hình vì chưa biết điều đó; nay nó
+// thu lại sau một dòng chữ.
+//
+// ⚠ **Nhưng ĐỪNG gỡ hẳn đường 2.** Thuộc tính `sandbox` do Google đặt, đổi
+// lúc nào không ai báo trước, và ngày nó đổi thì lỗi vẫn im lặng y như cũ.
+// Trình duyệt trong ứng dụng — mở app từ link trong Zalo, Messenger — còn
+// chặn tải file thường xuyên hơn Chrome nhiều.
 //
 // --- Vì sao KHÔNG đi qua máy chủ ----------------------------------------
 //
@@ -233,10 +238,42 @@ function taoFile(anNguoiConSong) {
   hopKetQua.append(veChepTay(chuoi, ten));
 }
 
+/**
+ * Đường thoát thứ hai: chép chữ rồi tự lưu bằng Notepad.
+ *
+ * ⚠ **THU GỌN 28/08/2026, sau khi nút tải về được xác nhận CHẠY THẬT trên app
+ * thật.** Bản đầu bày cả năm bước ra giữa màn hình, và lý lẽ lúc ấy là: iframe
+ * sandbox của Apps Script có thể chặn tải file IM LẶNG, mà người dùng không
+ * biết mình vừa gặp lỗi nên không đi tìm chỗ nào cả. Nay chủ dự án đã bấm và
+ * tải được, tức cái iframe ấy CÓ `allow-downloads`.
+ *
+ * Nên đổi chỗ hai thứ: nút tải về là đường chính, khối này nép lại sau một
+ * dòng chữ nhỏ. Nhưng KHÔNG bỏ hẳn, và đây là chỗ dễ đi quá tay:
+ *
+ * - Google đổi thuộc tính `sandbox` lúc nào không ai báo trước, và ngày
+ *   nó đổi thì lỗi vẫn im lặng y như cũ.
+ * - Trình duyệt trong ứng dụng — mở app từ link trong Zalo, Messenger — chặn
+ *   tải file thường xuyên hơn Chrome nhiều.
+ *
+ * Chữ trên dòng mở là **"Không tải được file?"**, cố ý hỏi chứ không kể. Người
+ * vừa bấm mà chẳng thấy gì đọc câu ấy là nhận ra ngay đây là chỗ dành cho
+ * mình; người tải được rồi thì lướt qua.
+ */
 function veChepTay(chuoi, ten) {
   const khoi = document.createElement('div');
-  khoi.style.cssText = 'margin-top:16px';
-  khoi.append(veNhanKhoi('Nút trên không chạy thì làm cách này'));
+  khoi.style.cssText = 'margin-top:12px';
+
+  const moRa = document.createElement('button');
+  moRa.type = 'button';
+  moRa.dataset.viec = 'mo-chep-tay';
+  moRa.textContent = 'Không tải được file?';
+  moRa.style.cssText =
+    'display:block;width:100%;padding:9px 4px;font-size:13px;font-family:inherit;' +
+    'color:#8a8078;background:none;border:0;text-align:left;cursor:pointer;' +
+    'text-decoration:underline;text-underline-offset:3px;touch-action:manipulation';
+
+  const ruot = document.createElement('div');
+  ruot.hidden = true;
 
   const buoc = document.createElement('div');
   buoc.style.cssText = 'font-size:13px;line-height:1.7;color:#8a8078';
@@ -248,7 +285,7 @@ function veChepTay(chuoi, ten) {
     dongChu('5. Ở ô "Save as type" chọn "All files", ở ô "Encoding" ' +
             'chọn "UTF-8". Rồi bấm Save.'),
   );
-  khoi.append(buoc);
+  ruot.append(buoc);
 
   const o = document.createElement('textarea');
   o.readOnly = true;
@@ -258,7 +295,7 @@ function veChepTay(chuoi, ten) {
     'font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.4;' +
     'border:1px solid #e6e0d8;border-radius:8px;background:#faf8f5;color:#2a2622;' +
     'white-space:pre;resize:vertical';
-  khoi.append(o);
+  ruot.append(o);
 
   const bao = document.createElement('div');
   bao.style.cssText = 'font-size:12px;line-height:1.5;color:#8a8078;margin-top:6px';
@@ -281,8 +318,14 @@ function veChepTay(chuoi, ten) {
         'bấm Ctrl + C để chép.';
   });
   b.style.marginTop = '8px';
-  khoi.append(b, bao);
+  ruot.append(b, bao);
 
+  moRa.addEventListener('click', () => {
+    ruot.hidden = !ruot.hidden;
+    moRa.textContent = ruot.hidden ? 'Không tải được file?' : 'Ẩn cách chép tay';
+  });
+
+  khoi.append(moRa, ruot);
   return khoi;
 }
 

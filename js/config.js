@@ -269,7 +269,7 @@ export function chuThichQuanHe(ma, phia) {
 // ĐỌC mã ấy lên để kể. Trước hôm nay câu *"Đang là vợ chồng / Đã ly hôn"* nằm
 // rải ở bốn nơi, mỗi nơi một bản `u.status === 'divorced' ? … : …`.
 //
-// ⚠ **CHỈ HAI MỤC, dù `CAU-TRUC-DU-LIEU_V04` cho phép bốn** (`widowed` ·
+// ⚠ **CHỈ HAI MỤC, dù `CAU-TRUC-DU-LIEU_V05` cho phép bốn** (`widowed` ·
 // `unknown`). Hai mã kia chưa có cửa nào ghi được và app chưa hỏi ai câu ấy;
 // bày một mục ra rồi không chỗ nào đọc lên là hứa một việc chưa làm. Mã lạ —
 // dữ liệu cũ, hoặc file GEDCOM nhập từ phần mềm khác — thì GIỮ NGUYÊN và hiện
