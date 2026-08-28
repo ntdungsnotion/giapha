@@ -1,10 +1,10 @@
 // ============================================================
 // giapha · js/pages/chon-gia-pha.js
 // Vai trò  : Màn hình Chọn gia phả — kể các cây mở được, đổi sang một cây
-//            khác, và (chỉ chủ dự án) dựng một gia phả mới
+//            khác, quay về cây mặc định, và (chỉ chủ dự án) dựng gia phả mới
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, services/gas, config
-// Phiên bản: 0.1.0 · Cập nhật: 28/08/2026 11:20
+// Phiên bản: 0.2.0 · Cập nhật: 28/08/2026 13:40
 // ============================================================
 //
 // Nửa MÁY CHỦ đã xong ở bước 52: `layDanhSachGiaPha` · `chonGiaPha` ·
@@ -13,7 +13,10 @@
 // từ 28/08 sáng tới 28/08 trưa, tức chưa từng được nghiệm thu bằng đường đi
 // thật — màn hình này là phép nghiệm thu ấy.
 //
-// --- BỐN QUYẾT ĐỊNH -----------------------------------------------------
+// ✓ **0.2.0 (28/08/2026 chiều) — nốt hàm thứ ba: `boChonGiaPha`.** Bản 0.1.0
+// gọi hai trong ba hàm; hàm thứ ba nằm im thêm một buổi nữa. Xem quyết định 5.
+//
+// --- NĂM QUYẾT ĐỊNH ------------------------------------------------------
 //
 // 1. **Đổi cây xong thì TẢI LẠI TRANG.** Cùng lý lẽ với khôi phục sao lưu
 //    (`backup.js` quyết định 3), nhưng nặng hơn: đổi cây là đổi *toàn bộ* —
@@ -36,6 +39,27 @@
 //    mục trong Drive CỦA CHÍNH HỌ, nên người khác gọi được cũng chỉ tạo ra
 //    một thư mục rỗng trong Drive của họ, không chạm được gì của dòng họ.
 //
+// 5. **CHỌN thẳng cây mặc định KHÔNG giống BỎ CHỌN — nên có hai đường riêng.**
+//    Chọn là *ghi* mã cây ấy vào kho riêng của tài khoản; bỏ chọn là *xoá* hẳn
+//    mã ấy đi để `FILE_ID` của `Config.gs` có tác dụng lại. Hai người đang mở
+//    y hệt một cây, ngày người quản lý đổi `FILE_ID` sang cây khác thì đi hai
+//    ngả: người đã bỏ chọn đi theo, người từng bấm chọn nằm lại cây cũ **mà
+//    không có gì trên màn hình nói cho họ biết vì sao**. Vì thế nút *Quay về
+//    gia phả mặc định* là một đường riêng, không phải một dòng trong danh sách.
+//
+//    ⚠ Trình duyệt KHÔNG biết được ba thứ, và cả cách viết chữ ở đây treo vào
+//    đó: (a) `FILE_ID` là mã nào, (b) người này đã tự chọn gì chưa, (c) cây
+//    mặc định tên gì. Cả ba nằm trong `Config.gs` và trong kho riêng — chỉ máy
+//    chủ đọc được, mà `layDanhSachGiaPha` không kể ra. Nên hộp hỏi lại **không
+//    hứa trước sẽ mở cây nào**; nó nói ra cơ chế, và chỉ sau khi máy chủ gật
+//    mới hỏi lại danh sách để đọc TÊN cây vừa quay về. Muốn hứa trước thì phải
+//    thêm `maMacDinh` + `daTuChon` vào `layDanhSachGiaPha`, tức sửa `Code.gs`
+//    và bắt chủ dự án triển khai lại — xem mục ngay dưới, cùng một lý lẽ.
+//
+//    Nút này **mọi tài khoản đều thấy**, khác nút *Dữ liệu mới*: người không
+//    tự chọn bao giờ bấm cũng chẳng đổi gì (xoá một khoá không có sẵn), còn
+//    người mắc kẹt ở cây cũ thì đây là đường ra duy nhất.
+//
 // --- Vì sao KHÔNG đụng `gas/Code.gs` cho nút "Dữ liệu mới" ---------------
 //
 // `taoFileDuLieuMoi()` viết cho trình soạn thảo Apps Script: nó kể mọi thứ
@@ -56,7 +80,7 @@
 // đừng khẳng định là chưa tạo được.
 
 import { state } from '../state.js';
-import { coMayChu, layDanhSachGiaPha, chonGiaPha,
+import { coMayChu, layDanhSachGiaPha, chonGiaPha, boChonGiaPha,
          taoFileDuLieuMoi } from '../services/gas.js';
 import { rongHop, caoHop, leLopPhu, RONG_NUT_TOI_DA } from '../config.js';
 
@@ -166,6 +190,10 @@ async function napDanhSach() {
     khoi.innerHTML = '';
     khoi.append(nhan('Các gia phả bạn mở được'));
     khoi.append(loiNhan(cauLoiMayChu(e), true));
+    // Vẫn vẽ đường quay về mặc định, và đây là chỗ nó CẦN nhất: hỏng danh
+    // sách thường vì cây từng chọn nay không mở được nữa (bị bỏ chia sẻ, bị
+    // xoá). Bỏ chọn là đường ra duy nhất còn lại, ngay trên màn hình này.
+    veKhoiMacDinh(khoi);
     return;
   }
   if (khoiDs !== khoi) return;
@@ -175,6 +203,7 @@ async function napDanhSach() {
 
   if (!kq || !kq.ok) {
     khoi.append(loiNhan((kq && kq.loi) || 'Máy chủ không trả về danh sách.', true));
+    veKhoiMacDinh(khoi);
     veNutTaoMoi(khoi);
     return;
   }
@@ -187,6 +216,7 @@ async function napDanhSach() {
       'Không có gia phả nào được chia sẻ cho tài khoản này. Nhờ ' +
       ((state.phien && state.phien.nguoiQuanLy) || 'người quản lý') +
       ' chia sẻ file gia phả trên Google Drive.'));
+    veKhoiMacDinh(khoi);
     veNutTaoMoi(khoi);
     return;
   }
@@ -196,6 +226,7 @@ async function napDanhSach() {
   khoi.append(doanChu(
     'Bấm một dòng để đổi sang cây ấy. App sẽ hỏi lại trước khi đổi.'));
 
+  veKhoiMacDinh(khoi);
   veNutTaoMoi(khoi);
 }
 
@@ -349,11 +380,129 @@ async function chayDoiCay(muc, nutLam) {
   hop.append(nutTai);
 }
 
-function veHopLoi(hop, cau) {
+function veHopLoi(hop, cau, tieuDe) {
   hop.innerHTML = '';
-  hop.append(tieuDeHop('Chưa đổi gia phả'));
+  hop.append(tieuDeHop(tieuDe || 'Chưa đổi gia phả'));
   hop.append(loiNhan(cau, true));
   hop.append(nut('Quay lại', false, true, () => openChonGiaPha()));
+}
+
+// ============================================================
+// Quay về gia phả mặc định — `boChonGiaPha`
+// ============================================================
+
+/**
+ * Khối cuối danh sách, MỌI tài khoản đều thấy — khác nút *Dữ liệu mới*.
+ * Lý lẽ đầy đủ ở quyết định 5 đầu file.
+ */
+function veKhoiMacDinh(khoi) {
+  if (!coMayChu()) return;
+
+  const vach = document.createElement('div');
+  vach.style.cssText = 'margin-top:16px;border-top:1px solid #f0ebe4;padding-top:12px';
+
+  // MỘT dòng, không ba. Đo ngày 28/08/2026: bản ba dòng đẩy hộp từ 597px lên
+  // 745px trong khung 390px, tức nút "Đóng" tụt xuống dưới nếp gấp ở mắt chủ
+  // dự án — người duy nhất thấy CẢ HAI khối cuối. Chỗ giải thích đủ dài là hộp
+  // hỏi lại, mở ra không tốn gì và không đổi gì.
+  const giaiThich = document.createElement('div');
+  giaiThich.textContent = 'Người quản lý đặt sẵn một cây mặc định cho cả họ.';
+  giaiThich.style.cssText = 'font-size:13px;line-height:1.55;color:#8a8078';
+  vach.append(giaiThich);
+
+  const b = nut('Quay về gia phả mặc định', false, true, () => moHopMacDinh());
+  b.dataset.viec = 'quay-ve-mac-dinh';
+  vach.append(b);
+
+  khoi.append(vach);
+}
+
+/**
+ * Hỏi trước khi bỏ chọn. BỐN dòng, cùng ràng buộc bố cục với hộp đổi cây.
+ *
+ * ⚠ Không dòng nào HỨA sẽ mở cây tên gì: trình duyệt không đọc được `FILE_ID`
+ * của `Config.gs`. Đoán bừa một cái tên ở đây là thứ sai tệ nhất màn hình này
+ * làm được — người ta bấm vì tin cái tên ấy. Tên chỉ nói ra SAU, khi máy chủ
+ * đã gật và danh sách hỏi lại đã trả lời.
+ */
+function moHopMacDinh() {
+  const hop = lopPhu && lopPhu.querySelector('#giapha-chon-gia-pha');
+  if (!hop) return;
+
+  hop.innerHTML = '';
+  hop.append(tieuDeHop('Quay về gia phả mặc định?'));
+
+  const dangMo = (state.phien && state.phien.tenFileDuLieu)
+    ? 'App đang mở ' + state.phien.tenFileDuLieu + '. '
+    : '';
+
+  hop.append(gachDau(
+    dangMo + 'Bấm xong, app quay về gia phả mặc định người quản lý đặt sẵn.'));
+  hop.append(gachDau(
+    'Chọn thẳng cây mặc định trong danh sách KHÔNG giống bỏ chọn: chọn là ghi ' +
+    'cây ấy vào tài khoản bạn, nên ngày người quản lý đổi cây mặc định, bạn ' +
+    'vẫn nằm lại cây cũ.'));
+  hop.append(gachDau(
+    'Chưa bao giờ tự chọn cây nào thì bấm cũng không đổi gì cả.'));
+  hop.append(gachDau(
+    'Trang sẽ tải lại. Không có gì trên Drive bị đụng tới, và chọn lại cây ' +
+    'khác lúc nào cũng được.'));
+
+  const nutLam = nut('Quay về mặc định', true, true, () => chayBoChon(nutLam));
+  nutLam.dataset.viec = 'xac-nhan-mac-dinh';
+  hop.append(nutLam);
+  hop.append(nut('Quay lại', false, true, () => openChonGiaPha()));
+}
+
+async function chayBoChon(nutLam) {
+  if (dangChay) return;
+  dangChay = true;
+  nutLam.disabled = true;
+  nutLam.style.opacity = '.45';
+
+  const hop = lopPhu && lopPhu.querySelector('#giapha-chon-gia-pha');
+  if (hop) hop.append(doanChu('Đang bỏ lựa chọn riêng…'));
+
+  let kq;
+  try {
+    kq = await boChonGiaPha();
+  } catch (e) {
+    dangChay = false;
+    if (hop) veHopLoi(hop, cauLoiMayChu(e), 'Chưa bỏ được lựa chọn');
+    return;
+  }
+
+  dangChay = false;
+  if (!lopPhu || !hop) return;
+
+  if (!kq || !kq.ok) {
+    veHopLoi(hop, (kq && kq.loi) || 'Máy chủ không bỏ được lựa chọn.',
+             'Chưa bỏ được lựa chọn');
+    return;
+  }
+
+  // Máy chủ đã gật. TÊN cây mặc định chỉ đọc được BÂY GIỜ: hỏi lại danh sách,
+  // dòng nào `dangChon` là cây `FILE_ID` vừa có tác dụng trở lại. Hỏi hỏng thì
+  // thôi — việc chính đã xong rồi, và tải lại trang là thấy ngay.
+  let ten = '';
+  try {
+    const m = (await danhSachThuong()).find((x) => x && x.dangChon);
+    if (m) ten = m.ten;
+  } catch (e) {}
+  if (!lopPhu) return;
+
+  hop.innerHTML = '';
+  hop.append(tieuDeHop('Đã bỏ lựa chọn riêng'));
+  hop.append(gachDau(ten
+    ? 'App nay mở gia phả mặc định: ' + ten + '.'
+    : 'App nay mở gia phả mặc định người quản lý đặt sẵn.'));
+  hop.append(gachDau(
+    'Từ nay người quản lý đổi cây mặc định thì app của bạn đi theo.'));
+  hop.append(gachDau('Bấm nút dưới để tải lại trang.'));
+
+  const nutTai = nut('Tải lại trang', true, true, () => location.reload());
+  nutTai.dataset.viec = 'tai-lai';
+  hop.append(nutTai);
 }
 
 // ============================================================

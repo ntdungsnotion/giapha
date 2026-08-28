@@ -5,7 +5,7 @@
 // Lớp      : services — được gọi bởi: services/repo, pages/settings,
 //            pages/backup, pages/chon-gia-pha · gọi: (không)
 // Phụ thuộc: (không)
-// Phiên bản: 0.9.0 · Cập nhật: 28/08/2026 11:20
+// Phiên bản: 0.9.1 · Cập nhật: 28/08/2026 13:40
 // ============================================================
 //
 // ĐÂY LÀ RANH GIỚI GIỮA TRÌNH DUYỆT VÀ MÁY CHỦ.
@@ -208,7 +208,20 @@ export function chonGiaPha(fileId) {
   return goi('chonGiaPha', fileId);
 }
 
-/** Bỏ lựa chọn, quay về gia phả mặc định trong Config.gs. { ok, loi }. */
+/**
+ * Bỏ lựa chọn riêng, quay về gia phả mặc định trong `Config.gs`. { ok, loi }.
+ *
+ * ⚠ KHÔNG THAY ĐƯỢC cho `chonGiaPha(FILE_ID)`, dù hai đường có thể đang mở y
+ * hệt một cây: chọn là *ghi* mã cây vào kho riêng của tài khoản, bỏ chọn là
+ * *xoá* mã ấy đi. Ngày người quản lý đổi `FILE_ID`, người đã bỏ chọn đi theo,
+ * người từng bấm chọn nằm lại cây cũ.
+ *
+ * ⚠ Không trả về tên cây mặc định — nơi gọi muốn biết thì hỏi lại
+ * `layDanhSachGiaPha()` sau khi hàm này gật. Xem `pages/chon-gia-pha.js`.
+ *
+ * ⚠ Nơi gọi phải TẢI LẠI TRANG sau khi hàm này gật, cùng lý lẽ với
+ * `chonGiaPha` ở trên.
+ */
 export function boChonGiaPha() {
   return goi('boChonGiaPha');
 }
