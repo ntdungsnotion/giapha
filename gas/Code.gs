@@ -1980,29 +1980,35 @@ function taoFileDuLieuMoi(tenGiaPha) {
   );
 
   Logger.log(
-    'ĐÃ TẠO XONG. Chép ba dòng dưới đây đè lên ba dòng cũ trong Config.gs:\n\n' +
-    "var FILE_ID            = '" + file.getId()   + "';\n" +
-    "var THU_MUC_ANH_ID     = '" + thuAnh.getId() + "';\n" +
-    "var THU_MUC_SAO_LUU_ID = '" + thuLuu.getId() + "';\n\n" +
-    '--- Rồi làm ba việc này, theo đúng thứ tự ---\n' +
-    '1. Lưu Config.gs, chạy hàm kiemTraConfig() — phải thấy đủ ba dòng ĐẠT.\n' +
-    '2. Triển khai → Quản lý các bản triển khai → bút chì →\n' +
-    '   Phiên bản: "Phiên bản mới" → Triển khai.\n' +
-    '3. Trên Drive, chia sẻ HAI THỨ, và chia sẻ TỪNG CÁI MỘT:\n' +
+    'ĐÃ TẠO XONG GIA PHẢ "' + ten + '".\n\n' +
+    '--- KHÔNG PHẢI SỬA Config.gs, VÀ KHÔNG PHẢI TRIỂN KHAI LẠI ---\n' +
+    'App tự tìm ra gia phả này bằng cách hỏi Google Drive. Ba mã dưới đây chỉ\n' +
+    'để bạn tra khi cần, ĐỪNG dán vào Config.gs — ba dòng trong đó nay là gia\n' +
+    'phả MẶC ĐỊNH, tức cây mở ra cho người chưa chọn gì bao giờ. Dán vào là\n' +
+    'đổi cây mặc định của cả họ sang gia phả vừa tạo, mà nó đang rỗng.\n\n' +
+    '  file dữ liệu : ' + file.getId()   + '\n' +
+    '  thư mục Anh  : ' + thuAnh.getId() + '\n' +
+    '  thư mục Sao_luu: ' + thuLuu.getId() + '\n\n' +
+    '--- VIỆC DUY NHẤT PHẢI LÀM: chia sẻ trên Drive ---\n' +
+    'Chia sẻ HAI THỨ, và chia sẻ TỪNG CÁI MỘT:\n' +
     '     · file "' + tenFile + '"  — Người xem, hoặc Người chỉnh sửa\n' +
-    '     · thư mục "Anh"                     — Người xem là đủ\n' +
+    '     · thư mục "Anh"  — Người xem là đủ\n\n' +
     '   ⚠ TUYỆT ĐỐI ĐỪNG chia sẻ thư mục mẹ "' + tenThu + '".\n' +
     '     Google Drive cho quyền KẾ THỪA xuống mọi thứ bên trong, và không gỡ\n' +
     '     lại được ở thư mục con — chia sẻ thư mục mẹ là chia sẻ luôn\n' +
     '     "Sao_luu", tức trao cho người khác quyền ghi đè cả gia phả.\n' +
+    '   ⚠ THƯ MỤC MẸ ĐANG CHIA SẺ CHO AI THÌ GỠ RA TRƯỚC. Thư mục "Sao_luu"\n' +
+    '     vừa sinh ra bên trong nó, nên nó thừa hưởng luôn danh sách chia sẻ\n' +
+    '     ấy — kể cả khi bạn chia sẻ thư mục mẹ từ nhiều tháng trước.\n' +
+    '     Chạy thuTimGiaPha() bằng tài khoản người kia để xem họ thấy những gì.\n' +
     '   ⚠ KHÔNG chia sẻ "Sao_luu" cho ai cả. Khôi phục là việc ghi đè toàn bộ,\n' +
     '     nó phải nằm trong tay đúng một người.\n' +
     '   ⚠ Quên chia sẻ thư mục "Anh" thì người trong họ VẪN xem được cây,\n' +
     '     nhưng không thấy một tấm ảnh nào — mà app không báo lỗi gì cả.\n\n' +
-    '--- Cho tới lúc bạn làm xong bước 2, app VẪN đang mở file CŨ ---\n' +
-    'Hàm này không đụng gì vào file dữ liệu đang dùng.\n\n' +
-    'Thư mục vừa tạo : ' + tenThu + '  ·  ' + thuMuc.getId() + '\n' +
-    'File dữ liệu    : ' + file.getName()
+    '--- Gia phả đang dùng KHÔNG bị đụng tới ---\n' +
+    'Hàm này chỉ tạo mới. Muốn mở cây vừa tạo thì chọn nó trong app.\n\n' +
+    'Thư mục : ' + tenThu + '  ·  ' + thuMuc.getId() + '\n' +
+    'File    : ' + file.getName()
   );
 }
 

@@ -1,0 +1,42 @@
+# ============================================================
+# giapha/.gitignore
+# Vai trò  : Chặn ID THẬT của Google Drive lọt lên GitHub
+# Phiên bản: 1.0.0 · Cập nhật: 28/08/2026 09:10
+# ============================================================
+#
+# ⚠ REPO NÀY PHẢI ĐỂ PUBLIC, nếu không Apps Script không nạp được module.
+# Mọi thứ lọt lên đây là công khai VĨNH VIỄN — xoá đi vẫn còn trong lịch sử
+# git, và có thể đã bị các máy chủ khác chép về.
+#
+# `gas/Config.gs` nằm trong repo nhưng chỉ mang CHỮ GIỮ CHỖ `DAN_ID_...`.
+# ID thật chỉ gõ thẳng vào trình soạn thảo Apps Script, và cất một bản ở
+# `Claude_Code\ID-DRIVE_KHONG-DAY-LEN-GITHUB.md` — ngoài repo.
+#
+# --- Vì sao có file này (28/08/2026) ------------------------------------
+#
+# Chủ dự án cất một bản `Config.gs` có ID thật ngay trong `gas/`, đặt tên
+# `Config - xoa.gs` để nhớ mà xoá. Lần `git add -A` ngay sau đó suýt đẩy nó
+# lên GitHub; thứ chặn lại là một lỗi Dropbox khoá file, tức **may**, không
+# phải một cơ chế nào cả. Từ nay có cơ chế.
+#
+# Chặn theo KHUÔN TÊN chứ không theo một cái tên: lần sau bản cất tay sẽ
+# mang tên khác — "Config cu.gs", "Config-backup.gs", "Config (1).gs".
+
+# Mọi biến thể của Config.gs, TRỪ chính nó
+gas/Config*.gs
+!gas/Config.gs
+
+# Bản cất tay của hai file gas còn lại
+gas/Code *.gs
+gas/Code-*.gs
+gas/Code_*.gs
+
+# File ghi ID, dù đặt ở đâu trong repo
+*ID-DRIVE*
+*KHONG-DAY-LEN-GITHUB*
+
+# Rác quen thuộc của Windows và Dropbox
+Thumbs.db
+desktop.ini
+*.tmp
+"~*"
