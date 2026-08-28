@@ -1,7 +1,7 @@
 // ============================================================
 // giapha · gas/Config.gs   (đặt trong Apps Script)
 // Vai trò  : ĐÂY LÀ FILE DUY NHẤT BẠN CẦN SỬA TAY.
-// Phiên bản: 0.2.0 · Cập nhật: 15/08/2026 12:16
+// Phiên bản: 0.3.0 · Cập nhật: 28/08/2026 08:30
 // ============================================================
 //
 // ⚠ BẢN NẰM TRONG REPO GITHUB NÀY GIỮ CHỮ GIỮ CHỖ.
@@ -15,13 +15,38 @@
 /** Địa chỉ GitHub Pages, KHÔNG có dấu / ở cuối. */
 var GITHUB_PAGES = 'https://ntdungsnotion.github.io/giapha';
 
-/** ID file JSON dữ liệu trên Drive. */
+// ⚠ BA DÒNG DƯỚI ĐÂY ĐỔI VAI TRÒ TỪ 28/08/2026.
+//
+// Trước hôm ấy chúng là "file dữ liệu" và hai thư mục của nó — cả app mở đúng
+// một gia phả, đổi cây là sửa tay ba dòng này rồi triển khai lại, và đổi cho
+// MỌI người cùng lúc.
+//
+// Nay app mở được nhiều gia phả: mỗi người tự chọn cây của mình ngay trong
+// app, lựa chọn cất trong kho riêng của tài khoản họ. Ba dòng này còn đúng
+// một việc — **gia phả MẶC ĐỊNH**, thứ mở ra cho người chưa chọn gì bao giờ.
+//
+// Thêm gia phả mới thì KHÔNG phải đụng vào đây nữa: chạy `chayTaoDbMoi()`
+// trong `Code.gs`, rồi chia sẻ file JSON và thư mục `Anh` của nó trên Drive.
+// App tự tìm ra bằng cách hỏi Drive, và Drive tự lọc theo quyền từng người.
+
+/** ID file JSON của gia phả MẶC ĐỊNH. */
 var FILE_ID = 'DAN_ID_FILE_DU_LIEU_VAO_DAY';
 
-/** ID thư mục chứa ảnh trên Drive. */
+/**
+ * ID thư mục ảnh của gia phả MẶC ĐỊNH, và chỉ của nó.
+ * Gia phả sinh ra từ `taoFileDuLieuMoi()` mang mã thư mục ảnh của mình trong
+ * chính file dữ liệu (`tree.photoFolderId`), nên chúng không cần dòng này.
+ */
 var THU_MUC_ANH_ID = 'DAN_ID_THU_MUC_ANH_VAO_DAY';
 
-/** ID thư mục chứa bản sao lưu trên Drive. Chỉ chủ dự án được chia sẻ. */
+/**
+ * ID thư mục sao lưu của gia phả MẶC ĐỊNH, và chỉ của nó.
+ * Gia phả khác thì máy chủ tìm thư mục `Sao_luu` nằm cạnh file dữ liệu.
+ *
+ * ⚠ ĐỪNG CHIA SẺ THƯ MỤC NÀY CHO AI. Khôi phục là ghi đè cả gia phả.
+ * Và đừng chia sẻ thư mục MẸ của nó: quyền trên Drive kế thừa xuống mọi thứ
+ * bên trong và không gỡ lại được ở thư mục con — đo được 28/08/2026.
+ */
 var THU_MUC_SAO_LUU_ID = 'DAN_ID_THU_MUC_SAO_LUU_VAO_DAY';
 
 // --- Phần dưới thường không cần sửa ---------------------------

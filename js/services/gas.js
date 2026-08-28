@@ -5,7 +5,7 @@
 // Lớp      : services — được gọi bởi: services/repo, pages/settings,
 //            pages/backup · gọi: (không)
 // Phụ thuộc: (không)
-// Phiên bản: 0.7.0 · Cập nhật: 22/08/2026 00:40
+// Phiên bản: 0.8.0 · Cập nhật: 28/08/2026 08:30
 // ============================================================
 //
 // ĐÂY LÀ RANH GIỚI GIỮA TRÌNH DUYỆT VÀ MÁY CHỦ.
@@ -175,4 +175,40 @@ export function xemBanSaoLuu(fileId) {
  */
 export function khoiPhucSaoLuu(fileId, vanTayDaBiet) {
   return goi('khoiPhucSaoLuu', fileId, vanTayDaBiet);
+}
+
+// --- CHỌN GIA PHẢ (28/08/2026) -----------------------------------------
+//
+// ⚠ Ba lệnh này gọi được từ MỌI tài khoản, khác hẳn khối sao lưu ở trên. Danh
+// sách trả về đã được Google Drive lọc theo quyền của chính người đang gọi —
+// app không giữ bảng phân quyền nào, và cũng không cần: `searchFiles` chạy
+// dưới danh tính người truy cập nên mỗi người chỉ thấy phần của mình.
+
+/**
+ * Danh sách gia phả người đang đăng nhập mở được, cây đang mở đứng đầu.
+ * Trả về { ok, dangChon, loi, ds:[{ fileId, ten, tenFile, soNguoi, soCap,
+ *          revision, suaDuoc, dangChon, doiLuc }] }.
+ */
+export function layDanhSachGiaPha() {
+  return goi('layDanhSachGiaPha');
+}
+
+/**
+ * Đổi sang một gia phả khác. Lựa chọn ghi vào kho RIÊNG của tài khoản đang
+ * đăng nhập, nên không ảnh hưởng người khác trong họ.
+ *
+ * ⚠ Nơi gọi phải NẠP LẠI CÂY sau khi hàm này gật — `state.tree`,
+ * `state.index` và `state.headRevisionId` đang giữ cây cũ, và ghi tiếp bằng
+ * dấu vân tay của cây cũ lên cây mới là đúng thứ cơ chế chống ghi đè sinh ra
+ * để chặn.
+ *
+ * Trả về { ok, daChon, ten, loi }.
+ */
+export function chonGiaPha(fileId) {
+  return goi('chonGiaPha', fileId);
+}
+
+/** Bỏ lựa chọn, quay về gia phả mặc định trong Config.gs. { ok, loi }. */
+export function boChonGiaPha() {
+  return goi('boChonGiaPha');
 }

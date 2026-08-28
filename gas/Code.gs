@@ -1,7 +1,7 @@
 // ============================================================
 // giapha · gas/Code.gs   (đặt trong Apps Script)
 // Vai trò  : API máy chủ. Trình duyệt gọi qua google.script.run.
-// Phiên bản: 0.9.0 · Cập nhật: 28/08/2026 00:20
+// Phiên bản: 0.10.0 · Cập nhật: 28/08/2026 08:30
 // ============================================================
 //
 // Triển khai BẮT BUỘC đặt:
@@ -20,7 +20,15 @@
 //   xoaAnhThat                                   → đã viết thật (việc 6B)
 //   layDanhSachSaoLuu · saoLuuNgay · xemBanSaoLuu ·
 //     khoiPhucSaoLuu                             → đã viết thật (việc 7)
-//   taoFileDuLieuMoi                             → còn khung
+//   taoFileDuLieuMoi                             → đã viết thật (việc 9)
+//   layDanhSachGiaPha · chonGiaPha · boChonGiaPha → đã viết thật (chọn DB)
+//   thuTimGiaPha                                 → công cụ tự kiểm chia sẻ
+//
+// ⚠ TỪ 28/08/2026 APP MỞ ĐƯỢC NHIỀU GIA PHẢ. `FILE_ID` không còn là "file dữ
+//   liệu" nữa mà là **gia phả mặc định** — thứ mở ra khi người dùng chưa chọn
+//   gì. Lựa chọn thật nằm trong kho riêng của từng tài khoản. Đừng đọc thẳng
+//   ba hằng số của Config.gs nữa, dùng ba hàm ở mục 2b:
+//       maGiaPhaDangChon_() · maThuMucAnh_() · maThuMucSaoLuu_()
 //
 // ⚠ VIỆC 6B ĐỔI HAI THỨ TRONG `luuCay`, và cả hai đều là chỗ nguy hiểm:
 //   · `action: 'purge'` là đường DUY NHẤT được phép làm số bản ghi ít đi. Nó
@@ -87,14 +95,17 @@ function layPhien() {
     loi:                  null,
   };
 
-  if (!FILE_ID || FILE_ID.indexOf('DAN_ID_') === 0) {
-    phien.loi = 'Chưa điền FILE_ID trong Config.gs.';
+  var maCay = maGiaPhaDangChon_();
+  if (!maCay) {
+    phien.loi = 'Chưa điền FILE_ID trong Config.gs, và bạn cũng chưa chọn ' +
+                'gia phả nào.';
     return phien;
   }
+  phien.maGiaPha = maCay;
 
   var file;
   try {
-    file = DriveApp.getFileById(FILE_ID);
+    file = DriveApp.getFileById(maCay);
     // Chạm thật vào file mới biết có đọc được không. Từ việc 9 thì tên ấy đi
     // luôn về trình duyệt: sau một lần đổi FILE_ID, thứ người dùng cần thấy
     // ngay là app đang mở file NÀO — hai gia phả trông giống hệt nhau trên
@@ -187,6 +198,295 @@ function xoaNguoiTrungTamMacDinh() {
 }
 
 // ============================================================
+// 2b. GIA PHẢ ĐANG CHỌN — nhiều cây, mỗi người tự chọn cây của mình
+// ============================================================
+//
+// Trước 28/08/2026 cả app chỉ mở đúng một gia phả: `FILE_ID` trong `Config.gs`.
+// Đổi sang cây khác là sửa tay ba dòng rồi triển khai lại — và đổi cho MỌI
+// người cùng lúc.
+//
+// Nay `FILE_ID` tụt xuống vai trò **gia phả mặc định**: thứ mở ra khi người
+// dùng chưa chọn gì. Lựa chọn thật nằm trong `PropertiesService
+// .getUserProperties()`, kho đã được phép thử 0.11 chứng minh là **tách riêng
+// theo từng tài khoản** — nên hai người trong họ mở hai cây khác nhau cùng
+// lúc là chuyện bình thường, không ai đá ai.
+//
+// ⚠ QUYỀN VẪN DO DRIVE THỰC THI, KHÔNG DO APP.
+// Mã file người dùng chọn là lời khai của trình duyệt, y như mọi thứ khác gửi
+// lên — nhưng nó KHÔNG cần app canh: mọi đường đọc/ghi đều đi qua
+// `DriveApp.getFileById()`, chạy dưới danh tính người ấy. Chọn một file không
+// được chia sẻ thì Drive ném lỗi ở tầng máy chủ. `chonGiaPha()` vẫn kiểm
+// trước, nhưng đó là để **nói cho người dùng biết ngay**, không phải để canh
+// cổng — cổng đã có Drive gác.
+//
+// ⚠ ĐO ĐƯỢC NGÀY 28/08/2026, và cả thiết kế này treo vào nó:
+// `DriveApp.searchFiles` chạy dưới danh tính người truy cập **CÓ thấy file
+// người khác chia sẻ thẳng cho họ** — tài khoản khách tìm ra
+// `giapha-nguyen-trong-bac.json` với quyền `EDIT` dù không phải chủ. Nhờ đó
+// danh sách gia phả không cần app giữ: hỏi Drive là ra, và Drive trả về đúng
+// phần của từng người.
+
+/** Khoá trong kho riêng của từng tài khoản. */
+var KHOA_GIA_PHA = 'giaPhaDangChon';
+
+/**
+ * Mã file gia phả người đang đăng nhập mở. Kho riêng → `FILE_ID` mặc định.
+ *
+ * Không kiểm quyền ở đây, và cố ý: hàm này chạy trong MỌI lệnh, còn phép kiểm
+ * quyền là một lần chạm Drive. Chỗ kiểm đúng là `chonGiaPha()` — một lần, lúc
+ * chọn — và bản thân Drive ở mọi lần sau.
+ */
+function maGiaPhaDangChon_() {
+  var ma = '';
+  try {
+    ma = PropertiesService.getUserProperties().getProperty(KHOA_GIA_PHA) || '';
+  } catch (e) {
+    ma = '';
+  }
+  if (ma) return ma;
+  return laMaThat_(FILE_ID) ? FILE_ID : '';
+}
+
+/** Một mã trong Config.gs đã được điền thật chưa. */
+function laMaThat_(ma) {
+  return !!ma && String(ma).indexOf('DAN_ID_') !== 0;
+}
+
+/** Người này đang mở đúng gia phả mặc định của `Config.gs`? */
+function dangMoGiaPhaMacDinh_() {
+  return laMaThat_(FILE_ID) && maGiaPhaDangChon_() === FILE_ID;
+}
+
+/**
+ * Thư mục ẢNH của gia phả đang mở.
+ *
+ * Đọc `tree.photoFolderId` **từ chính file dữ liệu**, không từ `Config.gs`.
+ * Đó là đường duy nhất còn lại sau khi đo trên Drive thật: người được chia sẻ
+ * THẲNG file JSON thì `file.getParents()` trả về RỖNG — họ không thấy thư mục
+ * mẹ, nên không suy được thư mục `Anh` nằm cạnh nó. Mã thư mục phải nằm trong
+ * chính file, và việc 9 đã ghi sẵn nó vào đó.
+ *
+ * @param {object} [cay] cây đã đọc rồi, để khỏi đọc file thêm một lần nữa
+ */
+function maThuMucAnh_(cay) {
+  var ma = cay && cay.tree && cay.tree.photoFolderId;
+  if (laMaThat_(ma)) return String(ma);
+
+  if (!cay) {
+    try {
+      var c = JSON.parse(DriveApp.getFileById(maGiaPhaDangChon_())
+                                 .getBlob().getDataAsString('UTF-8'));
+      if (c && c.tree && laMaThat_(c.tree.photoFolderId)) {
+        return String(c.tree.photoFolderId);
+      }
+    } catch (e) {}
+  }
+
+  // Gia phả đời đầu không có `photoFolderId` — nó ra đời trước việc 9. Lùi về
+  // Config.gs, NHƯNG chỉ khi đang mở đúng cây mặc định: lùi vô điều kiện là
+  // đẩy ảnh của cây B vào thư mục ảnh của cây A.
+  return dangMoGiaPhaMacDinh_() && laMaThat_(THU_MUC_ANH_ID) ? THU_MUC_ANH_ID : '';
+}
+
+/**
+ * Thư mục SAO LƯU của gia phả đang mở — thư mục `Sao_luu` nằm cạnh file.
+ *
+ * Suy từ thư mục mẹ, và điều đó có nghĩa: **chỉ người thấy được thư mục mẹ mới
+ * sao lưu và khôi phục được**, tức trên thực tế là chủ dự án. Đó không phải
+ * hạn chế phải chịu đựng, đó chính là luật đã chốt ở việc 9 — khôi phục là ghi
+ * đè cả gia phả, nó phải nằm trong tay đúng một người. Trước đây luật ấy giữ
+ * bằng cách chia sẻ hẹp một thư mục; nay nó tự giữ bằng cấu trúc.
+ */
+function maThuMucSaoLuu_() {
+  var ma = maGiaPhaDangChon_();
+  if (ma) {
+    try {
+      var lap = DriveApp.getFileById(ma).getParents();
+      while (lap.hasNext()) {
+        var con = lap.next().getFoldersByName('Sao_luu');
+        if (con.hasNext()) return con.next().getId();
+      }
+    } catch (e) {}
+  }
+  // Cùng lý lẽ với `maThuMucAnh_`: lùi về Config.gs chỉ khi đang mở đúng cây
+  // mặc định. Lùi nhầm ở đây đắt hơn nhiều — nó trộn bản sao lưu của hai cây,
+  // và `khoiPhucSaoLuu` sẽ ghi đè cây này bằng cây kia.
+  return dangMoGiaPhaMacDinh_() && laMaThat_(THU_MUC_SAO_LUU_ID)
+    ? THU_MUC_SAO_LUU_ID : '';
+}
+
+/**
+ * DANH SÁCH GIA PHẢ người đang đăng nhập mở được. Trình duyệt gọi khi dựng
+ * màn hình chọn.
+ *
+ * Hỏi Drive bằng `searchFiles`, nên nó **tự lọc theo quyền** — mỗi người thấy
+ * đúng phần của mình, không thấy gì hơn, và app không giữ bảng phân quyền nào.
+ *
+ * ⚠ LỌC BẢN SAO LƯU RA. Đo ngày 28/08/2026 trên Drive thật: tài khoản chủ dự
+ * án có 8 file khớp `giapha-*`, mà 6 là bản sao lưu — không lọc thì màn hình
+ * bày ra sáu cái tên na ná, bấm nhầm là mở một bản chụp cũ tưởng là gia phả
+ * đang dùng. Xem `laTenFileGiaPha_`.
+ *
+ * @returns {{ok:boolean, dangChon:string|null, ds:Array, loi:string|null}}
+ */
+function layDanhSachGiaPha() {
+  var kq = { ok: false, dangChon: null, ds: [], loi: null };
+  var dangChon = maGiaPhaDangChon_();
+  kq.dangChon = dangChon || null;
+
+  var ds = [];
+  try {
+    var lap = DriveApp.searchFiles("title contains 'giapha-' and trashed = false");
+    while (lap.hasNext() && ds.length < 40) {
+      var f = lap.next();
+      if (!laTenFileGiaPha_(f.getName())) continue;
+      var m = moTaMotGiaPha_(f);
+      if (m) ds.push(m);
+    }
+  } catch (e) {
+    kq.loi = 'Không hỏi được Google Drive danh sách gia phả: ' + e.message;
+    return kq;
+  }
+
+  // Gia phả đang mở đứng đầu, rồi tới cây sửa được, rồi theo tên. Người dùng
+  // mở màn hình này để ĐỔI, nên cây đang mở phải nhìn thấy ngay để biết mình
+  // đang đứng ở đâu — không phải để bấm lại.
+  ds.sort(function (a, b) {
+    if (a.dangChon !== b.dangChon) return a.dangChon ? -1 : 1;
+    if (a.suaDuoc !== b.suaDuoc) return a.suaDuoc ? -1 : 1;
+    return a.ten < b.ten ? -1 : (a.ten > b.ten ? 1 : 0);
+  });
+
+  kq.ds = ds;
+  kq.ok = true;
+  return kq;
+}
+
+/**
+ * Một dòng của màn hình chọn. Trả `null` nếu file không phải cây gia phả.
+ *
+ * PHẢI đọc nội dung file, không chỉ đọc tên: tên là thứ người dùng đổi được
+ * trên Drive bất cứ lúc nào, và một file tên `giapha-abc.json` chứa thứ khác
+ * mà lọt vào danh sách thì bấm vào là app ngã ở màn hình sau — chỗ không còn
+ * gì để nói cho người dùng biết vì sao.
+ */
+function moTaMotGiaPha_(file) {
+  var cay = null;
+  try {
+    cay = JSON.parse(file.getBlob().getDataAsString('UTF-8'));
+  } catch (e) {
+    return null;
+  }
+  if (!cay || cay.format !== 'giapha-json') return null;
+
+  var tom = tomTatCay_(cay);
+  var ten = (cay.tree && cay.tree.name) ? String(cay.tree.name) : file.getName();
+
+  return {
+    fileId:   file.getId(),
+    ten:      ten,
+    tenFile:  file.getName(),
+    soNguoi:  tom.persons,
+    soCap:    tom.unions,
+    revision: (cay.tree && cay.tree.revision) || 0,
+    suaDuoc:  suaDuocFile_(file),
+    dangChon: file.getId() === maGiaPhaDangChon_(),
+    doiLuc:   docLucSua_(file),
+  };
+}
+
+/** Người đang đăng nhập có sửa được file này không. Hỏi Drive, không đoán. */
+function suaDuocFile_(file) {
+  var email = '';
+  try { email = Session.getActiveUser().getEmail() || ''; } catch (e) { return false; }
+  try {
+    var q = file.getAccess(email);
+    return q === DriveApp.Permission.EDIT || q === DriveApp.Permission.OWNER;
+  } catch (e) {
+    // Người chỉ có quyền xem thường không đọc được danh sách chia sẻ — cùng ca
+    // đã gặp ở `layPhien`. Mặc định bảo thủ; Drive vẫn chặn ở tầng máy chủ.
+    return false;
+  }
+}
+
+/** Lần sửa gần nhất, đã định dạng. Chuỗi rỗng nếu không đọc được. */
+function docLucSua_(file) {
+  try {
+    return Utilities.formatDate(file.getLastUpdated(), muiGio_(), 'dd/MM/yyyy HH:mm');
+  } catch (e) {
+    return '';
+  }
+}
+
+/**
+ * CHỌN một gia phả. Ghi vào kho riêng của người đang đăng nhập.
+ *
+ * Kiểm TRƯỚC KHI ghi, và kiểm bằng cách chạm thật vào file — không tin mã
+ * trình duyệt gửi lên. Nhưng như đã nói ở đầu mục: đây là để nói cho người
+ * dùng biết ngay, không phải để canh cổng. Cổng do Drive gác ở mọi lần đọc/ghi
+ * sau đó.
+ *
+ * Ghi xong thì ĐỌC LẠI rồi trả về, cùng nếp với `datNguoiTrungTamMacDinh`.
+ *
+ * @returns {{ok:boolean, daChon:string|null, ten:string|null, loi:string|null}}
+ */
+function chonGiaPha(fileId) {
+  var kq = { ok: false, daChon: null, ten: null, loi: null };
+  var ma = String(fileId || '');
+  if (!ma) {
+    kq.loi = 'Chưa cho biết chọn gia phả nào.';
+    return kq;
+  }
+
+  var file;
+  try {
+    file = DriveApp.getFileById(ma);
+    file.getName();
+  } catch (e) {
+    kq.loi = 'Không mở được gia phả này — nhiều khả năng nó chưa được chia sẻ ' +
+             'cho bạn, hoặc vừa bị xoá. Nhờ ' + NGUOI_QUAN_LY + ' kiểm lại ' +
+             'trên Google Drive.';
+    return kq;
+  }
+
+  if (!laTenFileGiaPha_(file.getName())) {
+    kq.loi = 'File "' + file.getName() + '" không phải một gia phả của app này.';
+    return kq;
+  }
+
+  var mo = moTaMotGiaPha_(file);
+  if (!mo) {
+    kq.loi = 'Mở được file "' + file.getName() + '" nhưng bên trong không phải ' +
+             'cây gia phả của app này.';
+    return kq;
+  }
+
+  try {
+    PropertiesService.getUserProperties().setProperty(KHOA_GIA_PHA, ma);
+    kq.daChon = PropertiesService.getUserProperties().getProperty(KHOA_GIA_PHA);
+  } catch (e) {
+    kq.loi = 'Không ghi được lựa chọn vào kho riêng của bạn: ' + e.message;
+    return kq;
+  }
+
+  kq.ten = mo.ten;
+  kq.ok  = kq.daChon === ma;
+  if (!kq.ok) kq.loi = 'Ghi xong nhưng đọc lại ra giá trị khác. Thử lại.';
+  return kq;
+}
+
+/** Bỏ lựa chọn, quay về gia phả mặc định của `Config.gs`. */
+function boChonGiaPha() {
+  var kq = { ok: false, loi: null };
+  try {
+    PropertiesService.getUserProperties().deleteProperty(KHOA_GIA_PHA);
+    kq.ok = true;
+  } catch (e) {
+    kq.loi = e.message;
+  }
+  return kq;
+}
+// ============================================================
 // 3. ĐỌC / GHI CÂY GIA PHẢ  — chat 1.1
 // ============================================================
 
@@ -235,7 +535,7 @@ function layCay() {
 
   var file, chuoi;
   try {
-    file  = DriveApp.getFileById(FILE_ID);
+    file  = DriveApp.getFileById(maGiaPhaDangChon_());
     chuoi = file.getBlob().getDataAsString('UTF-8');
   } catch (e) {
     kq.loi = 'Đọc được tên file nhưng không đọc được nội dung: ' + e.message;
@@ -399,7 +699,7 @@ function luuCay(cay, revisionDaBiet, moTa) {
   try {
     var file, cayCu;
     try {
-      file  = DriveApp.getFileById(FILE_ID);
+      file  = DriveApp.getFileById(maGiaPhaDangChon_());
       cayCu = JSON.parse(file.getBlob().getDataAsString('UTF-8'));
     } catch (e) {
       kq.lyDo = 'khongdocduoc';
@@ -505,7 +805,7 @@ function luuCay(cay, revisionDaBiet, moTa) {
     // ⚠ Nếu vẫn gặp "xung đột" ngay ở lần lưu thứ hai mà không ai sửa gì, thì
     // đây là chỗ cần ngờ: Drive cập nhật getLastUpdated() chậm hơn setContent().
     // Cách chữa tạm cho người dùng: tải lại trang.
-    kq.headRevisionId = dauVanTay_(cay, DriveApp.getFileById(FILE_ID));
+    kq.headRevisionId = dauVanTay_(cay, DriveApp.getFileById(maGiaPhaDangChon_()));
     kq.revision       = cay.tree.revision;
     kq.tree           = cay.tree;
     kq.mucChangeLog   = muc;
@@ -782,9 +1082,15 @@ function taiAnh(base64, tenFile) {
               'Cần sửa thật thì nhờ ' + NGUOI_QUAN_LY + ' đổi quyền trên Google Drive.';
     return kq;
   }
-  if (!THU_MUC_ANH_ID || THU_MUC_ANH_ID.indexOf('DAN_ID_') === 0) {
+  // Thư mục ảnh của ĐÚNG gia phả đang mở, đọc từ `tree.photoFolderId` trong
+  // chính file dữ liệu. Trước 28/08/2026 đây là hằng số trong Config.gs, nên
+  // ảnh của mọi cây rơi vào cùng một chỗ.
+  var maAnh = maThuMucAnh_();
+  if (!maAnh) {
     kq.lyDo = 'caidat';
-    kq.loi  = 'Chưa điền THU_MUC_ANH_ID trong Config.gs. Chạy kiemTraConfig() để soi.';
+    kq.loi  = 'Gia phả đang mở chưa có thư mục ảnh. Nhờ ' + NGUOI_QUAN_LY +
+              ' chạy kiemTraConfig() để soi, hoặc tạo lại gia phả bằng ' +
+              'taoFileDuLieuMoi().';
     return kq;
   }
   if (!base64 || typeof base64 !== 'string') {
@@ -814,7 +1120,7 @@ function taiAnh(base64, tenFile) {
   var ten = tenAnhAnToan_(tenFile);
 
   try {
-    var thuMuc = DriveApp.getFolderById(THU_MUC_ANH_ID);
+    var thuMuc = DriveApp.getFolderById(maAnh);
     var blob   = Utilities.newBlob(byte, 'image/jpeg', ten);
     var file   = thuMuc.createFile(blob);
 
@@ -1028,15 +1334,17 @@ function tenAnhAnToan_(tenFile) {
 function layDanhSachSaoLuu() {
   var kq = { ok: false, loi: null, thuMuc: '', ds: [] };
 
-  if (!THU_MUC_SAO_LUU_ID || THU_MUC_SAO_LUU_ID.indexOf('DAN_ID_') === 0) {
-    kq.loi = 'Chưa điền THU_MUC_SAO_LUU_ID trong Config.gs, nên máy chủ ' +
-             'không biết tìm bản sao lưu ở đâu.';
+  var maLuu = maThuMucSaoLuu_();
+  if (!maLuu) {
+    kq.loi = 'Không tìm thấy thư mục Sao_luu của gia phả đang mở. Thư mục ấy ' +
+             'nằm cạnh file dữ liệu và KHÔNG chia sẻ cho ai, nên chỉ ' +
+             NGUOI_QUAN_LY + ' xem và khôi phục được bản sao lưu.';
     return kq;
   }
 
   var thuMuc;
   try {
-    thuMuc = DriveApp.getFolderById(THU_MUC_SAO_LUU_ID);
+    thuMuc = DriveApp.getFolderById(maLuu);
     kq.thuMuc = thuMuc.getName();
   } catch (e) {
     kq.loi = 'Không mở được thư mục Sao_luu. Thư mục ấy chỉ chia sẻ cho ' +
@@ -1092,7 +1400,7 @@ function saoLuuNgay() {
 
   var cay;
   try {
-    cay = JSON.parse(DriveApp.getFileById(FILE_ID).getBlob().getDataAsString('UTF-8'));
+    cay = JSON.parse(DriveApp.getFileById(maGiaPhaDangChon_()).getBlob().getDataAsString('UTF-8'));
   } catch (e) {
     kq.loi = 'Không đọc được bản đang nằm trên Drive: ' + e.message;
     return kq;
@@ -1132,7 +1440,7 @@ function xemBanSaoLuu(fileId) {
 
   try {
     var cayNay = JSON.parse(
-      DriveApp.getFileById(FILE_ID).getBlob().getDataAsString('UTF-8'));
+      DriveApp.getFileById(maGiaPhaDangChon_()).getBlob().getDataAsString('UTF-8'));
     kq.hienTai = tomTatCay_(cayNay);
   } catch (e) {
     kq.hienTai = null;   // không đọc được bản hiện tại thì thôi, đừng ngã cả hàm
@@ -1217,7 +1525,7 @@ function khoiPhucSaoLuu(fileId, vanTayDaBiet) {
   try {
     var file, cayCu;
     try {
-      file  = DriveApp.getFileById(FILE_ID);
+      file  = DriveApp.getFileById(maGiaPhaDangChon_());
       cayCu = JSON.parse(file.getBlob().getDataAsString('UTF-8'));
     } catch (e) {
       kq.lyDo = 'khongdocduoc';
@@ -1241,22 +1549,26 @@ function khoiPhucSaoLuu(fileId, vanTayDaBiet) {
 
     // Bản sao lưu này có phải của CHÍNH gia phả đang mở không?
     //
-    // Trước việc 9 câu hỏi ấy thừa — cả hệ thống chỉ có một gia phả. Từ việc 9
-    // thì `taoFileDuLieuMoi()` sinh ra được gia phả thứ hai, và nếu người cài
-    // đặt đổi `FILE_ID` mà quên đổi `THU_MUC_SAO_LUU_ID` thì bản sao lưu của
-    // hai cây nằm chung một thư mục. Tên file sao lưu là
-    // `giapha-sao-luu_<ngày>_rev<n>.json`, không mang tên gia phả nào, nên
-    // nhìn danh sách không tài nào phân biệt được — và khôi phục nhầm là ghi
-    // đè cả gia phả này bằng gia phả khác.
+    // Trước việc 9 câu hỏi ấy thừa — cả hệ thống chỉ có một gia phả. Nay có
+    // nhiều cây, và tên file sao lưu (`giapha-sao-luu_<ngày>_rev<n>.json`)
+    // KHÔNG mang tên gia phả nào, nên nhìn danh sách không phân biệt được cây
+    // nào với cây nào — mà khôi phục nhầm là ghi đè cả gia phả này bằng gia
+    // phả khác.
+    //
+    // ⚠ Từ 28/08/2026 thư mục `Sao_luu` được suy từ chính thư mục mẹ của file
+    // đang mở, nên hai cây KHÔNG còn dùng chung thư mục được nữa và phép so
+    // này lẽ ra không bao giờ kêu. Giữ nguyên vì đúng một lý do: nó là thứ
+    // duy nhất còn gác được ca thư mục `Sao_luu` bị người ta dọn tay trên
+    // Drive — chép một bản của cây khác vào đó là xong.
     var tenCu  = String((cayCu.tree  && cayCu.tree.name)  || '');
     var tenLuu = String((doc.cay.tree && doc.cay.tree.name) || '');
     if (tenCu !== '' && tenLuu !== '' && tenCu !== tenLuu) {
       kq.lyDo = 'khaccaypha';
       kq.loi  = 'CHƯA khôi phục gì cả. Bản sao lưu "' + doc.ten + '" là của gia ' +
                 'phả "' + tenLuu + '", còn app đang mở gia phả "' + tenCu + '". ' +
-                'Nhiều khả năng Config.gs đang trỏ FILE_ID sang gia phả này ' +
-                'nhưng THU_MUC_SAO_LUU_ID vẫn là thư mục của gia phả kia — mỗi ' +
-                'gia phả phải có thư mục Sao_luu riêng.';
+                'Hai cây khác nhau thì bản sao lưu phải nằm ở hai thư mục ' +
+                'Sao_luu khác nhau — nhiều khả năng có bản bị chép nhầm chỗ ' +
+                'trên Google Drive.';
       return kq;
     }
 
@@ -1285,7 +1597,7 @@ function khoiPhucSaoLuu(fileId, vanTayDaBiet) {
       return kq;
     }
 
-    kq.headRevisionId = dauVanTay_(cayMoi, DriveApp.getFileById(FILE_ID));
+    kq.headRevisionId = dauVanTay_(cayMoi, DriveApp.getFileById(maGiaPhaDangChon_()));
     kq.revision       = cayMoi.tree.revision;
     kq.tomTatTruoc    = tomTatCay_(cayCu);
     kq.tomTatSau      = tomTatCay_(cayMoi);
@@ -1311,14 +1623,15 @@ function docBanSaoLuu_(fileId) {
   var ma = String(fileId || '');
   if (!ma) { kq.loi = 'Chưa chọn bản sao lưu nào.'; return kq; }
 
-  if (!THU_MUC_SAO_LUU_ID || THU_MUC_SAO_LUU_ID.indexOf('DAN_ID_') === 0) {
-    kq.loi = 'Chưa điền THU_MUC_SAO_LUU_ID trong Config.gs.';
+  var maLuu = maThuMucSaoLuu_();
+  if (!maLuu) {
+    kq.loi = 'Không tìm thấy thư mục Sao_luu của gia phả đang mở.';
     return kq;
   }
 
   var f = null;
   try {
-    var lap = DriveApp.getFolderById(THU_MUC_SAO_LUU_ID).getFiles();
+    var lap = DriveApp.getFolderById(maLuu).getFiles();
     while (lap.hasNext()) {
       var x = lap.next();
       if (x.getId() === ma) { f = x; break; }
@@ -1492,12 +1805,11 @@ function giaiThichSaoLuuHong_(chu) {
  */
 function saoLuuNeuDenHan_(cayCu, batBuoc) {
   if (!SAO_LUU || !SAO_LUU.bat) return 'tat';
-  if (!THU_MUC_SAO_LUU_ID || THU_MUC_SAO_LUU_ID.indexOf('DAN_ID_') === 0) {
-    return 'khong-cau-hinh';
-  }
+  var maLuu = maThuMucSaoLuu_();
+  if (!maLuu) return 'khong-cau-hinh';
 
   try {
-    var thuMuc = DriveApp.getFolderById(THU_MUC_SAO_LUU_ID);
+    var thuMuc = DriveApp.getFolderById(maLuu);
     var ds     = dsSaoLuuMoiTruoc_(thuMuc);
 
     if (ds.length && batBuoc !== true) {
@@ -1585,36 +1897,56 @@ function donBanSaoLuuCu_(thuMuc) {
  * trắng, không có đường lùi. Mỗi gia phả một thư mục riêng thì chuyện ấy
  * không xảy ra được nữa.
  *
- * KHÔNG đụng một chữ nào vào file dữ liệu đang dùng. Sau khi chạy xong, app
- * VẪN mở file cũ cho tới khi bạn tự tay dán ba mã mới vào `Config.gs`.
+ * KHÔNG đụng một chữ nào vào file dữ liệu đang dùng, và không đụng gia phả nào
+ * đã có sẵn.
  *
- * Cách dùng:
- *   1. Sửa `TEN_HO` trong `Config.gs` thành tên họ của gia phả MỚI
- *   2. Chọn hàm `taoFileDuLieuMoi` rồi bấm Chạy
- *   3. Mở Nhật ký thực thi, chép ba dòng in ra vào `Config.gs`
- *   4. Chia sẻ thư mục mới cho người trong họ (xem dòng nhắc cuối nhật ký)
+ * ⚠ **THƯ MỤC ĐÃ CÓ THÌ DÙNG LẠI, không tạo chồng.** Chủ dự án thường dựng sẵn
+ * thư mục trên Drive trước khi nghĩ tới việc chạy hàm này — thư mục
+ * `Gia_pha_Le_Van_Trac` đã nằm đó với một thư mục `Anh` bên trong là ca thật
+ * ngày 28/08/2026. Bản đầu của hàm gặp thư mục cùng tên thì DỪNG, tức không
+ * điền được vào chỗ người ta đã chuẩn bị; mà nếu tên lệch một chữ hoa thì nó
+ * lại mọc ra thư mục thứ hai trông na ná — đúng cái lộn xộn nó sinh ra để
+ * tránh. Nay nó chỉ dừng khi bên trong **đã có sẵn một file `giapha-*.json`**,
+ * tức gia phả ấy thật sự tồn tại rồi.
+ *
+ * @param {string} tenGiaPha  tên gia phả, gõ thẳng khi chạy. Tên sao thì thư
+ *        mục vậy: `'Le Van Trac'` → thư mục `Gia_pha_Le_Van_Trac`, file
+ *        `giapha-le-van-trac.json`, và `tree.name` giữ nguyên câu bạn gõ.
+ *        Bỏ trống thì lấy `TEN_HO` trong `Config.gs`.
+ *
+ * Cách dùng: sửa một dòng trong `chayTaoDbMoi()` ngay dưới đây rồi bấm Chạy.
  */
-function taoFileDuLieuMoi() {
-  var slug   = slugTenHo_(TEN_HO);
-  var tenThu = 'Gia_pha_' + slug;
+function taoFileDuLieuMoi(tenGiaPha) {
+  var ten    = String(tenGiaPha || TEN_HO || '').trim() || 'Gia pha';
+  var tenThu = 'Gia_pha_' + slugThuMuc_(ten);
+  var tenFile = 'giapha-' + slugFile_(ten) + '.json';
   var goc    = DriveApp.getRootFolder();
 
-  // Đã có thư mục cùng tên thì DỪNG, không tạo chồng. Chạy nhầm hai lần mà
-  // hàm cứ tạo tiếp thì trên Drive mọc ra hai thư mục trông y hệt nhau, và
-  // người đi dán ID không có cách nào biết mình đang dán mã của cái nào.
-  if (goc.getFoldersByName(tenThu).hasNext()) {
-    Logger.log('DỪNG — trong My Drive đã có thư mục tên "' + tenThu + '".\n' +
-               'Chưa tạo gì cả. Hoặc bạn đã chạy hàm này rồi (mở thư mục ấy ra ' +
-               'lấy ID), hoặc đổi TEN_HO trong Config.gs rồi chạy lại.');
-    return;
+  // Dùng lại thư mục cùng tên nếu có. Chỉ DỪNG khi trong đó đã có một file
+  // gia phả — lúc ấy chạy tiếp là dựng cây thứ hai trong cùng một chỗ, và
+  // `Sao_luu` chung sẽ trộn bản của hai cây, đúng thứ hàm này chống lại.
+  var thuMuc = null;
+  var lapT = goc.getFoldersByName(tenThu);
+  if (lapT.hasNext()) {
+    thuMuc = lapT.next();
+    var daCo = daCoFileGiaPha_(thuMuc);
+    if (daCo) {
+      Logger.log('DỪNG — thư mục "' + tenThu + '" đã chứa sẵn một gia phả:\n' +
+                 '  ' + daCo + '\n\n' +
+                 'Chưa tạo gì cả, và cũng chưa đụng gì vào file ấy. Muốn dựng ' +
+                 'một gia phả KHÁC thì gõ một cái tên khác vào chayTaoDbMoi().');
+      return;
+    }
+    Logger.log('(dùng lại thư mục "' + tenThu + '" đã có sẵn trên Drive)');
+  } else {
+    thuMuc = goc.createFolder(tenThu);
   }
 
   var email = '';
   try { email = Session.getActiveUser().getEmail() || ''; } catch (e) { email = ''; }
 
-  var thuMuc  = goc.createFolder(tenThu);
-  var thuAnh  = thuMuc.createFolder('Anh');
-  var thuLuu  = thuMuc.createFolder('Sao_luu');
+  var thuAnh  = thuMucCon_(thuMuc, 'Anh');
+  var thuLuu  = thuMucCon_(thuMuc, 'Sao_luu');
   var luc     = bayGio_();
 
   var cay = {
@@ -1622,7 +1954,7 @@ function taoFileDuLieuMoi() {
     version: 1,
     tree: {
       id:            'T0001',
-      name:          TEN_HO,
+      name:          ten,
       rootPersonId:  null,          // chưa có ai; app hỏi khi thêm người đầu tiên
       photoFolderId: thuAnh.getId(),
       note:          '',
@@ -1642,7 +1974,7 @@ function taoFileDuLieuMoi() {
   };
 
   var file = thuMuc.createFile(
-    'giapha-' + slug + '.json',
+    tenFile,
     JSON.stringify(cay, null, 2),
     'application/json'
   );
@@ -1656,9 +1988,17 @@ function taoFileDuLieuMoi() {
     '1. Lưu Config.gs, chạy hàm kiemTraConfig() — phải thấy đủ ba dòng ĐẠT.\n' +
     '2. Triển khai → Quản lý các bản triển khai → bút chì →\n' +
     '   Phiên bản: "Phiên bản mới" → Triển khai.\n' +
-    '3. Trên Drive, chia sẻ thư mục "' + tenThu + '" cho người trong họ.\n' +
-    '   ⚠ Thư mục "Sao_luu" thì chia sẻ RIÊNG cho mình bạn thôi — khôi phục\n' +
-    '   là việc ghi đè cả gia phả, không nên nằm trong tay nhiều người.\n\n' +
+    '3. Trên Drive, chia sẻ HAI THỨ, và chia sẻ TỪNG CÁI MỘT:\n' +
+    '     · file "' + tenFile + '"  — Người xem, hoặc Người chỉnh sửa\n' +
+    '     · thư mục "Anh"                     — Người xem là đủ\n' +
+    '   ⚠ TUYỆT ĐỐI ĐỪNG chia sẻ thư mục mẹ "' + tenThu + '".\n' +
+    '     Google Drive cho quyền KẾ THỪA xuống mọi thứ bên trong, và không gỡ\n' +
+    '     lại được ở thư mục con — chia sẻ thư mục mẹ là chia sẻ luôn\n' +
+    '     "Sao_luu", tức trao cho người khác quyền ghi đè cả gia phả.\n' +
+    '   ⚠ KHÔNG chia sẻ "Sao_luu" cho ai cả. Khôi phục là việc ghi đè toàn bộ,\n' +
+    '     nó phải nằm trong tay đúng một người.\n' +
+    '   ⚠ Quên chia sẻ thư mục "Anh" thì người trong họ VẪN xem được cây,\n' +
+    '     nhưng không thấy một tấm ảnh nào — mà app không báo lỗi gì cả.\n\n' +
     '--- Cho tới lúc bạn làm xong bước 2, app VẪN đang mở file CŨ ---\n' +
     'Hàm này không đụng gì vào file dữ liệu đang dùng.\n\n' +
     'Thư mục vừa tạo : ' + tenThu + '  ·  ' + thuMuc.getId() + '\n' +
@@ -1667,13 +2007,96 @@ function taoFileDuLieuMoi() {
 }
 
 /**
- * Tên họ → mảnh chữ đặt được tên file: bỏ dấu, thay khoảng trắng bằng gạch nối.
+ * ĐÂY LÀ CHỖ BẠN SỬA. Gõ tên gia phả mới vào trong ngoặc rồi bấm Chạy.
+ *
+ * Sửa ở đây chứ không sửa `Config.gs`: `TEN_HO` còn hiện trên tiêu đề app và
+ * màn hình Cài đặt, nên đổi nó đi để tạo một gia phả khác rồi quên đổi lại là
+ * đổi tên cả app — mà không có gì báo cho bạn biết.
+ */
+function chayTaoDbMoi() {
+  taoFileDuLieuMoi('Le Van Trac');
+}
+
+/** Tên file gia phả đầu tiên tìm thấy trong một thư mục, hoặc null. */
+function daCoFileGiaPha_(thuMuc) {
+  try {
+    var lap = thuMuc.getFiles();
+    while (lap.hasNext()) {
+      var f = lap.next();
+      if (laTenFileGiaPha_(f.getName())) return f.getName();
+    }
+  } catch (e) {}
+  return null;
+}
+
+/** Thư mục con theo tên: có thì dùng lại, chưa có thì tạo. */
+function thuMucCon_(thuMuc, ten) {
+  var lap = thuMuc.getFoldersByName(ten);
+  return lap.hasNext() ? lap.next() : thuMuc.createFolder(ten);
+}
+
+/**
+ * Tên này có phải tên một file GIA PHẢ không — và quan trọng hơn: có phải một
+ * bản SAO LƯU không.
+ *
+ * Đo được ngày 28/08/2026 trên Drive thật: tài khoản chủ dự án có **8** file
+ * khớp `giapha-*`, mà **6** trong số đó là bản sao lưu. Không lọc thì màn hình
+ * chọn gia phả bày ra sáu cái tên na ná nhau, và bấm nhầm một cái là mở một
+ * bản chụp cũ tưởng là gia phả đang dùng.
+ *
+ * ⚠ KHÔNG phân biệt được bằng NỘI DUNG: bản sao lưu là một cây hoàn toàn hợp
+ * lệ, `format` y hệt. Tên file là dấu hiệu duy nhất, nên khuôn tên
+ * `giapha-sao-luu_…` mà `saoLuuNeuDenHan_` đặt là một **hợp đồng**, không phải
+ * chuyện thẩm mỹ — đổi nó thì phải đổi cả hàm này.
+ */
+function laTenFileGiaPha_(ten) {
+  var t = String(ten || '');
+  if (t.slice(-5) !== '.json') return false;
+  if (t.indexOf('giapha-') !== 0) return false;
+  if (t.indexOf('giapha-sao-luu') === 0) return false;
+  return true;
+}
+
+/**
+ * Tên gia phả → tên THƯ MỤC: bỏ dấu, giữ hoa đầu từ, nối bằng gạch dưới.
+ * `'Le Van Trac'` → `'Le_Van_Trac'`, để thành `Gia_pha_Le_Van_Trac`.
+ *
+ * Khuôn này chép theo đúng cái chủ dự án đã đặt tay trên Drive từ trước
+ * (`Gia_pha_Nguyen_Trong_Bac`). Hàm sinh ra khuôn khác thì tên bác đặt và tên
+ * hàm đặt không bao giờ trùng nhau, và mỗi lần chạy lại mọc thêm một thư mục
+ * na ná bên cạnh cái cũ.
+ */
+function slugThuMuc_(ten) {
+  var chu = boDau_(String(ten || 'Gia pha'));
+  chu = chu.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return chu || 'Gia_pha';
+}
+
+/**
+ * Tên gia phả → mảnh chữ đặt được tên FILE: bỏ dấu, chữ thường, gạch nối.
+ * `'Le Van Trac'` → `'le-van-trac'`, để thành `giapha-le-van-trac.json`.
+ */
+function slugFile_(ten) {
+  var chu = boDau_(String(ten || 'gia-pha')).toLowerCase();
+  chu = chu.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return chu || 'gia-pha';
+}
+
+/** Giữ nguyên tên cũ cho bài kiểm b51 và mọi nơi đang gọi. */
+function slugTenHo_(ten) {
+  return slugFile_(ten);
+}
+
+/**
+ * Bỏ dấu tiếng Việt, GIỮ NGUYÊN hoa thường.
  *
  * `normalize('NFD')` không có trong Apps Script (máy chạy ES5 cũ), nên bảng
- * tra tay là đường duy nhất. Bảng chỉ cần đủ cho tên họ người Việt.
+ * tra tay là đường duy nhất. Bảng phải có CẢ hai kiểu chữ — bản đầu chỉ có
+ * chữ thường và hạ cả câu xuống trước khi tra, nên nó không dùng được cho tên
+ * thư mục, nơi hoa đầu từ là thứ phải giữ.
  */
-function slugTenHo_(ten) {
-  var chu = String(ten || 'gia-pha').toLowerCase();
+function boDau_(ten) {
+  var chu = String(ten || '');
   var bang = [
     ['[àáạảãâầấậẩẫăằắặẳẵ]', 'a'],
     ['[èéẹẻẽêềếệểễ]',       'e'],
@@ -1682,12 +2105,18 @@ function slugTenHo_(ten) {
     ['[ùúụủũưừứựửữ]',       'u'],
     ['[ỳýỵỷỹ]',             'y'],
     ['đ',                   'd'],
+    ['[ÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴ]', 'A'],
+    ['[ÈÉẸẺẼÊỀẾỆỂỄ]',       'E'],
+    ['[ÌÍỊỈĨ]',             'I'],
+    ['[ÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠ]', 'O'],
+    ['[ÙÚỤỦŨƯỪỨỰỬỮ]',       'U'],
+    ['[ỲÝỴỶỸ]',             'Y'],
+    ['Đ',                   'D'],
   ];
   for (var i = 0; i < bang.length; i++) {
     chu = chu.replace(new RegExp(bang[i][0], 'g'), bang[i][1]);
   }
-  chu = chu.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  return chu || 'gia-pha';
+  return chu;
 }
 
 /**
@@ -1696,4 +2125,215 @@ function slugTenHo_(ten) {
  */
 function trangThaiCaiDat() {
   Logger.log(JSON.stringify(layPhien(), null, 2));
+}
+
+// ============================================================
+// 6. PHÉP THỬ TẠM — XOÁ SAU KHI CÓ CÂU TRẢ LỜI
+// ============================================================
+
+/**
+ * PHÉP THỬ cho màn hình CHỌN GIA PHẢ (28/08/2026). Chỉ ĐỌC và IN, không ghi
+ * gì, không sửa gì, không tạo gì. Chạy bao nhiêu lần cũng vô hại.
+ *
+ * Ba câu phải trả lời trước khi viết một dòng nào của màn hình chọn — và cả
+ * ba đều KHÔNG đoán được, phải đo trên Drive thật:
+ *
+ *   1. `searchFolders` chạy dưới danh tính người truy cập có thấy thư mục
+ *      NGƯỜI KHÁC CHIA SẺ cho họ không, hay chỉ thấy thư mục trong My Drive
+ *      của chính họ? Nếu chỉ thấy của mình thì cả thiết kế "Drive tự lọc theo
+ *      quyền" sụp, và phải quay lại kiểu khai danh sách bằng tay.
+ *
+ *   2. Người được chia sẻ thư mục `Gia_pha_X/` có duyệt được BÊN TRONG nó
+ *      không — file JSON, thư mục `Anh`, thư mục `Sao_luu`?
+ *
+ *   3. Quyền có KẾ THỪA xuống thư mục con không? Nếu có thì `Sao_luu` nằm
+ *      trong `Gia_pha_X/` bị chia sẻ theo, và luật "Sao_luu chỉ mình chủ dự
+ *      án" của việc 9 là bất khả thi — phải đưa `Sao_luu` ra ngoài.
+ *
+ * CÁCH CHẠY — phải chạy HAI LẦN, bằng HAI tài khoản khác nhau:
+ *   · lần 1: tài khoản chủ script (chạy thẳng trong trình soạn thảo này)
+ *   · lần 2: một tài khoản chỉ được CHIA SẺ, không phải chủ
+ * Chép cả hai bản Nhật ký thực thi ra rồi so. Chỗ hai bản khác nhau chính là
+ * câu trả lời.
+ */
+function thuTimGiaPha() {
+  var ra = [];
+  var email = '';
+  try { email = Session.getActiveUser().getEmail() || '(không đọc được)'; }
+  catch (e) { email = '(không đọc được: ' + e.message + ')'; }
+
+  ra.push('=== PHÉP THỬ TÌM GIA PHẢ ===');
+  ra.push('Đang chạy bằng : ' + email);
+  try {
+    ra.push('My Drive gốc   : ' + DriveApp.getRootFolder().getName());
+  } catch (e) {
+    ra.push('My Drive gốc   : KHÔNG mở được — ' + e.message);
+  }
+
+  // --- A. TÌM THEO THƯ MỤC ------------------------------------------------
+  ra.push('');
+  ra.push('--- A. searchFolders("title contains Gia_pha_") ---');
+  var soThuMuc = 0;
+  try {
+    var lapT = DriveApp.searchFolders(
+      "title contains 'Gia_pha_' and trashed = false");
+    while (lapT.hasNext()) {
+      soThuMuc++;
+      ra.push(moTaThuMucGiaPha_(lapT.next(), email));
+    }
+    if (soThuMuc === 0) {
+      ra.push('  (không thấy thư mục nào — nếu tài khoản này ĐÃ được chia sẻ ' +
+              'một thư mục Gia_pha_… thì đây chính là câu trả lời cho CÂU 1)');
+    }
+  } catch (e) {
+    ra.push('  LỖI khi tìm: ' + e.message);
+  }
+
+  // --- B. TÌM THEO FILE, để so với A --------------------------------------
+  // Hai đường có thể ra khác nhau: chia sẻ THẲNG file JSON mà không chia sẻ
+  // thư mục thì A trống còn B có. Biết điều đó thì mới chọn được đường nào
+  // làm đường chính của màn hình chọn.
+  ra.push('');
+  ra.push('--- B. searchFiles("title contains giapha-", .json) ---');
+  var soFile = 0;
+  try {
+    var lapF = DriveApp.searchFiles(
+      "title contains 'giapha-' and trashed = false");
+    while (lapF.hasNext()) {
+      var f = lapF.next();
+      if (f.getName().slice(-5) !== '.json') continue;
+      soFile++;
+      ra.push('  · ' + f.getName() + '  ·  ' + f.getId());
+      ra.push('      quyền của tôi trên file: ' + quyenTren_(f, email));
+      ra.push('      thư mục cha           : ' + keTenCha_(f));
+      ra.push('      là gia phả thật?      : ' + laGiaPha_(f));
+    }
+    if (soFile === 0) ra.push('  (không thấy file nào)');
+  } catch (e) {
+    ra.push('  LỖI khi tìm: ' + e.message);
+  }
+
+  // --- C. CẤU TRÚC ĐANG DÙNG THẬT -----------------------------------------
+  // Ba ID trong Config.gs trỏ tới thứ chủ dự án tạo TAY từ trước việc 9, nên
+  // chúng KHÔNG chắc nằm theo khuôn `Gia_pha_X/{json, Anh, Sao_luu}`. Màn hình
+  // chọn phải tìm được cả gia phả đang chạy, không chỉ gia phả sinh ra từ
+  // `taoFileDuLieuMoi()` — nếu không thì ngày bật nó lên, gia phả thật biến
+  // mất khỏi danh sách.
+  ra.push('');
+  ra.push('--- C. Ba ID đang khai trong Config.gs nằm ở đâu ---');
+  ra.push(moTaMaCauHinh_('FILE_ID (file dữ liệu)', FILE_ID, false));
+  ra.push(moTaMaCauHinh_('THU_MUC_ANH_ID', THU_MUC_ANH_ID, true));
+  ra.push(moTaMaCauHinh_('THU_MUC_SAO_LUU_ID', THU_MUC_SAO_LUU_ID, true));
+
+  ra.push('');
+  ra.push('=== TÓM TẮT: ' + soThuMuc + ' thư mục · ' + soFile + ' file ===');
+  ra.push('Không ghi, không sửa, không tạo gì cả.');
+  Logger.log(ra.join('\n'));
+}
+
+/** Một mã trong Config.gs trỏ tới đâu, và thứ ấy nằm trong thư mục nào. */
+function moTaMaCauHinh_(nhan, ma, laThuMuc) {
+  if (!ma || ma.indexOf('DAN_ID_') === 0) return '  · ' + nhan + ': chưa điền.';
+  try {
+    var x = laThuMuc ? DriveApp.getFolderById(ma) : DriveApp.getFileById(ma);
+    var cha = [];
+    var lap = x.getParents();
+    while (lap.hasNext()) cha.push(lap.next().getName());
+    return '  · ' + nhan + ': "' + x.getName() + '"' +
+           '\n      nằm trong: ' + (cha.length ? cha.join(' · ') : '(gốc My Drive)');
+  } catch (e) {
+    return '  · ' + nhan + ': KHÔNG mở được — ' + e.message;
+  }
+}
+
+/** Một thư mục gia phả: bên trong có gì, và mở được tới đâu. */
+function moTaThuMucGiaPha_(thuMuc, email) {
+  var d = [];
+  d.push('  · ' + thuMuc.getName() + '  ·  ' + thuMuc.getId());
+
+  try {
+    d.push('      chủ sở hữu: ' + thuMuc.getOwner().getEmail());
+  } catch (e) {
+    d.push('      chủ sở hữu: không đọc được (' + e.message + ')');
+  }
+
+  // CÂU 2: duyệt được bên trong không?
+  try {
+    var ds = [];
+    var lap = thuMuc.getFiles();
+    while (lap.hasNext()) ds.push(lap.next().getName());
+    d.push('      file bên trong: ' + (ds.length ? ds.join(' · ') : '(không có)'));
+  } catch (e) {
+    d.push('      file bên trong: KHÔNG duyệt được — ' + e.message);
+  }
+
+  var con = { Anh: null, Sao_luu: null };
+  try {
+    var lapC = thuMuc.getFolders();
+    while (lapC.hasNext()) {
+      var c = lapC.next();
+      if (con.hasOwnProperty(c.getName())) con[c.getName()] = c;
+    }
+  } catch (e) {
+    d.push('      thư mục con: KHÔNG duyệt được — ' + e.message);
+  }
+
+  d.push('      thư mục Anh    : ' + (con.Anh ? 'CÓ · ' + con.Anh.getId() : 'không thấy'));
+
+  // CÂU 3 — câu đắt nhất. Tài khoản KHÔNG phải chủ mà đếm được file trong
+  // Sao_luu thì quyền ĐÃ kế thừa xuống, và luật "Sao_luu chỉ mình chủ dự án"
+  // của việc 9 là bất khả thi ở dạng hiện nay.
+  if (!con.Sao_luu) {
+    d.push('      thư mục Sao_luu: không thấy  ← nếu đây là tài khoản KHÁCH ' +
+           'thì TỐT: quyền không kế thừa xuống');
+  } else {
+    var n = -1;
+    try {
+      n = 0;
+      var lapS = con.Sao_luu.getFiles();
+      while (lapS.hasNext()) { lapS.next(); n++; }
+    } catch (e) {
+      n = -1;
+    }
+    d.push('      thư mục Sao_luu: CÓ · ' + con.Sao_luu.getId() +
+           ' · đếm được ' + (n < 0 ? 'KHÔNG duyệt được' : n + ' bản') +
+           '  ← tài khoản KHÁCH mà đếm được nghĩa là quyền ĐÃ KẾ THỪA');
+  }
+
+  return d.join('\n');
+}
+
+/** Quyền của một email trên một file, hoặc lý do không hỏi được. */
+function quyenTren_(file, email) {
+  try {
+    return String(file.getAccess(email));
+  } catch (e) {
+    // Người chỉ có quyền xem thường KHÔNG được đọc danh sách chia sẻ — ném
+    // lỗi ở đây là chuyện bình thường, không phải sự cố. Cùng ca đã gặp ở
+    // `layPhien`.
+    return 'không hỏi được (' + e.message + ')';
+  }
+}
+
+/** Tên các thư mục cha, hoặc lời báo là không thấy cha nào. */
+function keTenCha_(file) {
+  try {
+    var ten = [];
+    var lap = file.getParents();
+    while (lap.hasNext()) ten.push(lap.next().getName());
+    return ten.length ? ten.join(' · ') : '(không thấy cha nào — file được ' +
+                                          'chia sẻ thẳng, không qua thư mục)';
+  } catch (e) {
+    return 'không đọc được (' + e.message + ')';
+  }
+}
+
+/** Đọc thử vài trăm chữ đầu xem có đúng là file của app này không. */
+function laGiaPha_(file) {
+  try {
+    var chu = file.getBlob().getDataAsString('UTF-8').slice(0, 400);
+    return chu.indexOf('giapha-json') >= 0 ? 'ĐÚNG' : 'không phải';
+  } catch (e) {
+    return 'không đọc được nội dung (' + e.message + ')';
+  }
 }
