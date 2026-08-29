@@ -3,7 +3,7 @@
 // Vai trò  : Xuất gia phả ra GEDCOM 5.5.1, và ĐỌC file .ged thành bản xem trước
 // Lớp      : domains — HÀM THUẦN, không chạm DOM, không gọi services
 // Phụ thuộc: utils/date, utils/text, utils/id, config, domains/union
-// Phiên bản: 1.6.0 · Cập nhật: 29/08/2026 18:25
+// Phiên bản: 1.7.0 · Cập nhật: 29/08/2026 19:30
 // ============================================================
 //
 // XUẤT: GEDCOM 5.5.1. Cũ hơn 7.0 nhưng gần như mọi phần mềm gia phả đọc được.
@@ -11,8 +11,9 @@
 //       rộng quan trọng hơn hiện đại.
 // NHẬP: hai chế độ. `parseGedcom` đọc file thành bản XEM TRƯỚC và KHÔNG ghi
 //       vào đâu cả. `mergeImported` đổ vào một gia phả MỚI (xong 29/08/2026).
-//       `detectDuplicates` dò trùng cho chế độ BỔ SUNG vào gia phả đang mở —
-//       phần trộn của chế độ ấy còn là khung. Xuất đứng trước nhập vì xuất chỉ
+//       `detectDuplicates` dò trùng cho chế độ BỔ SUNG vào gia phả đang mở,
+//       và `goiYCapTheoNguoi` suy ra điểm neo GIA ĐÌNH từ bản đồ NGƯỜI mà
+//       con người đã duyệt — phần trộn của chế độ ấy còn là khung. Xuất đứng trước nhập vì xuất chỉ
 //       ĐỌC: sai thì không mất gì, mà bản xuất ra lại thành ca kiểm sẵn có
 //       cho đường nhập — xem `kiem-thu/kiem-nhap-gedcom.mjs`.
 //
@@ -573,10 +574,31 @@ const GIOI_CHU = { M: 'Nam', F: 'Nữ' };
  *    DỪNG (`lyDoChan: 'neoMauThuan'`) chứ không lặng lẽ chọn bên nào. Không có
  *    điểm neo tay thì mâu thuẫn này vĩnh viễn không ai phát hiện.
  *
+ * --- `khaiMoi`: vế thứ hai của bảng ghép đôi (29/08/2026) ----------------
+ *
+ * Bảng hai cột có ĐÚNG HAI câu trả lời, không phải một: *"người này là ai
+ * trong cây"* và *"người này CHƯA CÓ trong cây"*. Vế thứ hai cũng là một lời
+ * khẳng định của con người, nên nó đi cùng cửa với `diemNeoTay`:
+ *
+ * - Khai `khaiMoi` mà không neo được → rơi vào `nguoiMoi`/`capMoi`, tức người
+ *   dùng đã kết luận thay cho máy. Không khai thì vẫn là `chuaNeo` như cũ —
+ *   luật *"không đủ căn cứ thì không kết luận"* của b60 giữ nguyên.
+ * - **Phép thử ngược chạy cả chiều này**: khai *"chưa có trong cây"* mà `uid`
+ *   hoặc mã của bản ghi ấy lại chỉ đúng vào một người đang có → DỪNG. Đây là
+ *   ca đắt nhất của cả đường nhập, vì nó đẻ ra một người thứ hai mang cùng
+ *   một con người, và không có nút hoàn tác.
+ * - Một bản ghi khai cả hai vế là một lỗi gõ → `neoSai`, chặn cả lần nhập.
+ *
+ * ⚠ `khaiMoi` KHÔNG mở được cửa: khai cả file là "người mới" mà không có một
+ * điểm neo tay nào thì vẫn bị chặn ở `chuaKhaiDiemNeo`. Đó đúng là việc thứ
+ * nhất của luật điểm neo — chặn ca nhập nhầm file của dòng họ khác.
+ *
  * @param {object} tree      cây đích — gia phả đang mở
  * @param {object} imported  kết quả `parseGedcom`
- * @param {{diemNeoTay?: {trongFile:string, trongCay:string}[]}} [tuyChon]
+ * @param {{diemNeoTay?: {trongFile:string, trongCay:string}[],
+ *          khaiMoi?: string[]}} [tuyChon]
  *        `diemNeoTay` là những cặp NGƯỜI DÙNG tự chỉ ra. Thiếu là bị chặn.
+ *        `khaiMoi` là những mã TRONG FILE người dùng khai là chưa có trong cây.
  * @returns {{
  *   ok: boolean, lyDo: string, loi: string,
  *   caTrung: {
@@ -596,7 +618,8 @@ const GIOI_CHU = { M: 'Nam', F: 'Nữ' };
  *   thongKe: {soCaTrung:number, soCaNguoi:number, soCaCap:number,
  *             soGiongHet:number, soKhacTen:number, soDaXoa:number,
  *             soBoSung:number, soMauThuan:number,
- *             soNguoiMoi:number, soCapMoi:number, soChuaNeo:number}
+ *             soNguoiMoi:number, soCapMoi:number, soChuaNeo:number,
+ *             soNeoTay:number}
  * }}
  */
 export function detectDuplicates(tree, imported, tuyChon) {
@@ -656,6 +679,9 @@ export function detectDuplicates(tree, imported, tuyChon) {
   const { neoTay, loiNeoTay } = docNeoTay(
     tuyChon && tuyChon.diemNeoTay, nguoiCay, capCay, nguoiFile, capFile);
 
+  const khaiMoi = docKhaiMoi(
+    tuyChon && tuyChon.khaiMoi, neoTay, nguoiFile, capFile, loiNeoTay);
+
   const caTrung = [];
   const nguoiMoi = [];
   const capMoi = [];
@@ -713,18 +739,39 @@ export function detectDuplicates(tree, imported, tuyChon) {
 
   // Phép thử ngược: với mỗi điểm neo tay, hỏi xem máy TỰ nó sẽ chỉ vào ai.
   // Máy chỉ sang người khác nghĩa là một trong hai bên sai — dừng, không chọn.
-  const xungDot = [];
-  for (const [idFile, idCay] of neoTay) {
+  /** Máy TỰ nó sẽ chỉ bản ghi này vào ai — và bằng đường nào. */
+  const mayChiVao = (idFile) => {
     const banGhi = nguoiFile.get(idFile) || capFile.get(idFile);
     const uid = chu(banGhi && banGhi.uid);
-    const may = (uid && theoUid.get(uid)) ||
-                (neoCua(idFile) ? (nguoiCay.get(idFile) || capCay.get(idFile)) : null);
-    if (may && may.id !== idCay) {
+    const theoU = uid ? theoUid.get(uid) : null;
+    if (theoU) return { cu: theoU, duong: 'mã bền (uid)' };
+    if (!neoCua(idFile)) return { cu: null, duong: '' };
+    const cu = nguoiCay.get(idFile) || capCay.get(idFile) || null;
+    return cu ? { cu, duong: 'mã bản ghi' } : { cu: null, duong: '' };
+  };
+
+  const xungDot = [];
+  for (const [idFile, idCay] of neoTay) {
+    const { cu, duong } = mayChiVao(idFile);
+    if (cu && cu.id !== idCay) {
       xungDot.push({
         trongFile: idFile, trongCay: idCay,
-        vi: 'người khai đây là ' + idCay + ', nhưng ' +
-            (uid && theoUid.get(uid) ? 'mã bền (uid)' : 'mã bản ghi') +
-            ' của nó chỉ sang ' + may.id + '.',
+        vi: 'người khai đây là ' + idCay + ', nhưng ' + duong +
+            ' của nó chỉ sang ' + cu.id + '.',
+      });
+    }
+  }
+
+  // Cùng phép thử ngược, chiều còn lại: khai "chưa có trong cây" mà máy lại
+  // chỉ đúng vào một bản ghi đang có. Bỏ qua là đẻ ra một người thứ hai mang
+  // cùng một con người — và nhập không có nút hoàn tác.
+  for (const idFile of khaiMoi) {
+    const { cu, duong } = mayChiVao(idFile);
+    if (cu) {
+      xungDot.push({
+        trongFile: idFile, trongCay: cu.id,
+        vi: 'người khai đây là bản ghi CHƯA CÓ trong cây, nhưng ' + duong +
+            ' của nó chỉ sang ' + cu.id + ' đang có sẵn.',
       });
     }
   }
@@ -742,20 +789,29 @@ export function detectDuplicates(tree, imported, tuyChon) {
     const idFile = chu(p && p.id);
     if (!idFile) continue;
     const { cu, neo } = timBanCu(p, idFile, nguoiCay);
-    if (!neo) { nguoiChuaNeo.push(idFile); continue; }
+    if (!neo) { (khaiMoi.has(idFile) ? nguoiMoi : nguoiChuaNeo).push(idFile); continue; }
     if (!cu)  { nguoiMoi.push(idFile); continue; }
     daGhep.add(cu.id);
     caTrung.push(Object.assign(caNguoi(cu.id, cu, p), { neo, idTrongFile: idFile }));
   }
 
+  // Bản đồ NGƯỜI của chính lần chạy này — dựng xong ngay khi vòng người khép
+  // lại, và vòng gia đình bên dưới cần nó để khỏi kể ra mâu thuẫn giả.
+  const banDoNguoi = new Map();
+  for (const ca of caTrung) {
+    if (ca.kieu === 'nguoi') banDoNguoi.set(ca.idTrongFile, ca.id);
+  }
+  const doiSang = (id) => banDoNguoi.get(id) || id;
+
   for (const u of mang(imported.unions)) {
     const idFile = chu(u && u.id);
     if (!idFile) continue;
     const { cu, neo } = timBanCu(u, idFile, capCay);
-    if (!neo) { capChuaNeo.push(idFile); continue; }
+    if (!neo) { (khaiMoi.has(idFile) ? capMoi : capChuaNeo).push(idFile); continue; }
     if (!cu)  { capMoi.push(idFile); continue; }
     daGhep.add(cu.id);
-    caTrung.push(Object.assign(caCap(cu.id, cu, u, tenTheoMa), { neo, idTrongFile: idFile }));
+    caTrung.push(Object.assign(caCap(cu.id, cu, u, tenTheoMa, doiSang),
+                                { neo, idTrongFile: idFile }));
   }
 
   return khungKetQua({
@@ -834,11 +890,40 @@ function docNeoTay(ds, nguoiCay, capCay, nguoiFile, capFile) {
   return { neoTay, loiNeoTay };
 }
 
+/**
+ * Đọc và kiểm danh sách bản ghi người dùng khai là CHƯA CÓ trong cây.
+ *
+ * Ghi lỗi vào chính `loiNeoTay` chứ không dựng danh sách lỗi thứ hai: với
+ * người đang đứng trước màn hình thì cả hai đều là *"một dòng tôi khai bị
+ * sai"*, và hai danh sách là hai chỗ để quên đọc một chỗ.
+ */
+function docKhaiMoi(ds, neoTay, nguoiFile, capFile, loiNeoTay) {
+  const khaiMoi = new Set();
+  for (const x of mang(ds)) {
+    const trongFile = chu(x);
+    const ghiLoi = (vi) => loiNeoTay.push({ trongFile, trongCay: '', vi });
+
+    if (!trongFile) { ghiLoi('một dòng khai "chưa có trong cây" mà không có mã.'); continue; }
+    if (!nguoiFile.has(trongFile) && !capFile.has(trongFile)) {
+      ghiLoi('file không có bản ghi ' + trongFile + '.');
+      continue;
+    }
+    // Vừa khai ghép với một người, vừa khai là người mới. Không đoán bên nào.
+    if (neoTay.has(trongFile)) {
+      ghiLoi('vừa khai ghép với ' + neoTay.get(trongFile) +
+             ', vừa khai là bản ghi chưa có trong cây.');
+      continue;
+    }
+    khaiMoi.add(trongFile);
+  }
+  return khaiMoi;
+}
+
 function thongKeRong() {
   return {
     soCaTrung: 0, soCaNguoi: 0, soCaCap: 0, soGiongHet: 0, soKhacTen: 0,
     soDaXoa: 0, soBoSung: 0, soMauThuan: 0, soNguoiMoi: 0, soCapMoi: 0,
-    soChuaNeo: 0,
+    soChuaNeo: 0, soNeoTay: 0,
   };
 }
 
@@ -864,11 +949,23 @@ function caNguoi(id, cu, moi) {
   };
 }
 
-/** Một ca trùng mã GIA ĐÌNH. */
-function caCap(id, cu, moi, tenTheoMa) {
+/**
+ * Một ca trùng mã GIA ĐÌNH.
+ *
+ * ⚠ `doiSang` là thứ giữ cho hàm này khỏi kể ra một MÂU THUẪN KHÔNG CÓ THẬT.
+ * Một cặp trong file trỏ tới bạn đời và con bằng mã CỦA FILE; cùng những con
+ * người ấy trong cây mang mã khác. So thẳng hai bên là lần nào cũng ra
+ * *"Vợ/chồng: A, C ≠ a, c"* — bốn mã, hai con người. Đo trên hai file thật
+ * 29/08/2026: mọi cặp ghép được đều đẻ ra đúng dòng giả ấy.
+ *
+ * Nên phải dịch mã file sang mã cây TRƯỚC khi so, bằng chính bản đồ người mà
+ * vòng chạy trước vừa dựng xong. Chỗ này chạy được là nhờ vòng NGƯỜI luôn
+ * đứng trước vòng GIA ĐÌNH — đổi thứ tự hai vòng ấy là hỏng lặng lẽ.
+ */
+function caCap(id, cu, moi, tenTheoMa, doiSang) {
   const { boSung, mauThuan } = soTruong(TRUONG_CAP, cu, moi);
-  dongBanDoi(boSung, mauThuan, cu, moi, tenTheoMa);
-  dongCon(boSung, mauThuan, cu, moi, tenTheoMa);
+  dongBanDoi(boSung, mauThuan, cu, moi, tenTheoMa, doiSang);
+  dongCon(boSung, mauThuan, cu, moi, tenTheoMa, doiSang);
 
   const tenDangCo = keBanDoi(cu, tenTheoMa);
   const tenTrongFile = keBanDoi(moi, tenTheoMa);
@@ -877,7 +974,7 @@ function caCap(id, cu, moi, tenTheoMa) {
     id,
     tenDangCo,
     tenTrongFile,
-    khacTen: !cungTap(banDoiCua(cu), banDoiCua(moi)),
+    khacTen: !cungTap(banDoiCua(cu), banDoiCua(moi).map(doiSang)),
     daXoa: cu.deleted === true,
     giongHet: boSung.length === 0 && mauThuan.length === 0,
     boSung,
@@ -930,9 +1027,9 @@ function dongConSong(boSung, mauThuan, cu, moi) {
  * thiếu người, hoặc hai bên có người riêng) là mâu thuẫn, và bày cả hai danh
  * sách: đây chính là dòng nói to nhất khi nhập nhầm file của gia phả khác.
  */
-function dongBanDoi(boSung, mauThuan, cu, moi, tenTheoMa) {
+function dongBanDoi(boSung, mauThuan, cu, moi, tenTheoMa, doiSang) {
   const a = banDoiCua(cu);
-  const b = banDoiCua(moi);
+  const b = banDoiCua(moi).map(doiSang);
   if (cungTap(a, b)) return;
 
   const ke = (ds) => ds.map((id) => moTaMa(id, tenTheoMa)).join(', ');
@@ -951,12 +1048,12 @@ function dongBanDoi(boSung, mauThuan, cu, moi, tenTheoMa) {
  * mọi đứa sau nó, nên so `order` thì một ca bổ sung đúng đắn sẽ kéo theo cả
  * loạt "mâu thuẫn" giả. Thứ tự anh em có màn *Sắp thứ tự* riêng của nó.
  */
-function dongCon(boSung, mauThuan, cu, moi, tenTheoMa) {
+function dongCon(boSung, mauThuan, cu, moi, tenTheoMa, doiSang) {
   const a = new Map();
   for (const c of mang(cu.children)) if (c && chu(c.personId)) a.set(c.personId, c);
 
   for (const c of mang(moi.children)) {
-    const id = chu(c && c.personId);
+    const id = doiSang(chu(c && c.personId));
     if (!id) continue;
     const ten = moTaMa(id, tenTheoMa);
     const qhMoi = chu(nhanQuanHeCon(c.relation));
@@ -1019,6 +1116,89 @@ function soDoiCua(p) {
 
 function mang(x) {
   return Array.isArray(x) ? x : [];
+}
+
+/**
+ * Suy ra điểm neo cho GIA ĐÌNH từ bản đồ NGƯỜI mà con người đã duyệt xong.
+ *
+ * --- Vì sao hàm này KHÔNG phá luật "app không tự xác định điểm neo" -------
+ *
+ * Vì một gia đình trong app không có căn cước riêng: nó **chính là** tập bạn
+ * đời của nó. Hai bạn đời đã được con người khẳng định là ai thì gia đình
+ * của họ không còn gì để đoán — đây là một phép SUY RA, không phải một phép
+ * đoán. Luật của b60 cấm app tự chỉ ra điểm neo ĐẦU TIÊN; hàm này chỉ chạy
+ * sau khi con người đã chỉ, và nơi gọi phải tự giữ điều đó (xem
+ * `pages/form-ghep-doi.js`).
+ *
+ * Không suy ra thì cái giá rất cụ thể: file khai gia đình *a + c*, cây đã có
+ * *A + C* đúng hai con người ấy, mà lần trộn vẫn đẻ thêm một cặp thứ hai —
+ * hai vợ chồng cưới nhau hai lần trên cùng một sơ đồ.
+ *
+ * BA chỗ hàm này chịu thua, và cả ba đều im lặng bỏ qua chứ không đoán:
+ *
+ * 1. Còn một bạn đời chưa có trong bản đồ → chưa đủ căn cứ.
+ * 2. Cây không có cặp nào mang ĐÚNG tập bạn đời ấy → đây là cặp mới thật.
+ * 3. Hai gia đình trong file cùng suy ra một cặp trong cây → bỏ cả hai, vì
+ *    ghép một cặp hai lần là hai lần ghi đè, lần sau xoá mất lần trước.
+ *
+ * HÀM THUẦN.
+ *
+ * @param {object} tree        cây đích
+ * @param {object} imported    kết quả `parseGedcom`
+ * @param {Map<string,string>|object} banDoNguoi  mã người TRONG FILE → mã
+ *        người TRONG CÂY. Chỉ chứa những người đã ghép được; người khai là
+ *        "chưa có trong cây" thì KHÔNG có mặt ở đây.
+ * @returns {{trongFile:string, trongCay:string}[]}
+ */
+export function goiYCapTheoNguoi(tree, imported, banDoNguoi) {
+  const tra = (id) => (banDoNguoi instanceof Map
+    ? banDoNguoi.get(id)
+    : (banDoNguoi && typeof banDoNguoi === 'object' ? banDoNguoi[id] : ''));
+
+  const khoaCua = (ds) => ds.slice().sort().join('|');
+
+  // Cặp đã xoá mềm KHÔNG được làm đích: ghép vào một cặp nằm trong thùng rác
+  // là dựng lại nó bằng cửa sau, mà người dùng thì không thấy chuyện ấy.
+  const capTheoKhoa = new Map();
+  const trung = new Set();
+  for (const u of mang(tree && tree.unions)) {
+    if (!u || !chu(u.id) || u.deleted === true) continue;
+    const k = khoaCua(banDoiCua(u));
+    if (k === '') continue;
+    if (capTheoKhoa.has(k)) trung.add(k);
+    else capTheoKhoa.set(k, u.id);
+  }
+
+  const ketQua = [];
+  const daDung = new Map();   // mã cặp trong cây → mã cặp trong file đầu tiên
+  const boDi = new Set();
+  for (const u of mang(imported && imported.unions)) {
+    const idFile = chu(u && u.id);
+    if (!idFile) continue;
+    const banDoi = banDoiCua(u);
+    if (banDoi.length === 0) continue;
+
+    const trongCay = [];
+    for (const id of banDoi) {
+      const sang = chu(tra(id));
+      if (!sang) { trongCay.length = 0; break; }
+      trongCay.push(sang);
+    }
+    if (trongCay.length === 0) continue;
+
+    const k = khoaCua(trongCay);
+    if (trung.has(k)) continue;         // cây đang có hai cặp y hệt nhau
+    const capCay = capTheoKhoa.get(k);
+    if (!capCay) continue;
+
+    if (daDung.has(capCay)) { boDi.add(capCay); continue; }
+    daDung.set(capCay, idFile);
+    ketQua.push({ trongFile: idFile, trongCay: capCay });
+  }
+
+  return boDi.size === 0
+    ? ketQua
+    : ketQua.filter((x) => !boDi.has(x.trongCay));
 }
 
 /**

@@ -2,8 +2,9 @@
 // giapha · js/pages/import-export.js
 // Vai trò  : Hai màn hình — XUẤT GEDCOM, và NHẬP GEDCOM (đọc + ghi thật)
 // Lớp      : pages — được phép gọi mọi lớp dưới
-// Phụ thuộc: state, domains/gedcom, services/{gas,repo}, utils/{date,text}, config
-// Phiên bản: 1.3.0 · Cập nhật: 29/08/2026 09:44
+// Phụ thuộc: state, pages/form-ghep-doi, domains/gedcom, services/{gas,repo},
+//            utils/{date,text}, config
+// Phiên bản: 1.4.0 · Cập nhật: 29/08/2026 19:30
 // ============================================================
 //
 // File này giữ HAI màn hình, và chúng là hai chiều của cùng một cửa:
@@ -57,6 +58,7 @@
 import { state } from '../state.js';
 import { exportGedcom, tenFileGedcom, tomTatXuat, parseGedcom, mergeImported }
   from '../domains/gedcom.js';
+import { openGhepDoi, closeGhepDoi } from './form-ghep-doi.js';
 import { chonGiaPha } from '../services/gas.js';
 import { taoGiaPhaMoi, khoiTao, luuCay } from '../services/repo.js';
 import { formatDate, stampNow } from '../utils/date.js';
@@ -503,6 +505,9 @@ export function openNhapGedcom() {
 }
 
 export function closeNhapGedcom() {
+  // Bảng ghép đôi nằm TRÊN màn này. Đóng màn dưới mà bỏ lại lớp trên là để
+  // một lớp phủ mồ côi che kín app, và không còn nút nào gỡ nó ra.
+  closeGhepDoi();
   if (lopPhuNhap) lopPhuNhap.remove();
   lopPhuNhap = null;
   hopXemTruoc = null;
@@ -704,12 +709,16 @@ function motDongNguoi(p) {
 // chọn, vì nó bắt sửa `gas/Code.gs` rồi chủ dự án phải triển khai lại bằng
 // tay — và cái giá ấy đắt hơn hẳn một câu giải thích đúng lúc.
 //
-// --- Vì sao KHÔNG có nút "bổ sung vào gia phả đang mở" ------------------
+// --- Nút "bổ sung vào gia phả đang mở" nay MỞ ĐƯỢC (29/08/2026) ---------
 //
-// Nó là việc riêng, và việc riêng ấy chưa làm: bổ sung thì phải DÒ TRÙNG
-// trước, rồi để người dùng quyết từng ca một. Bày sẵn một cái nút xám cho
-// đúng ý định thiết kế thì tử tế hơn là im lặng — người dùng biết đường ấy
-// có tồn tại và đang đợi.
+// Nó dẫn sang `pages/form-ghep-doi.js` — bảng ghép đôi hai cột, chỗ người
+// dùng khai điểm neo. Bảng ấy CŨNG chưa ghi gì: nó dừng ở bản xem trước
+// "sau khi trộn sẽ thế nào". Nên hai màn hình này vẫn còn ở phía chỉ ĐỌC,
+// và cái nút mở ra một đường đi tiếp chứ không mở ra một lần ghi.
+//
+// ⚠ Đường bổ sung cần một gia phả ĐANG MỞ, khác hẳn đường tạo cây mới. Không
+// có cây thì nói thẳng ra ở đây, đừng để bảng ghép đôi mở ra rồi mới báo
+// "cây rỗng" — lúc ấy người dùng đã đi qua một cửa không dẫn tới đâu.
 
 function veKhoiGhi(kq) {
   const khoi = document.createElement('div');
@@ -762,11 +771,29 @@ function veKhoiGhi(kq) {
   nutGhi.addEventListener('click', () => chayGhiVaoCayMoi(kq, o, nutGhi, tin));
   khoi.append(nutGhi);
 
-  const chuaLam = document.createElement('div');
-  chuaLam.style.cssText =
-    'margin-top:12px;font-size:12px;line-height:1.6;color:#8a8078';
-  chuaLam.textContent = 'Bổ sung vào gia phả đang mở: chưa có.';
-  khoi.append(chuaLam);
+  khoi.append(veNhanKhoi('Hoặc bổ sung vào gia phả đang mở'));
+
+  const coCay = !!(state.tree && Array.isArray(state.tree.persons) &&
+                   state.tree.persons.length > 0);
+
+  const giaiThich = document.createElement('div');
+  giaiThich.style.cssText =
+    'font-size:12px;line-height:1.6;color:#8a8078;margin-bottom:8px';
+  giaiThich.textContent = coCay
+    ? 'Bạn sẽ tự chỉ ra ai trong file là ai trong cây. Bước này chưa ghi gì.'
+    : 'Chưa mở gia phả nào có người, nên chưa có ai để ghép. Dùng đường tạo ' +
+      'gia phả mới bên trên.';
+  khoi.append(giaiThich);
+
+  const nutBoSung = nut('Bổ sung vào gia phả đang mở', false,
+                        () => openGhepDoi(kq));
+  nutBoSung.dataset.viec = 'mo-ghep-doi';
+  nutBoSung.disabled = !coCay;
+  if (!coCay) {
+    nutBoSung.style.opacity = '.45';
+    nutBoSung.style.cursor = 'default';
+  }
+  khoi.append(nutBoSung);
 
   return khoi;
 }
