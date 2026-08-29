@@ -3,7 +3,7 @@
 // Vai trò  : Xuất gia phả ra GEDCOM 5.5.1, và ĐỌC file .ged thành bản xem trước
 // Lớp      : domains — HÀM THUẦN, không chạm DOM, không gọi services
 // Phụ thuộc: utils/date, utils/text, utils/id, utils/graph, config, domains/union
-// Phiên bản: 1.10.0 · Cập nhật: 30/08/2026 01:15
+// Phiên bản: 1.10.0 · Cập nhật: 29/08/2026 22:10
 // ============================================================
 //
 // XUẤT: GEDCOM 5.5.1. Cũ hơn 7.0 nhưng gần như mọi phần mềm gia phả đọc được.
@@ -1391,7 +1391,7 @@ export function goiYCapTheoNguoi(tree, imported, banDoNguoi) {
  * Kiểm xem BỘ ĐIỂM NEO người dùng vừa khai có mâu thuẫn với QUAN HỆ GIA ĐÌNH
  * hay không — và trả lời được cả câu *"sai ở dòng nào"*.
  *
- * --- Vì sao phải có hàm này (đo được, 30/08/2026) --------------------------
+ * --- Vì sao phải có hàm này (đo được, 29/08/2026) --------------------------
  *
  * Trước b63, đường trộn có đúng MỘT phép kiểm điểm neo mang tên `neoMauThuan`,
  * và nó hỏi một câu hẹp: *"lời khai của người dùng có đá nhau với bản ghi mà

@@ -4,7 +4,7 @@
 //            cửa duy nhất khai điểm neo cho chế độ NHẬP BỔ SUNG
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/gedcom, utils/text, config
-// Phiên bản: 1.2.0 · Cập nhật: 30/08/2026 01:15
+// Phiên bản: 1.2.0 · Cập nhật: 29/08/2026 22:10
 // ============================================================
 //
 // Ý lấy từ phần mềm bản đồ, chủ dự án nêu 29/08/2026: chọn điểm A trên bản đồ
