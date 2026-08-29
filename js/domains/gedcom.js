@@ -3,15 +3,16 @@
 // Vai trò  : Xuất gia phả ra GEDCOM 5.5.1, và ĐỌC file .ged thành bản xem trước
 // Lớp      : domains — HÀM THUẦN, không chạm DOM, không gọi services
 // Phụ thuộc: utils/date, utils/text, utils/id, config, domains/union
-// Phiên bản: 1.3.0 · Cập nhật: 29/08/2026 09:44
+// Phiên bản: 1.4.0 · Cập nhật: 29/08/2026 11:51
 // ============================================================
 //
 // XUẤT: GEDCOM 5.5.1. Cũ hơn 7.0 nhưng gần như mọi phần mềm gia phả đọc được.
 //       Mục đích xuất là để dữ liệu ĐI ĐƯỢC SANG NƠI KHÁC, nên tương thích
 //       rộng quan trọng hơn hiện đại.
-// NHẬP: nửa A xong (29/08/2026) — `parseGedcom` đọc được file thành bản XEM
-//       TRƯỚC. Nó KHÔNG ghi vào đâu cả; `mergeImported` mới là hàm đụng vào
-//       dữ liệu và hàm ấy còn là khung. Xuất đứng trước nhập vì xuất chỉ
+// NHẬP: hai chế độ. `parseGedcom` đọc file thành bản XEM TRƯỚC và KHÔNG ghi
+//       vào đâu cả. `mergeImported` đổ vào một gia phả MỚI (xong 29/08/2026).
+//       `detectDuplicates` dò trùng cho chế độ BỔ SUNG vào gia phả đang mở —
+//       phần trộn của chế độ ấy còn là khung. Xuất đứng trước nhập vì xuất chỉ
 //       ĐỌC: sai thì không mất gì, mà bản xuất ra lại thành ca kiểm sẵn có
 //       cho đường nhập — xem `kiem-thu/kiem-nhap-gedcom.mjs`.
 //
@@ -80,9 +81,9 @@
 //   biết là *cố ý giấu*, không phải *dữ liệu thiếu*.
 
 import { parseLooseDate, formatDate } from '../utils/date.js';
-import { coGiaTri } from '../utils/text.js';
+import { coGiaTri, fullName } from '../utils/text.js';
 import { isValidId } from '../utils/id.js';
-import { QUAN_HE_CON_NHAN } from '../config.js';
+import { QUAN_HE_CON_NHAN, nhanQuanHeCon, nhanTrangThaiCap } from '../config.js';
 import { ranksRoRang } from './union.js';
 
 // ============================================================
@@ -247,13 +248,14 @@ export function tomTatXuat(tree, tuyChon) {
 }
 
 // ============================================================
-// 2. NHẬP — việc 11, nửa A: ĐỌC và XEM TRƯỚC
+// 2. NHẬP — việc 11: ĐỌC và XEM TRƯỚC
 // ============================================================
 //
 // ⚠ `parseGedcom` KHÔNG ghi vào đâu cả. Nó nhận một chuỗi và trả về một bản
-// xem trước. `detectDuplicates` và `mergeImported` — hai hàm THẬT SỰ đụng vào
-// dữ liệu — còn là khung, và đó là chủ ý: nhập là đường MỘT CHIỀU, nên nửa
-// đầu của việc 11 chỉ làm phần KHÔNG mất gì nếu sai.
+// xem trước. `detectDuplicates` cũng chỉ ĐỌC — nó bày ra chỗ lệch chứ không
+// quyết. `mergeImported` là hàm duy nhất trong file này đụng vào dữ liệu.
+// Thứ tự ấy là chủ ý: nhập là đường MỘT CHIỀU, nên phần KHÔNG mất gì nếu sai
+// được làm trước và làm xong hẳn.
 //
 // --- Vì sao bản xem trước phải kể ra thứ MẤT, không chỉ thứ được ---------
 //
@@ -432,14 +434,359 @@ export function parseGedcom(text) {
   };
 }
 
+// ============================================================
+// DÒ TRÙNG — việc 11, chế độ BỔ SUNG
+// ============================================================
+//
+// Chỉ chế độ *bổ sung vào gia phả đang mở* cần tới phần này; chế độ *tạo gia
+// phả mới* ghi vào một cây rỗng nên không có gì để đối chiếu.
+//
+// --- Nhận nhau bằng MÃ, không bằng tên (chủ dự án chốt 29/08/2026) -------
+//
+// Hỏi: *"dựa vào đâu để nghi hai bản ghi là cùng một người"*. Chủ dự án đáp:
+// **"id của người, gia đình"**.
+//
+// Đúng với ca dùng thật, và ca dùng thật chỉ có một: xuất gia phả này ra
+// `.ged` → ai đó sửa/thêm ở phần mềm khác → nhập lại để cập nhật. Luật b56
+// *giữ nguyên mã nếu mã đúng khuôn app* làm cho vòng ấy khép kín — `P0004`
+// đi ra rồi về vẫn là `P0004`.
+//
+// So bằng TÊN thì sao? Màn Rà soát đã so bằng tên (`checkDuplicate`: trùng
+// tên + trùng năm sinh). Nó hợp ở đó vì nó chỉ CẢNH BÁO. Ở đây kết luận dẫn
+// tới một lần ghi không lùi lại được, mà trong một dòng họ thì cháu mang tên
+// ông là tục lệ chứ không phải lỗi — nhận nhầm hai người thành một là nhập
+// đời cháu đè lên đời ông.
+//
+// --- ⚠ Chỗ hở của phép nhận theo mã, và cách bịt --------------------------
+//
+// Mã chỉ chắc chắn khi file đến TỪ CHÍNH gia phả này. Hai gia phả khác nhau
+// đều bắt đầu từ `P0001`, nên nhập nhầm file của họ khác vào sẽ ra hàng loạt
+// ca *"trùng mã, khác hẳn người"*.
+//
+// Hàm này KHÔNG tự đoán và KHÔNG tự chặn. Nó làm hai việc:
+//
+// 1. mỗi ca đều mang sẵn **tên hai bên** (`tenDangCo` / `tenTrongFile`), để
+//    màn duyệt bày cạnh nhau — nhìn phát biết ngay là nhầm file;
+// 2. đếm riêng số ca **khác tên chính** (`thongKe.soKhacTen`), để màn hình nói
+//    thẳng được *"40/45 ca trùng mã nhưng khác tên — nhiều khả năng đây là
+//    file của gia phả khác"* trước khi người dùng bấm bất cứ nút nào.
+//
+// Quyết cuối cùng vẫn là của người, từng ca một. Đó là chỗ chốt chặn thật.
+//
+// --- Hàm này KHÔNG quyết, nó chỉ BÀY ------------------------------------
+//
+// Nó không trộn, không chọn hộ, không sắp thứ tự ưu tiên. Nó trả ra ba thứ
+// rời nhau: ca trùng mã · bản ghi mới hẳn · và với mỗi ca trùng thì đúng hai
+// danh sách — `boSung` (ô cây đang TRỐNG mà file có chữ) và `mauThuan` (hai
+// bên đều có chữ mà khác nhau). Đúng như chủ dự án đặt: *"liệt kê sự thay
+// đổi = mâu thuẫn để người nhập chọn cập nhật cái gì, trường hợp dữ liệu gốc
+// không có thông tin thì hiển nhiên là bổ sung, liệt kê những nội dung bổ
+// sung cho người dùng biết"*.
+
+/** Đọc một trường ra CHỮ NGƯỜI ĐỌC ĐƯỢC. Rỗng nghĩa là ô ấy đang trống. */
+const TRUONG_NGUOI = [
+  { truong: 'ten',         nhan: 'Tên chính',  doc: (p) => fullName(p) },
+  { truong: 'tenKhac',     nhan: 'Tên khác',   doc: (p) => tenKhacCua(p) },
+  { truong: 'sex',         nhan: 'Giới tính',  doc: (p) => GIOI_CHU[p.sex] || '' },
+  { truong: 'birth',       nhan: 'Ngày sinh',  doc: (p) => formatDate(p.birth) },
+  { truong: 'birthPlace',  nhan: 'Nơi sinh',   doc: (p) => noiCua(p.birth) },
+  { truong: 'death',       nhan: 'Ngày mất',   doc: (p) => formatDate(p.death) },
+  { truong: 'deathPlace',  nhan: 'Nơi mất',    doc: (p) => noiCua(p.death) },
+  { truong: 'burialPlace', nhan: 'An táng',    doc: (p) => chu(p.burialPlace) },
+  { truong: 'title',       nhan: 'Chức tước',  doc: (p) => chu(p.title) },
+  { truong: 'occupation',  nhan: 'Nghề nghiệp', doc: (p) => chu(p.occupation) },
+  { truong: 'education',   nhan: 'Học vấn',    doc: (p) => chu(p.education) },
+  { truong: 'religion',    nhan: 'Tôn giáo',   doc: (p) => chu(p.religion) },
+  { truong: 'residence',   nhan: 'Quê quán',   doc: (p) => chu(p.residence) },
+  { truong: 'nationality', nhan: 'Dân tộc',    doc: (p) => chu(p.nationality) },
+  { truong: 'doi',         nhan: 'Đời',        doc: (p) => soDoiCua(p) },
+  { truong: 'chi',         nhan: 'Chi / nhánh', doc: (p) => chu(p.vn && p.vn.branch) },
+  { truong: 'gio',         nhan: 'Ngày giỗ',   doc: (p) => chu(p.vn && p.vn.gio) },
+  { truong: 'note',        nhan: 'Ghi chú',    doc: (p) => chu(p.note) },
+  // `living` KHÔNG đứng trong bảng này — xem `dongConSong()`. Nó là hệ quả
+  // của ngày mất, và bày cả hai là bắt người dùng trả lời một câu hai lần.
+];
+
+const TRUONG_CAP = [
+  { truong: 'status',        nhan: 'Tình trạng', doc: (u) => nhanTrangThaiCap(u.status) },
+  { truong: 'marriage',      nhan: 'Ngày cưới',  doc: (u) => formatDate(u.marriage) },
+  { truong: 'marriagePlace', nhan: 'Nơi cưới',   doc: (u) => noiCua(u.marriage) },
+  { truong: 'note',          nhan: 'Ghi chú',    doc: (u) => chu(u.note) },
+];
+
+const GIOI_CHU = { M: 'Nam', F: 'Nữ' };
+
 /**
- * Dò bản ghi trùng giữa dữ liệu nhập vào và cây hiện có.
+ * Dò bản ghi trùng MÃ giữa dữ liệu nhập vào và cây hiện có.
  *
- * ⚠ CÒN LÀ KHUNG — việc 11 nửa sau. Nó chỉ có việc để làm ở chế độ **bổ sung
- * vào gia phả đang mở**; chế độ *tạo gia phả mới* ghi vào một cây rỗng nên
- * không có gì để đối chiếu. Xem `mergeImported`.
+ * HÀM THUẦN: không đụng vào `tree` lẫn `imported`, không đọc đồng hồ, không
+ * chạm DOM. Cùng hai tham số vào thì luôn ra cùng một kết quả.
+ *
+ * @param {object} tree      cây đích — gia phả đang mở
+ * @param {object} imported  kết quả `parseGedcom`
+ * @returns {{
+ *   ok: boolean, lyDo: string, loi: string,
+ *   caTrung: {
+ *     kieu: 'nguoi'|'giadinh', id: string,
+ *     tenDangCo: string, tenTrongFile: string,
+ *     khacTen: boolean, daXoa: boolean, giongHet: boolean,
+ *     boSung:   {truong:string, nhan:string, giaTri:string}[],
+ *     mauThuan: {truong:string, nhan:string, dangCo:string, trongFile:string}[]
+ *   }[],
+ *   nguoiMoi: string[], capMoi: string[],
+ *   thongKe: {soCaTrung:number, soCaNguoi:number, soCaCap:number,
+ *             soGiongHet:number, soKhacTen:number, soDaXoa:number,
+ *             soBoSung:number, soMauThuan:number,
+ *             soNguoiMoi:number, soCapMoi:number}
+ * }}
  */
-export function detectDuplicates(tree, imported) { /* TODO — việc 11 nửa sau */ }
+export function detectDuplicates(tree, imported) {
+  const thua = (lyDo, loi) => ({
+    ok: false, lyDo, loi,
+    caTrung: [], nguoiMoi: [], capMoi: [], thongKe: thongKeRong(),
+  });
+
+  if (!tree || typeof tree !== 'object') return thua('khongcocay', 'Chưa nạp được gia phả đích.');
+  if (!imported || !Array.isArray(imported.persons)) {
+    return thua('khongdocduoc', 'Chưa đọc được file nên chưa dò được gì.');
+  }
+
+  const nguoiCay = new Map();
+  for (const p of mang(tree.persons)) if (p && chu(p.id)) nguoiCay.set(p.id, p);
+  const capCay = new Map();
+  for (const u of mang(tree.unions)) if (u && chu(u.id)) capCay.set(u.id, u);
+
+  // Tên người dùng để KỂ RA một mã con — lấy được từ cả hai phía, vì một đứa
+  // con mới trong file thì cây chưa biết nó là ai.
+  const tenTheoMa = new Map();
+  for (const p of mang(tree.persons)) if (p && chu(p.id)) tenTheoMa.set(p.id, fullName(p));
+  for (const p of imported.persons) {
+    if (p && chu(p.id) && !tenTheoMa.has(p.id)) tenTheoMa.set(p.id, fullName(p));
+  }
+
+  const caTrung = [];
+  const nguoiMoi = [];
+  const capMoi = [];
+
+  for (const p of imported.persons) {
+    const id = chu(p && p.id);
+    if (!id) continue;
+    const cu = nguoiCay.get(id);
+    if (!cu) { nguoiMoi.push(id); continue; }
+    caTrung.push(caNguoi(id, cu, p));
+  }
+
+  for (const u of mang(imported.unions)) {
+    const id = chu(u && u.id);
+    if (!id) continue;
+    const cu = capCay.get(id);
+    if (!cu) { capMoi.push(id); continue; }
+    caTrung.push(caCap(id, cu, u, tenTheoMa));
+  }
+
+  return {
+    ok: true, lyDo: '', loi: '',
+    caTrung, nguoiMoi, capMoi,
+    thongKe: {
+      soCaTrung:   caTrung.length,
+      soCaNguoi:   caTrung.filter((c) => c.kieu === 'nguoi').length,
+      soCaCap:     caTrung.filter((c) => c.kieu === 'giadinh').length,
+      soGiongHet:  caTrung.filter((c) => c.giongHet).length,
+      soKhacTen:   caTrung.filter((c) => c.khacTen).length,
+      soDaXoa:     caTrung.filter((c) => c.daXoa).length,
+      soBoSung:    caTrung.reduce((n, c) => n + c.boSung.length, 0),
+      soMauThuan:  caTrung.reduce((n, c) => n + c.mauThuan.length, 0),
+      soNguoiMoi:  nguoiMoi.length,
+      soCapMoi:    capMoi.length,
+    },
+  };
+}
+
+function thongKeRong() {
+  return {
+    soCaTrung: 0, soCaNguoi: 0, soCaCap: 0, soGiongHet: 0, soKhacTen: 0,
+    soDaXoa: 0, soBoSung: 0, soMauThuan: 0, soNguoiMoi: 0, soCapMoi: 0,
+  };
+}
+
+/** Một ca trùng mã NGƯỜI. */
+function caNguoi(id, cu, moi) {
+  const { boSung, mauThuan } = soTruong(TRUONG_NGUOI, cu, moi);
+  dongConSong(boSung, mauThuan, cu, moi);
+
+  const tenDangCo = fullName(cu);
+  const tenTrongFile = fullName(moi);
+  return {
+    kieu: 'nguoi',
+    id,
+    tenDangCo,
+    tenTrongFile,
+    // So thô, KHÔNG bỏ dấu: chỗ này chỉ để bật một lời cảnh báo, mà cảnh báo
+    // thừa thì người dùng đọc rồi bỏ qua, còn cảnh báo thiếu thì im lặng.
+    khacTen: chu(tenDangCo) !== chu(tenTrongFile),
+    daXoa: cu.deleted === true,
+    giongHet: boSung.length === 0 && mauThuan.length === 0,
+    boSung,
+    mauThuan,
+  };
+}
+
+/** Một ca trùng mã GIA ĐÌNH. */
+function caCap(id, cu, moi, tenTheoMa) {
+  const { boSung, mauThuan } = soTruong(TRUONG_CAP, cu, moi);
+  dongBanDoi(boSung, mauThuan, cu, moi, tenTheoMa);
+  dongCon(boSung, mauThuan, cu, moi, tenTheoMa);
+
+  const tenDangCo = keBanDoi(cu, tenTheoMa);
+  const tenTrongFile = keBanDoi(moi, tenTheoMa);
+  return {
+    kieu: 'giadinh',
+    id,
+    tenDangCo,
+    tenTrongFile,
+    khacTen: !cungTap(banDoiCua(cu), banDoiCua(moi)),
+    daXoa: cu.deleted === true,
+    giongHet: boSung.length === 0 && mauThuan.length === 0,
+    boSung,
+    mauThuan,
+  };
+}
+
+/**
+ * Chạy một bảng trường qua hai bản ghi.
+ *
+ * Ba nhánh, và chỉ ba: file trống thì KHÔNG có gì để nói (nhập là đường một
+ * chiều — không bao giờ lấy cái trống của file xoá chữ đang có); cây trống mà
+ * file có chữ là BỔ SUNG; hai bên khác nhau là MÂU THUẪN.
+ */
+function soTruong(bang, cu, moi) {
+  const boSung = [];
+  const mauThuan = [];
+  for (const t of bang) {
+    const a = chu(t.doc(cu));
+    const b = chu(t.doc(moi));
+    if (b === '' || a === b) continue;
+    if (a === '') boSung.push({ truong: t.truong, nhan: t.nhan, giaTri: b });
+    else mauThuan.push({ truong: t.truong, nhan: t.nhan, dangCo: a, trongFile: b });
+  }
+  return { boSung, mauThuan };
+}
+
+/**
+ * `living` — chỉ kể khi nó là thứ DUY NHẤT mang tin ấy.
+ *
+ * Ngày mất đã chênh nhau thì dòng "Còn sống" chỉ nói lại đúng điều đó bằng
+ * chữ khác. Nhưng `1 DEAT Y` — biết chắc đã mất mà không có ngày — là một
+ * điều đã biết THẬT, và không dòng nào khác chở được nó.
+ */
+function dongConSong(boSung, mauThuan, cu, moi) {
+  const daKe = (ds) => ds.some((d) => d.truong === 'death');
+  if (daKe(boSung) || daKe(mauThuan)) return;
+
+  const a = cu.living === false;
+  const b = moi.living === false;
+  if (a === b) return;
+  if (!b) return;      // file nói "còn sống" thì không đè lên chữ đang có
+  if (!a) boSung.push({ truong: 'living', nhan: 'Còn sống', giaTri: 'Đã mất' });
+}
+
+/**
+ * Bạn đời của một cặp.
+ *
+ * Tập của file RỘNG HƠN là bổ sung — thêm người vào cặp. Lệch kiểu khác (file
+ * thiếu người, hoặc hai bên có người riêng) là mâu thuẫn, và bày cả hai danh
+ * sách: đây chính là dòng nói to nhất khi nhập nhầm file của gia phả khác.
+ */
+function dongBanDoi(boSung, mauThuan, cu, moi, tenTheoMa) {
+  const a = banDoiCua(cu);
+  const b = banDoiCua(moi);
+  if (cungTap(a, b)) return;
+
+  const ke = (ds) => ds.map((id) => moTaMa(id, tenTheoMa)).join(', ');
+  if (a.every((id) => b.includes(id))) {
+    const them = b.filter((id) => !a.includes(id));
+    boSung.push({ truong: 'banDoi', nhan: 'Vợ/chồng', giaTri: 'thêm ' + ke(them) });
+    return;
+  }
+  mauThuan.push({ truong: 'banDoi', nhan: 'Vợ/chồng', dangCo: ke(a), trongFile: ke(b) });
+}
+
+/**
+ * Con của một cặp.
+ *
+ * ⚠ `order` CỐ Ý không so. Thêm một người con vào giữa là đổi số thứ tự của
+ * mọi đứa sau nó, nên so `order` thì một ca bổ sung đúng đắn sẽ kéo theo cả
+ * loạt "mâu thuẫn" giả. Thứ tự anh em có màn *Sắp thứ tự* riêng của nó.
+ */
+function dongCon(boSung, mauThuan, cu, moi, tenTheoMa) {
+  const a = new Map();
+  for (const c of mang(cu.children)) if (c && chu(c.personId)) a.set(c.personId, c);
+
+  for (const c of mang(moi.children)) {
+    const id = chu(c && c.personId);
+    if (!id) continue;
+    const ten = moTaMa(id, tenTheoMa);
+    const qhMoi = chu(nhanQuanHeCon(c.relation));
+    const cCu = a.get(id);
+
+    if (!cCu) {
+      boSung.push({
+        truong: 'con', nhan: 'Con',
+        giaTri: 'thêm ' + ten + (qhMoi ? ' — ' + qhMoi.toLowerCase() : ''),
+      });
+      continue;
+    }
+    const qhCu = chu(nhanQuanHeCon(cCu.relation));
+    if (qhMoi === '' || qhMoi === qhCu) continue;
+    if (qhCu === '') {
+      boSung.push({ truong: 'con', nhan: 'Quan hệ với ' + ten, giaTri: qhMoi });
+    } else {
+      mauThuan.push({
+        truong: 'con', nhan: 'Quan hệ với ' + ten,
+        dangCo: qhCu, trongFile: qhMoi,
+      });
+    }
+  }
+}
+
+/** Mã người kèm tên, để một dòng chỉ đúng vào một bản ghi. */
+function moTaMa(id, tenTheoMa) {
+  const ten = chu(tenTheoMa.get(id));
+  return ten === '' ? id : ten + ' (' + id + ')';
+}
+
+function banDoiCua(u) {
+  return mang(u && u.partners).map((x) => chu(x)).filter((x) => x !== '');
+}
+
+function keBanDoi(u, tenTheoMa) {
+  const ds = banDoiCua(u);
+  return ds.length === 0 ? '' : ds.map((id) => moTaMa(id, tenTheoMa)).join(' — ');
+}
+
+function cungTap(a, b) {
+  if (a.length !== b.length) return false;
+  const s = new Set(a);
+  return b.every((x) => s.has(x));
+}
+
+function tenKhacCua(p) {
+  const ds = mang(p && p.names).filter((n) => n && n.type !== 'chinh');
+  return ds.map(fullName).filter((t) => chu(t) !== '').join(', ');
+}
+
+function noiCua(khoi) {
+  return chu(khoi && khoi.place);
+}
+
+function soDoiCua(p) {
+  const s = p && p.vn && p.vn.generation;
+  return Number.isInteger(s) && s > 0 ? String(s) : '';
+}
+
+function mang(x) {
+  return Array.isArray(x) ? x : [];
+}
 
 /**
  * Trộn bản đã đọc vào một cây gia phả. HÀM THUẦN: `tree` không bị đụng vào,
