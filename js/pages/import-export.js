@@ -368,16 +368,17 @@ function thuHoiDuongTam() {
 }
 
 // ============================================================
-// MÀN HÌNH NHẬP GEDCOM — việc 11, nửa A: CHỈ XEM TRƯỚC
+// MÀN HÌNH NHẬP GEDCOM — việc 11: XEM TRƯỚC, RỒI GHI VÀO CÂY MỚI
 // ============================================================
 //
-// ⚠ **Màn hình này KHÔNG ghi một chữ nào vào gia phả.** Nó đọc file, kể ra
-// những gì đọc được và những gì sẽ MẤT, rồi dừng. Nút ghi thật nằm ở nửa B.
+// Màn hình đi hai chặng: ĐỌC file và kể ra đọc được gì, rồi mới tới khối
+// *Ghi vào đâu* ở cuối. Chặng đầu không đụng vào đâu cả; chặng sau dựng một
+// gia phả mới trên Drive và ghi vào đó — xem khối *Đường GHI THẬT*.
 //
-// Chia đôi việc 11 như vậy là có lý do, và lý do ấy đo được: nửa này sai thì
-// không mất gì — cùng đúng lý lẽ đã xếp *xuất* đứng trước *nhập*. Nửa B mới
-// là nửa đụng vào dữ liệu, và nó bước vào với một bộ đọc đã chạy đúng trên
-// 59 người thật (`kiem-thu/kiem-nhap-gedcom.mjs`, 60 phép).
+// Chia đôi việc 11 như vậy là có lý do, và lý do ấy đo được: chặng đầu sai
+// thì không mất gì — cùng đúng lý lẽ đã xếp *xuất* đứng trước *nhập*. Chặng
+// ghi bước vào với một bộ đọc đã chạy đúng trên 59 người thật
+// (`kiem-thu/kiem-nhap-gedcom.mjs`).
 //
 // --- Vì sao bản xem trước kể THỨ MẤT trước thứ được ----------------------
 //
@@ -386,11 +387,25 @@ function thuHoiDuongTam() {
 // chứa, và nhập vào là chúng biến mất IM LẶNG. Nên khối cảnh báo đứng NGAY
 // TRÊN mấy con số, không nép xuống dưới.
 //
-// Ba điều màn hình này phải nói ra bằng chữ, không được để người dùng tự suy:
+// --- ⚠ CHỮ TRÊN MÀN HÌNH: CHỦ DỰ ÁN ĐÃ CẮT BỚT (29/08/2026) --------------
 //
-// 1. **Nhập là đường MỘT CHIỀU.** Không có nút hoàn tác.
-// 2. **Nhập vào một gia phả MỚI**, không đè lên gia phả đang mở.
-// 3. **Ảnh không đi theo file `.ged`.**
+// Bản đầu mở màn bằng một khối đỏ ba dòng — *một chiều · vào gia phả mới ·
+// ảnh không nhập* — và giải thích cả cơ chế. Chủ dự án gạch đi: **người dùng
+// app chỉ cần hiểu họ đang làm gì và kết quả sẽ thế nào**, phần lý lẽ là
+// chuyện giữa người viết mã với nhau, để lại trong ghi chú như đoạn này.
+//
+// Còn lại đúng hai câu, và cả hai đều nói HẬU QUẢ chứ không nói cơ chế:
+//
+// 1. **Lưu vào Google Drive của <tài khoản>.** Nói NƠI dữ liệu tới, kèm tên
+//    tài khoản — người dùng có hai tài khoản Google thì đây là chỗ họ nhận
+//    ra mình đang đứng ở tài khoản nào.
+// 2. **Ghi xong KHÔNG có nút hoàn tác.** Câu duy nhất được giữ nguyên vẹn
+//    qua đợt cắt, vì nó là thứ đổi được quyết định của người đang bấm.
+//
+// Ba điều bị cắt vẫn đúng và vẫn được app tuân thủ; chúng chỉ không còn bày
+// ra trước mặt người dùng nữa. Thứ nào thật sự cần biết SAU khi ghi — ảnh
+// không có, đường quay về cây cũ, cách chia sẻ Drive — đã nằm ở màn *Đã ghi
+// xong*, tức đúng lúc người ta cần dùng tới.
 //
 // --- HAI đường đưa file vào, cùng lý lẽ với màn Xuất --------------------
 //
@@ -436,24 +451,10 @@ export function openNhapGedcom() {
 
   const moDau = document.createElement('div');
   moDau.textContent =
-    'Chọn một file .ged để xem app đọc được những gì trong đó. Xem xong, ' +
-    'cuối màn hình mới tới chỗ ghi — chưa bấm nút ấy thì chưa có gì được ghi.';
+    'Chọn một file .ged để xem trước, rồi lưu thành một gia phả mới.';
   moDau.style.cssText =
     'font-size:13px;line-height:1.55;color:#8a8078;margin-top:8px';
   hop.append(moDau);
-
-  // --- Ba điều phải nói TRƯỚC khi người dùng chọn file -------------------
-  const nhacTruoc = document.createElement('div');
-  nhacTruoc.style.cssText =
-    'margin-top:12px;padding:10px 12px;border:1px solid #f0d8d0;border-radius:9px;' +
-    'background:#fbf0ec;color:#8a3a2a;font-size:12px;line-height:1.6';
-  nhacTruoc.append(
-    dongChu('· Nhập là đường MỘT CHIỀU — không có nút hoàn tác.'),
-    dongChu('· Dữ liệu nhập vào sẽ đi vào một gia phả MỚI, không đè lên gia ' +
-            'phả bạn đang mở.'),
-    dongChu('· Ảnh không nằm trong file .ged, nên ảnh không nhập được.'),
-  );
-  hop.append(nhacTruoc);
 
   // --- Đường 1: chọn file -----------------------------------------------
   const nhanFile = document.createElement('label');
@@ -720,9 +721,9 @@ function veKhoiGhi(kq) {
   nhac.style.cssText =
     'padding:10px 12px;border:1px solid #f0d8d0;border-radius:9px;' +
     'background:#fbf0ec;color:#8a3a2a;font-size:12px;line-height:1.6';
+  const taiKhoan = (state.phien && state.phien.email) || 'tài khoản của bạn';
   nhac.append(
-    dongChu('· Dữ liệu đi vào một gia phả MỚI trên Google Drive của bạn. ' +
-            'Gia phả đang mở không bị đụng tới.'),
+    dongChu('· Lưu vào Google Drive của ' + taiKhoan + '.'),
     dongChu('· Ghi xong KHÔNG có nút hoàn tác.'),
   );
   khoi.append(nhac);
@@ -764,9 +765,7 @@ function veKhoiGhi(kq) {
   const chuaLam = document.createElement('div');
   chuaLam.style.cssText =
     'margin-top:12px;font-size:12px;line-height:1.6;color:#8a8078';
-  chuaLam.textContent =
-    'Bổ sung vào gia phả đang mở — chưa làm được. Đường ấy phải dò người ' +
-    'trùng trước khi trộn, và đó là việc riêng của bản sau.';
+  chuaLam.textContent = 'Bổ sung vào gia phả đang mở: chưa có.';
   khoi.append(chuaLam);
 
   return khoi;
