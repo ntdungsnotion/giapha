@@ -4,7 +4,7 @@
 //            cửa duy nhất khai điểm neo cho chế độ NHẬP BỔ SUNG
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/gedcom, utils/text, config
-// Phiên bản: 1.0.0 · Cập nhật: 29/08/2026 19:30
+// Phiên bản: 1.2.0 · Cập nhật: 30/08/2026 01:15
 // ============================================================
 //
 // Ý lấy từ phần mềm bản đồ, chủ dự án nêu 29/08/2026: chọn điểm A trên bản đồ
@@ -46,11 +46,17 @@
 //    *a + c* trong file sẽ đẻ thêm một cặp thứ hai bên cạnh *A + C* đã có —
 //    hai vợ chồng cưới nhau hai lần trên cùng một sơ đồ.
 //
-// --- Chỗ màn hình này DỪNG LẠI ------------------------------------------
+// --- Chỗ màn hình này DỪNG LẠI (b62 dời một bước) -----------------------
 //
-// Nó KHÔNG ghi gì cả. Đầu ra là một bản đồ đã được người duyệt, cộng một bản
-// xem trước *"sau khi trộn sẽ thế nào"*. Phần trộn thật (`mergeImported` chế
-// độ bổ sung) là bước sau — và đó mới là chỗ không hoàn tác được.
+// Tới b62 thì nút trộn mở được, nhưng RANH GIỚI vẫn nguyên chỗ cũ: file này
+// vẫn KHÔNG ghi, và vẫn không gọi một hàm `services` nào. Nó chỉ gọi lại
+// `khiTron` — cái hàm mà nơi mở bảng đưa vào — và trao cho hàm ấy đúng bộ
+// tuỳ chọn đã dựng nên bản xem trước đang bày trên màn hình.
+//
+// ⚠ Trao ĐÚNG BỘ ẤY là cả lý do `ctx.tuyChon` tồn tại. `mergeImported` chế
+// độ bổ sung tự chạy lại `detectDuplicates` bằng bộ tuỳ chọn nó nhận được;
+// đưa nó một bộ khác bộ đã bày là bày một đằng ghi một nẻo, mà không phép
+// kiểm nào của hàm thuần bắt được — cả hai lần chạy đều hợp lệ.
 
 import { state } from '../state.js';
 import { detectDuplicates, goiYCapTheoNguoi } from '../domains/gedcom.js';
@@ -68,16 +74,22 @@ let ctx = null;
  *
  * @param {object} imported  kết quả `parseGedcom` — màn *Nhập GEDCOM* đã đọc
  *        xong và đã bày bản xem trước, ở đây không đọc lại file lần nữa.
+ * @param {(tuyChon:object, thongKe:object)=>void} [khiTron]
+ *        Nơi mở bảng đưa vào. Được gọi khi người dùng bấm *Trộn*, kèm ĐÚNG
+ *        bộ tuỳ chọn đã dựng nên bản xem trước đang bày. Không đưa hàm này
+ *        thì nút trộn ở trạng thái khoá — bảng lại thành chỉ-đọc.
  */
-export function openGhepDoi(imported) {
+export function openGhepDoi(imported, khiTron) {
   closeGhepDoi();
   if (!imported || !Array.isArray(imported.persons)) return;
 
   ctx = {
     imported,
+    khiTron: typeof khiTron === 'function' ? khiTron : null,
     chon: new Map(),     // mã trong file → '' | MOI | mã trong cây
     nguon: new Map(),    // mã trong file → 'tay' | 'may'
     hang: [],            // { id, o, nhan }
+    tuyChon: null,       // bộ tuỳ chọn đã dựng nên bản xem trước đang bày
     oTinh: null,
     oKetQua: null,
     nutTron: null,
@@ -297,6 +309,7 @@ function tinhLai() {
   const coTheSuyCap = vong1.duocTron && neoTay.length > 0;
 
   let kq = vong1;
+  ctx.tuyChon = { diemNeoTay: neoTay.slice(), khaiMoi: khaiMoi.slice() };
   if (coTheSuyCap) {
     for (const ca of vong1.caTrung) {
       if (ca.kieu === 'nguoi') banDo.set(ca.idTrongFile, ca.id);
@@ -312,10 +325,13 @@ function tinhLai() {
       if (bd.every(daQuyet)) capMoi.push(u.id);
     }
 
-    kq = detectDuplicates(cay, imported, {
+    // Giữ lại ĐÚNG bộ này chứ không dựng lại lúc bấm nút: dựng lại là mở
+    // đường cho hai bộ trôi lệch nhau, và bộ thứ hai thì không ai nhìn thấy.
+    ctx.tuyChon = {
       diemNeoTay: neoTay.concat(capSuyRa),
       khaiMoi: khaiMoi.concat(capMoi),
-    });
+    };
+    kq = detectDuplicates(cay, imported, ctx.tuyChon);
   }
 
   hienDeXuat(kq);
@@ -397,6 +413,10 @@ const LY_DO_CHAN = {
   neoMauThuan:
     'Bạn và app đang chỉ vào hai người khác nhau. Một trong hai bên sai, và ' +
     'app KHÔNG tự chọn bên nào.',
+  neoVoLy:
+    'Bộ điểm neo bạn vừa khai KHÔNG THỂ đúng: nó mâu thuẫn với quan hệ gia ' +
+    'đình đang có trong cây. Từng dòng sai được kể ngay dưới đây — sửa lại ' +
+    'ở cột phải rồi app tự kiểm lại.',
 };
 
 function hienKetQua(kq) {
@@ -405,7 +425,8 @@ function hienKetQua(kq) {
 
   if (!kq.duocTron) {
     o.append(veLoiNhan(LY_DO_CHAN[kq.lyDoChan] || kq.loi ||
-                       'Chưa trộn được.', kq.lyDoChan === 'neoMauThuan'));
+                       'Chưa trộn được.',
+                       kq.lyDoChan === 'neoMauThuan' || kq.lyDoChan === 'neoVoLy'));
     for (const l of kq.loiNeoTay) {
       o.append(veLoiNhan('· ' + moTaFile(l.trongFile) + ': ' + l.vi, true));
     }
@@ -448,39 +469,93 @@ function hienKetQua(kq) {
     o.append(k);
   }
 
+  // Mức DƯỚI lỗi: đáng ngó lại, nhưng không khoá nút. Chặn những ca này là
+  // dạy người dùng bấm qua cảnh báo mà không đọc — nếp đã chốt ở b42.
+  if (Array.isArray(kq.ngo) && kq.ngo.length > 0) {
+    o.append(veNhanKhoi('Đáng ngó lại — không chặn'));
+    const n = document.createElement('div');
+    n.dataset.viec = 'ngo-ghep';
+    n.style.cssText =
+      'padding:9px 11px;border:1px solid #ede0c8;border-radius:8px;' +
+      'background:#fdf8ec;color:#7a5f2a;font-size:12px;line-height:1.7';
+    for (const x of kq.ngo) {
+      n.append(dongChu('· ' + moTaFile(x.trongFile) + ': ' + x.vi));
+    }
+    o.append(n);
+  }
+
   if (t.soChuaNeo > 0) {
     o.append(veLoiNhan('Còn ' + t.soChuaNeo + ' bản ghi chưa quyết. Mỗi dòng ' +
                        'bên trái phải có một câu trả lời thì mới trộn được.', false));
   }
-  veNutTron(o, t.soChuaNeo === 0);
+  veNutTron(o, t.soChuaNeo === 0, t);
 }
 
 /**
- * Nút trộn — CÒN KHOÁ ở bước này.
+ * Nút trộn — từ b62 thì BẤM ĐƯỢC, và đây là chỗ không hoàn tác được.
  *
- * Bày một cái nút xám cho đúng ý định thiết kế thì tử tế hơn là im lặng:
- * người dùng biết đường ấy có tồn tại và đang đợi. Cùng nếp với nút *"Bổ
- * sung vào gia phả đang mở"* hồi b58.
+ * Ba nết của cái nút này, và cả ba đều vì một lý do ấy:
+ *
+ * 1. **Khoá khi chưa xong, nhưng vẫn BÀY RA.** Bày một cái nút xám thì tử tế
+ *    hơn là im lặng: người dùng biết đường ấy có tồn tại và đang đợi gì.
+ * 2. **Bấm một lần rồi tự khoá lại.** Đường ghi là bất đồng bộ; hai lần bấm
+ *    là hai lần trộn, và lần thứ hai trộn vào một cây đã có kết quả của lần
+ *    thứ nhất. Khoá ngay trong `click` chứ không đợi nơi gọi khoá hộ.
+ * 3. **Câu dưới nút nói ra chỗ hai bên KHÁC NHAU sẽ ra sao.** Màn hình này
+ *    chưa có ô chọn từng chỗ lệch, nên mọi chỗ lệch đều GIỮ của cây. Đó là
+ *    phía an toàn, nhưng người bấm phải biết trước — không thì họ tưởng bấm
+ *    xong là hai bên khớp nhau hết.
  */
-function veNutTron(o, sanSang) {
+function veNutTron(o, sanSang, thongKe) {
+  const chay = sanSang && !!ctx.khiTron;
   const b = document.createElement('button');
   b.type = 'button';
   b.dataset.viec = 'tron-vao-cay';
-  b.disabled = true;
-  b.textContent = 'Trộn vào gia phả đang mở — chưa làm';
+  b.disabled = !chay;
+  b.textContent = 'Trộn vào gia phả đang mở';
   b.style.cssText =
     'display:block;width:100%;margin:14px auto 0;min-height:44px;padding:8px 14px;' +
     'max-width:' + RONG_NUT_TOI_DA + ';font-size:14px;font-family:inherit;' +
-    'font-weight:600;line-height:1.35;border-radius:9px;cursor:default;' +
-    'background:#eae4dc;color:#8a8078;border:1px solid #e6e0d8;' +
-    'touch-action:manipulation';
+    'font-weight:600;line-height:1.35;border-radius:9px;' +
+    'touch-action:manipulation;' +
+    (chay
+      ? 'cursor:pointer;background:#2a2622;color:#fffdf9;border:1px solid #2a2622'
+      : 'cursor:default;background:#eae4dc;color:#8a8078;border:1px solid #e6e0d8');
+  if (chay) {
+    b.addEventListener('click', () => {
+      if (b.disabled) return;
+      b.disabled = true;
+      b.textContent = 'Đang trộn…';
+      oLoi.textContent = '';
+      oLoi.style.display = 'none';
+
+      // ⚠ Trộn hỏng thì KHÔNG đóng bảng. Người dùng vừa ghép tay từng dòng —
+      // đóng bảng là bắt họ làm lại từ đầu, và làm lại là một cơ hội nữa để
+      // khai nhầm. Nên lỗi hiện ngay tại đây, nút mở lại, bảng còn nguyên.
+      Promise.resolve(ctx.khiTron(ctx.tuyChon, thongKe)).then((kq2) => {
+        if (!ctx || !lopPhu || !b.isConnected) return;
+        if (kq2 && kq2.ok) return;          // xong rồi — nơi gọi tự lo phần sau
+        b.disabled = false;
+        b.textContent = 'Trộn vào gia phả đang mở';
+        oLoi.textContent = (kq2 && kq2.loi) || 'Chưa trộn được, và chưa ghi gì.';
+        oLoi.style.display = '';
+      });
+    });
+  }
   o.append(b);
 
+  const oLoi = veLoiNhan('', true);
+  oLoi.dataset.viec = 'loi-tron';
+  oLoi.style.display = 'none';
+  o.append(oLoi);
+
   const chu_ = document.createElement('div');
+  chu_.dataset.viec = 'chu-duoi-nut-tron';
   chu_.style.cssText =
     'margin-top:8px;font-size:12px;line-height:1.6;color:#8a8078';
-  chu_.textContent = sanSang
-    ? 'Bảng đã ghép xong. Phần ghi thật làm ở bước sau.'
+  chu_.textContent = chay
+    ? 'Bấm là ghi thật, và KHÔNG có nút hoàn tác. Chỗ nào hai bên nói khác ' +
+      'nhau thì giữ nguyên của gia phả đang mở — nhập chỉ điền vào ô còn trống.'
     : 'Ghép xong cả bảng thì đây là chỗ ghi thật.';
   o.append(chu_);
   ctx.nutTron = b;

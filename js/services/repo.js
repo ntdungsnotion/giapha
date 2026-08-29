@@ -3,7 +3,7 @@
 // Vai trò  : Nạp/lưu cây gia phả, dựng chỉ mục, giữ trạng thái phiên.
 // Lớp      : services — được gọi bởi: pages · gọi: services/gas, utils
 // Phụ thuộc: services/gas.js, utils/graph.js, utils/id.js, state.js
-// Phiên bản: 0.8.0 · Cập nhật: 29/08/2026 17:45
+// Phiên bản: 0.9.0 · Cập nhật: 29/08/2026 22:10
 // ============================================================
 //
 // RANH GIỚI ĐỔI KHO LƯU TRỮ.
@@ -214,7 +214,12 @@ export function nangCapNeuCan(raw) {
   // Mảng thiếu thì coi như rỗng. Gia phả mới lập chưa có ảnh, chưa có nguồn —
   // đó là chuyện thường, không phải file hỏng.
   if (!raw.tree || typeof raw.tree !== 'object') raw.tree = {};
-  for (const ten of ['persons', 'unions', 'media', 'sources', 'changeLog']) {
+  // `imports` là SỔ NHẬP — mỗi lần trộn một file `.ged` vào cây ghi một mục,
+  // giữ bảng ánh xạ *"bản ghi nào trong file là bản ghi nào trong cây"*. Có
+  // từ 29/08/2026 (b62); cây lập trước ngày ấy không có nó, và đó là chuyện
+  // thường chứ không phải file hỏng — xem `domains/gedcom.tronBoSung`.
+  for (const ten of ['persons', 'unions', 'media', 'sources', 'changeLog',
+                     'imports']) {
     if (!Array.isArray(raw[ten])) raw[ten] = [];
   }
 

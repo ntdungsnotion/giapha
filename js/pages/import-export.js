@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, pages/form-ghep-doi, domains/gedcom, services/{gas,repo},
 //            utils/{date,text}, config
-// Phiên bản: 1.4.0 · Cập nhật: 29/08/2026 19:30
+// Phiên bản: 1.5.0 · Cập nhật: 29/08/2026 22:10
 // ============================================================
 //
 // File này giữ HAI màn hình, và chúng là hai chiều của cùng một cửa:
@@ -675,7 +675,7 @@ function xemTruoc(chuoi, tenNguon) {
   }
 
   // --- Ghi vào đâu ------------------------------------------------------
-  hopXemTruoc.append(veKhoiGhi(kq));
+  hopXemTruoc.append(veKhoiGhi(kq, tenNguon));
 }
 
 /** Một dòng người trong bản xem trước: tên · năm sinh–năm mất · mã. */
@@ -709,18 +709,23 @@ function motDongNguoi(p) {
 // chọn, vì nó bắt sửa `gas/Code.gs` rồi chủ dự án phải triển khai lại bằng
 // tay — và cái giá ấy đắt hơn hẳn một câu giải thích đúng lúc.
 //
-// --- Nút "bổ sung vào gia phả đang mở" nay MỞ ĐƯỢC (29/08/2026) ---------
+// --- Đường BỔ SUNG nay đi hết (b62, 29/08/2026) ------------------------
 //
 // Nó dẫn sang `pages/form-ghep-doi.js` — bảng ghép đôi hai cột, chỗ người
-// dùng khai điểm neo. Bảng ấy CŨNG chưa ghi gì: nó dừng ở bản xem trước
-// "sau khi trộn sẽ thế nào". Nên hai màn hình này vẫn còn ở phía chỉ ĐỌC,
-// và cái nút mở ra một đường đi tiếp chứ không mở ra một lần ghi.
+// dùng khai điểm neo. Tới b61 bảng ấy dừng ở bản xem trước; từ b62 nó gọi
+// ngược lại `chayTronBoSung` bên dưới, và đó là một lần GHI THẬT.
+//
+// ⚠ Hàm ghi nằm ở ĐÂY chứ không nằm trong bảng ghép đôi, và chỗ ấy có lý do:
+// `form-ghep-doi.js` khai phụ thuộc của nó là `state · domains · utils ·
+// config` — không có `services`. Cho nó tự gọi `repo.luuCay` là kéo một màn
+// hình con xuống làm chỗ ghi thứ hai, và từ đó hai chỗ ghi sẽ trôi lệch nhau.
+// Bảng chỉ trao lại lời khai; ghi vẫn là việc của màn hình này.
 //
 // ⚠ Đường bổ sung cần một gia phả ĐANG MỞ, khác hẳn đường tạo cây mới. Không
 // có cây thì nói thẳng ra ở đây, đừng để bảng ghép đôi mở ra rồi mới báo
 // "cây rỗng" — lúc ấy người dùng đã đi qua một cửa không dẫn tới đâu.
 
-function veKhoiGhi(kq) {
+function veKhoiGhi(kq, tenNguon) {
   const khoi = document.createElement('div');
   khoi.dataset.viec = 'khoi-ghi-that';
 
@@ -780,13 +785,15 @@ function veKhoiGhi(kq) {
   giaiThich.style.cssText =
     'font-size:12px;line-height:1.6;color:#8a8078;margin-bottom:8px';
   giaiThich.textContent = coCay
-    ? 'Bạn sẽ tự chỉ ra ai trong file là ai trong cây. Bước này chưa ghi gì.'
+    ? 'Bạn sẽ tự chỉ ra ai trong file là ai trong cây, rồi mới ghi. Ghi xong ' +
+      'KHÔNG có nút hoàn tác.'
     : 'Chưa mở gia phả nào có người, nên chưa có ai để ghép. Dùng đường tạo ' +
       'gia phả mới bên trên.';
   khoi.append(giaiThich);
 
   const nutBoSung = nut('Bổ sung vào gia phả đang mở', false,
-                        () => openGhepDoi(kq));
+                        () => openGhepDoi(kq, (tuyChon, thongKe) =>
+                          chayTronBoSung(kq, tenNguon, tuyChon, thongKe)));
   nutBoSung.dataset.viec = 'mo-ghep-doi';
   nutBoSung.disabled = !coCay;
   if (!coCay) {
@@ -904,6 +911,150 @@ async function chayGhiVaoCayMoi(kq, o, nutGhi, tin) {
 
   dangGhi = false;
   veHopDaGhi(daTao.moi, dung.tomTat);
+}
+
+/**
+ * TRỘN BỔ SUNG vào gia phả đang mở — lần ghi thật của đường nhập thứ hai.
+ *
+ * Nhẹ hơn `chayGhiVaoCayMoi` đúng ba bước: không dựng cây, không chuyển cây,
+ * không nạp lại. App vẫn đứng nguyên ở gia phả đang mở, nên mọi cách hỏng
+ * của bốn bước kia đều không có ở đây — hỏng thì cây vẫn y nguyên.
+ *
+ * ⚠ Trả về `{ok, loi}` chứ KHÔNG tự bày lỗi ra màn hình. Bảng ghép đôi mới
+ * là chỗ phải hiện lỗi: người dùng vừa ghép tay từng dòng ở đó, và đóng bảng
+ * để báo lỗi chỗ khác là bắt họ ghép lại từ đầu.
+ *
+ * @returns {Promise<{ok:boolean, loi:string}>}
+ */
+async function chayTronBoSung(kq, tenNguon, tuyChon, thongKe) {
+  if (dangGhi) return { ok: false, loi: 'Đang ghi dở một việc khác.' };
+  dangGhi = true;
+
+  try {
+    // 1. Dựng dữ liệu. Hàm thuần, chưa đụng vào đâu — và nó tự chạy lại phép
+    //    dò trùng bằng đúng bộ tuỳ chọn bảng vừa trao, nên bản ghi xuống
+    //    đúng bằng bản đã bày.
+    const dung = mergeImported(state.tree, kq, {
+      che: 'bosung',
+      diemNeoTay: (tuyChon && tuyChon.diemNeoTay) || [],
+      khaiMoi: (tuyChon && tuyChon.khaiMoi) || [],
+      luc: stampNow(),
+      nguoiGhi: (state.phien && state.phien.email) || '',
+      tenFile: tenNguon || '',
+    });
+    if (!dung.ok) return { ok: false, loi: dung.loi };
+
+    const t = dung.tomTat;
+
+    // 2. Ghi. `luuCay` tự cập nhật `state.tree` và dựng lại chỉ mục khi máy
+    //    chủ gật, nên sơ đồ đằng sau lớp phủ tự vẽ lại — không phải tải trang.
+    const luu = await luuCay((banNhap) => {
+      banNhap.persons = dung.cay.persons;
+      banNhap.unions  = dung.cay.unions;
+      banNhap.sources = dung.cay.sources;
+      banNhap.imports = dung.cay.imports;
+    }, {
+      action: 'nhapBoSung',
+      target: (state.tree && state.tree.tree && state.tree.tree.id) || '',
+      note: 'Bổ sung từ file GEDCOM' + (tenNguon ? ' "' + tenNguon + '"' : '') +
+            ': thêm ' + t.themNguoi + ' người, ' + t.themCap + ' gia đình; ' +
+            'bổ sung chi tiết cho ' + t.suaNguoi + ' người, ' + t.suaCap +
+            ' gia đình.',
+    });
+    if (!luu || !luu.ok) {
+      return {
+        ok: false,
+        loi: 'Chưa ghi được nên gia phả vẫn y nguyên: ' +
+             ((luu && luu.loi) || 'máy chủ không nói lý do'),
+      };
+    }
+
+    closeGhepDoi();
+    veHopDaTron(t, dung.boQua, tenNguon);
+    return { ok: true, loi: '' };
+  } finally {
+    dangGhi = false;
+  }
+}
+
+/**
+ * Ghi xong thì kể lại ĐÃ ĐỔI GÌ, và kể cả chỗ KHÔNG đổi được.
+ *
+ * ⚠ `boQua` phải bày ra chứ không được nuốt. Đó là những chỗ file có nói mà
+ * app không ghi nổi — người dùng tưởng đã nhập hết thì họ sẽ không bao giờ
+ * quay lại sửa tay mấy chỗ ấy nữa.
+ */
+function veHopDaTron(t, boQua, tenNguon) {
+  const hop = lopPhuNhap && lopPhuNhap.querySelector('#giapha-nhap-gedcom');
+  if (!hop) return;
+
+  hop.innerHTML = '';
+  hopXemTruoc = null;
+
+  const tieuDe = document.createElement('div');
+  tieuDe.textContent = 'Đã trộn xong';
+  tieuDe.dataset.viec = 'da-tron-xong';
+  tieuDe.style.cssText = 'font-size:19px;font-weight:600';
+  hop.append(tieuDe);
+
+  const so = document.createElement('div');
+  so.dataset.viec = 'tom-tat-da-tron';
+  so.style.cssText =
+    'margin-top:10px;padding:10px 12px;border:1px solid #e6e0d8;border-radius:9px;' +
+    'background:#faf8f5;font-size:13px;line-height:1.7';
+  so.append(
+    dongChu('· Thêm mới: ' + t.themNguoi + ' người · ' + t.themCap + ' gia đình'),
+    dongChu('· Bổ sung chi tiết: ' + t.suaNguoi + ' người · ' + t.suaCap +
+            ' gia đình (' + t.soBoSung + ' ô đang trống được điền)'),
+    dongChu('· Gia phả nay có ' + t.soNguoi + ' người · ' + t.soCap + ' gia đình'),
+  );
+  hop.append(so);
+
+  if (t.soGiu > 0) {
+    hop.append(veLoiNhan(
+      'Có ' + t.soGiu + ' chỗ hai bên nói khác nhau. App GIỮ nguyên của gia ' +
+      'phả, không lấy của file. Muốn đổi thì sửa tay từng người.', false));
+  }
+
+  if (Array.isArray(boQua) && boQua.length > 0) {
+    hop.append(veNhanKhoi('Mấy chỗ file có nói mà app chưa ghi được'));
+    const k = document.createElement('div');
+    k.dataset.viec = 'bo-qua-khi-tron';
+    k.style.cssText =
+      'padding:9px 11px;border:1px solid #e6e0d8;border-radius:8px;' +
+      'background:#faf8f5;font-size:12px;line-height:1.7;color:#6a4a40';
+    for (const b of boQua.slice(0, 20)) {
+      k.append(dongChu('· ' + b.id + ' — ' + b.nhan + ': ' + b.vi));
+    }
+    if (boQua.length > 20) {
+      k.append(dongChu('… và ' + (boQua.length - 20) + ' chỗ nữa.'));
+    }
+    hop.append(k);
+  }
+
+  const nhac = document.createElement('div');
+  nhac.style.cssText =
+    'margin-top:12px;font-size:12px;line-height:1.7;color:#8a8078';
+  nhac.append(
+    dongChu('· Ảnh không nằm trong file .ged nên lần trộn này không mang ảnh nào sang.'),
+    dongChu('· App đã ghi lại "dòng nào trong file là ai trong cây". Lần sau ' +
+            'nhập tiếp từ ' + (tenNguon || 'cùng nguồn ấy') + ', bạn không ' +
+            'phải ghép lại những người đã ghép hôm nay.'),
+  );
+  hop.append(nhac);
+
+  const nutDong = document.createElement('button');
+  nutDong.type = 'button';
+  nutDong.dataset.viec = 'dong-sau-tron';
+  nutDong.textContent = 'Xong';
+  nutDong.style.cssText =
+    'display:block;width:100%;margin:16px auto 0;height:44px;' +
+    'max-width:' + RONG_NUT_TOI_DA + ';font-size:14px;font-family:inherit;' +
+    'font-weight:600;border-radius:9px;cursor:pointer;' +
+    'background:#2a2622;color:#fffdf9;border:1px solid #2a2622;' +
+    'touch-action:manipulation';
+  nutDong.addEventListener('click', () => closeNhapGedcom());
+  hop.append(nutDong);
 }
 
 /** Câu báo hỏng SAU khi app đã chuyển cây — chỗ dễ làm người dùng hoảng nhất. */
