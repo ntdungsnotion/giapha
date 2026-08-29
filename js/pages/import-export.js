@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, pages/form-ghep-doi, domains/gedcom, services/{gas,repo},
 //            utils/{date,text}, config
-// Phiên bản: 1.5.0 · Cập nhật: 29/08/2026 22:10
+// Phiên bản: 1.5.1 · Cập nhật: 29/08/2026 23:55
 // ============================================================
 //
 // File này giữ HAI màn hình, và chúng là hai chiều của cùng một cửa:
@@ -992,7 +992,7 @@ function veHopDaTron(t, boQua, tenNguon) {
   hopXemTruoc = null;
 
   const tieuDe = document.createElement('div');
-  tieuDe.textContent = 'Đã trộn xong';
+  tieuDe.textContent = 'Đã hợp nhất xong';
   tieuDe.dataset.viec = 'da-tron-xong';
   tieuDe.style.cssText = 'font-size:19px;font-weight:600';
   hop.append(tieuDe);
@@ -1036,7 +1036,7 @@ function veHopDaTron(t, boQua, tenNguon) {
   nhac.style.cssText =
     'margin-top:12px;font-size:12px;line-height:1.7;color:#8a8078';
   nhac.append(
-    dongChu('· Ảnh không nằm trong file .ged nên lần trộn này không mang ảnh nào sang.'),
+    dongChu('· Ảnh không nằm trong file .ged nên lần hợp nhất này không mang ảnh nào sang.'),
     dongChu('· App đã ghi lại "dòng nào trong file là ai trong cây". Lần sau ' +
             'nhập tiếp từ ' + (tenNguon || 'cùng nguồn ấy') + ', bạn không ' +
             'phải ghép lại những người đã ghép hôm nay.'),

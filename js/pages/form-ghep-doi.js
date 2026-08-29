@@ -4,7 +4,7 @@
 //            cửa duy nhất khai điểm neo cho chế độ NHẬP BỔ SUNG
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/gedcom, utils/text, config
-// Phiên bản: 1.3.0 · Cập nhật: 29/08/2026 23:20
+// Phiên bản: 1.4.0 · Cập nhật: 29/08/2026 23:50
 // ============================================================
 //
 // Ý lấy từ phần mềm bản đồ, chủ dự án nêu 29/08/2026: chọn điểm A trên bản đồ
@@ -27,7 +27,7 @@
 //    này trong cây"* · *"Chưa có trong cây"* · và *"chưa quyết"*. Dòng chưa
 //    quyết KHÔNG được coi là người mới — đó là luật của b60: *"người mới"*
 //    cũng là một kết luận, mà chưa nhìn thì chưa có căn cứ để kết luận gì.
-//    Còn một dòng chưa quyết thì nút trộn còn khoá.
+//    Còn một dòng chưa quyết thì nút hợp nhất còn khoá.
 //
 // 3. **GIA ĐÌNH KHÔNG phải khai tay.** Một gia đình trong app không có căn
 //    cước riêng: nó CHÍNH LÀ tập bạn đời của nó. Hai bạn đời đã được con
@@ -46,26 +46,35 @@
 //    *a + c* trong file sẽ đẻ thêm một cặp thứ hai bên cạnh *A + C* đã có —
 //    hai vợ chồng cưới nhau hai lần trên cùng một sơ đồ.
 //
-// 5. **NÚT ĐỀ XUẤT, và một TRẠNG THÁI THỨ BA (b64).** Đo được: với file `.ged`
-//    của phần mềm khác, cột *"App đề xuất"* của quyết định 4 LUÔN BẰNG 0 —
-//    máy nhận nhau bằng `uid` · sổ nhập · mã bản ghi, mà file ngoài không có
-//    đường nào trong ba (`NK-B63` mục 2.2). Nhánh 12 người thì 11 dòng phải
-//    khai tay; nhánh 30 người thì 29. Nút này gọi `lanTheoQuanHe` để lấp chỗ
-//    đó — đi theo bố mẹ · vợ chồng · con từ những người đã khai.
+// 5. **NÚT "ĐỂ APP CHỌN NỐT", và một trạng thái THỨ BA (b64).** Đo được: với
+//    file `.ged` của phần mềm khác, cột *"App nhận ra"* của quyết định 4 LUÔN
+//    BẰNG 0 — máy nhận nhau bằng `uid` · sổ nhập · mã bản ghi, mà file ngoài
+//    không có đường nào trong ba (`NK-B63` mục 2.2). Nhánh 12 người thì 11
+//    dòng phải khai tay; nhánh 30 người thì 29. Nút này gọi `lanTheoQuanHe`
+//    để lấp chỗ đó — đi theo bố mẹ · vợ chồng · con từ những người đã khai.
 //
 //    ⚠ **Không trái luật b60.** Luật ấy cấm *bày sẵn khi chưa khai điểm neo
 //    nào*; đây là nút bấm SAU, và nó khoá cho tới khi có điểm neo đầu tiên.
 //
-//    ⚠ **Đề xuất KHÔNG mở khoá nút Trộn.** `duocTron` chỉ đòi *không còn dòng
-//    trống*; nếu đề xuất được tính là đã quyết thì 29 dòng máy đoán đủ mở một
-//    nút GHI KHÔNG HOÀN TÁC ĐƯỢC. Nên đề xuất là trạng thái thứ ba, nhìn khác
-//    hẳn (viền trái nét đứt, nền ngả vàng — thấy được mà không cần đọc chữ),
-//    và phải qua nút *"Nhận cả N đề xuất"* mới thành lời khai. Chủ dự án chốt
-//    29/08/2026.
+//    **Đường đi chủ dự án chốt 29/08/2026, sau khi bấm thử trên app:** một nút
+//    → app chọn CẢ BẢNG (lan tới được thì nối vào người ấy, không thì để
+//    *"chưa có trong cây — thêm mới"*) → **con người rà một lượt**, thấy dòng
+//    nào sai thì tự chọn lại → bấm **Hợp nhất** → app kiểm lần cuối, vô lý thì
+//    báo ra để sửa, sạch thì ghi.
+//
+//    ⚠ **Chỗ này ĐÃ ĐỔI so với bản đầu của b64**, và đổi có lý do nên ghi lại
+//    kẻo có ngày ai đó "sửa lại cho đúng": bản đầu bắt bấm thêm một nút *"Nhận
+//    cả N đề xuất"* mới mở khoá, vì sợ 29 dòng máy đoán tự mở một đường ghi
+//    không hoàn tác được. Chủ dự án bấm thử rồi bác: **cú rà bằng mắt trên
+//    bảng CHÍNH LÀ hành động của con người**, và một nút "Nhận" đặt sau đó chỉ
+//    là một cú bấm lấy lệ — đúng cái bệnh mà quyết định 1 đã cảnh báo (*"khai
+//    tay tụt xuống thành bấm Đồng ý"*). Nên cửa canh nay là **hai lớp khác**:
+//    dòng app chọn mang **nét đứt** (thấy được mà không cần đọc chữ, để rà cho
+//    nhanh), và `mergeImported` **kiểm lại lần cuối** trước khi ghi.
 //
 // --- Chỗ màn hình này DỪNG LẠI (b62 dời một bước) -----------------------
 //
-// Tới b62 thì nút trộn mở được, nhưng RANH GIỚI vẫn nguyên chỗ cũ: file này
+// Tới b62 thì nút hợp nhất mở được, nhưng RANH GIỚI vẫn nguyên chỗ cũ: file này
 // vẫn KHÔNG ghi, và vẫn không gọi một hàm `services` nào. Nó chỉ gọi lại
 // `khiTron` — cái hàm mà nơi mở bảng đưa vào — và trao cho hàm ấy đúng bộ
 // tuỳ chọn đã dựng nên bản xem trước đang bày trên màn hình.
@@ -85,20 +94,23 @@ import { rongHop, caoHop, leLopPhu, RONG_NUT_TOI_DA } from '../config.js';
 const MOI = '#moi';
 
 /**
- * Ba nguồn của một ô bên phải — và ĐỀ XUẤT là một trạng thái riêng, không
- * phải một câu trả lời (b64).
+ * Ba nguồn của một ô bên phải (b64).
  *
- * · `tay` — con người khai. Câu trả lời.
+ * · `tay` — con người khai.
  * · `may` — máy nhận ra bằng `uid` · sổ nhập · mã bản ghi, tức CĂN CƯỚC chứ
- *           không phải phỏng đoán. Câu trả lời. (Đo được: với file `.ged` của
- *           phần mềm khác thì nguồn này LUÔN rỗng — `NK-B63` mục 2.2.)
- * · `lan` — máy lan theo quan hệ mà ĐOÁN ra. **Chưa phải câu trả lời.**
+ *           không phải phỏng đoán. (Đo được: với file `.ged` của phần mềm
+ *           khác thì nguồn này LUÔN rỗng — `NK-B63` mục 2.2.)
+ * · `lan` — app tự chọn bằng phép lan theo quan hệ. **Là suy đoán.**
  *
- * Vì sao `lan` không được tính là đã quyết: `duocTron` chỉ đòi *không còn
- * dòng trống*. Nếu đề xuất điền vào ô là coi như đã quyết thì 29 dòng do máy
- * đoán đủ mở khoá một nút GHI KHÔNG HOÀN TÁC ĐƯỢC — một cửa mới mở ra lặng
- * lẽ. Nên đề xuất hiện lên nhưng KHÔNG mở khoá; con người bấm *"Nhận"* thì
- * chúng mới thành `tay`. Chủ dự án chốt 29/08/2026.
+ * Cả ba đều tính là ĐÃ QUYẾT, nên cả ba đều mở khoá nút Hợp nhất được. Nhưng
+ * `lan` là thứ duy nhất người dùng CHƯA nhìn qua, nên nó phải nhìn khác hẳn:
+ * viền trái nét đứt, nền ngả vàng, và một nhãn *"app tự chọn — hãy rà lại"*.
+ * Phân biệt được **bằng đuôi mắt**, vì người ta cuộn qua 29 dòng chứ không
+ * đọc 29 cái nhãn — và chính cú cuộn ấy là cú rà mà chủ dự án đã chốt là hành
+ * động quyết định (xem mục 5 ở đầu file).
+ *
+ * Sửa tay một dòng thì dòng ấy đổi từ `lan` sang `tay`, nét đứt biến mất —
+ * tức bảng luôn cho biết còn bao nhiêu dòng chưa ai nhìn.
  */
 const LAN = 'lan';
 
@@ -271,13 +283,16 @@ function veHang(p) {
   o.append(oMuc('', '— chưa quyết —'), oMuc(MOI, 'Chưa có trong cây — thêm mới'));
   for (const x of nguoiTrongCay()) o.append(oMuc(x.id, x.nhan));
   o.addEventListener('change', () => {
-    const v = o.value;
-    // ⚠ Đổi một lời khai là đổi CĂN CỨ của mọi đề xuất đã lan ra từ nó. Giữ
-    // lại bộ đề xuất cũ là giữ một kết luận rút từ tiền đề vừa bị thay — và
-    // không phép kiểm nào bắt được, vì bộ cũ vẫn hợp lệ. Bỏ hết rồi bấm lại
-    // rẻ hơn nhiều. (`xoaDeXuat` xoá trước, nên phải giữ `v` từ trước đó.)
-    xoaDeXuat();
-    datChon(p.id, v, 'tay');
+    // Sửa MỘT dòng thì chỉ dòng ấy đổi chủ, phần app chọn còn nguyên — đó là
+    // cả cách dùng chủ dự án chốt: *"rà lại một lượt, thấy sai thì tự chọn
+    // lại"*. Quét sạch cả bảng mỗi lần sửa một dòng là bắt rà lại từ đầu, và
+    // rà lại từ đầu là một cơ hội nữa để bỏ sót.
+    //
+    // ⚠ Cái giá của lựa chọn này, nói thẳng: những dòng app chọn dựa trên
+    // dòng vừa bị sửa KHÔNG tự tính lại. Chúng vẫn nằm đó, vẫn mang nét đứt,
+    // và con mắt người rà là thứ duy nhất bắt được. Muốn chắc thì bấm *Bỏ
+    // hết, tự chọn lại từ đầu*.
+    datChon(p.id, o.value, 'tay');
     tinhLai();
   });
 
@@ -345,22 +360,29 @@ function tinhLai() {
   const neoTay = [];
   const khaiMoi = [];
   const banDo = new Map();
+  let soKhaiTay = 0;
   for (const [id, v] of ctx.chon) {
-    // ⚠ Dòng đang là ĐỀ XUẤT thì bỏ qua hẳn — nó phải trông y như một dòng
-    // chưa quyết đối với `detectDuplicates`, nếu không nó tự mở khoá nút
-    // trộn. Xem ghi chú `LAN` ở đầu file.
-    if (ctx.nguon.get(id) === LAN) continue;
+    // Dòng `lan` tính NGANG dòng `tay`: chủ dự án chốt 29/08/2026 rằng app
+    // chọn sẵn cả bảng, con người rà một lượt rồi mới bấm. Cái rà ấy là hành
+    // động của con người — nên không cần thêm một nút "nhận" nữa, và bấm
+    // Hợp nhất là lúc app kiểm lần cuối. Xem ghi chú `LAN` ở đầu file.
+    const ng = ctx.nguon.get(id);
     if (v === MOI) { khaiMoi.push(id); continue; }
     if (v === '') continue;
     banDo.set(id, v);
-    if (ctx.nguon.get(id) === 'tay') neoTay.push({ trongFile: id, trongCay: v });
+    if (ng === 'tay' || ng === LAN) neoTay.push({ trongFile: id, trongCay: v });
+    if (ng === 'tay') soKhaiTay++;
   }
 
   const vong1 = detectDuplicates(cay, imported, { diemNeoTay: neoTay, khaiMoi });
 
   // Chốt của quyết định 3: không có một điểm neo NGƯỜI khai tay nào thì không
   // suy ra gia đình nào cả, dù bản đồ người có đầy đến đâu.
-  const coTheSuyCap = vong1.duocTron && neoTay.length > 0;
+  // ⚠ Đếm `soKhaiTay` chứ KHÔNG đếm `neoTay.length`: từ b64, `neoTay` chở cả
+  // dòng app tự chọn. Nếu chốt này đếm cả chúng thì một bảng không còn lời
+  // khai tay nào — người dùng đặt lại dòng mình khai về "chưa quyết" sau khi
+  // bấm nút — vẫn suy ra được gia đình, và luật b60 bị đi vòng.
+  const coTheSuyCap = vong1.duocTron && soKhaiTay > 0;
 
   let kq = vong1;
   ctx.tuyChon = { diemNeoTay: neoTay.slice(), khaiMoi: khaiMoi.slice() };
@@ -408,11 +430,19 @@ function tinhLai() {
 // ============================================================
 
 /**
- * Lan theo quan hệ, đổ kết quả vào những dòng CÒN TRỐNG.
+ * Chọn sẵn CẢ BẢNG: ai lan tới được thì chỉ vào người ấy, ai không thì
+ * *"chưa có trong cây — thêm mới"*.
  *
  * ⚠ Không trái luật b60. Luật ấy cấm *bày sẵn khi chưa khai điểm neo nào*;
  * đây là một cái nút bấm SAU, và nó tự khoá cho tới khi có điểm neo đầu tiên.
  * Chốt chặn thật nằm trong chính `lanTheoQuanHe`: bản đồ rỗng → mảng rỗng.
+ *
+ * ⚠ Vì sao dòng KHÔNG lan tới được thì đặt là *"thêm mới"* chứ không để trống
+ * (chủ dự án chốt 29/08/2026): đo được ở `lanTheoQuanHe`, phép lan chỉ nhận
+ * khi tập ứng viên còn ĐÚNG MỘT người khớp tên — nên "lan không tới" gần như
+ * luôn có nghĩa là *người này thật sự chưa có trong cây*. Để trống là bắt
+ * người dùng gõ lại một kết luận app đã có. Nhưng nó vẫn phải NHÌN KHÁC dòng
+ * người dùng tự khai, vì nó là suy đoán — xem `veDangHang`.
  */
 function chayDeXuat() {
   if (!ctx) return;
@@ -424,11 +454,14 @@ function chayDeXuat() {
     datChon(x.trongFile, x.trongCay, LAN);
     ctx.duongDi.set(x.trongFile, x);
   }
+  for (const [id, v] of [...ctx.chon]) {
+    if (v === '') datChon(id, MOI, LAN);
+  }
   ctx.daBamDeXuat = true;
   tinhLai();
 }
 
-/** Bỏ mọi đề xuất, trả các dòng ấy về "chưa quyết". */
+/** Bỏ mọi lựa chọn app tự đặt, trả các dòng ấy về "chưa quyết". */
 function xoaDeXuat() {
   if (!ctx) return false;
   let co = false;
@@ -441,15 +474,8 @@ function xoaDeXuat() {
     co = true;
   }
   if (ctx.duongDi) ctx.duongDi.clear();
+  ctx.daBamDeXuat = false;
   return co;
-}
-
-/** Đổi mọi đề xuất thành lời khai của con người. */
-function nhanDeXuat() {
-  if (!ctx) return;
-  for (const [id, ng] of [...ctx.nguon]) if (ng === LAN) ctx.nguon.set(id, 'tay');
-  if (ctx.duongDi) ctx.duongDi.clear();
-  tinhLai();
 }
 
 function demDeXuat() {
@@ -474,13 +500,20 @@ function hienNutDeXuat() {
 
   const soLan = demDeXuat();
   if (soLan > 0) {
+    let soNoi = 0;
+    for (const [id, ng] of ctx.nguon) {
+      if (ng === LAN && ctx.chon.get(id) !== MOI) soNoi++;
+    }
     const hop = document.createElement('div');
     hop.dataset.viec = 'khoi-de-xuat';
     hop.style.cssText =
       'margin-top:12px;padding:10px 12px;border:1px dashed #b8a888;' +
       'border-radius:9px;background:#fdfaf2;font-size:13px;line-height:1.6';
-    hop.append(dongChu('App đề xuất ' + soLan + ' dòng. ' +
-      'Đề xuất CHƯA phải là quyết định — nút Trộn vẫn khoá cho tới khi bạn nhận.'));
+    hop.append(
+      dongChu('App đã tự chọn ' + soLan + ' dòng: ' + soNoi + ' dòng nối vào ' +
+              'người có sẵn, ' + (soLan - soNoi) + ' dòng để là người mới.'),
+      dongChu('Hãy RÀ LẠI những dòng nét đứt. Thấy dòng nào sai thì tự chọn ' +
+              'lại ở cột phải — chọn tay thì dòng ấy hết nét đứt.'));
 
     const ke = document.createElement('div');
     ke.dataset.viec = 'ke-de-xuat';
@@ -492,13 +525,11 @@ function hienNutDeXuat() {
     }
     hop.append(ke);
 
-    const nhan = nut('Nhận cả ' + soLan + ' đề xuất', false, () => nhanDeXuat());
-    nhan.dataset.viec = 'nhan-de-xuat';
-    nhan.style.marginTop = '10px';
-    const bo = nut('Bỏ hết đề xuất', false, () => { xoaDeXuat(); tinhLai(); });
+    const bo = nut('Bỏ hết, tự chọn lại từ đầu', false,
+      () => { xoaDeXuat(); tinhLai(); });
     bo.dataset.viec = 'bo-de-xuat';
-    bo.style.marginTop = '8px';
-    hop.append(nhan, bo);
+    bo.style.marginTop = '10px';
+    hop.append(bo);
     o.append(hop);
     return;
   }
@@ -508,7 +539,7 @@ function hienNutDeXuat() {
   if (conTrong === 0) return;
 
   const coNeo = (ctx.banDoDaChot && ctx.banDoDaChot.size > 0);
-  const b = nut('Đề xuất nốt ' + conTrong + ' dòng còn lại', false,
+  const b = nut('Để app chọn nốt ' + conTrong + ' dòng còn lại', false,
     () => { if (coNeo) chayDeXuat(); });
   b.dataset.viec = 'de-xuat-ket-noi';
   b.disabled = !coNeo;
@@ -524,11 +555,9 @@ function hienNutDeXuat() {
   chu_.dataset.viec = 'chu-duoi-de-xuat';
   chu_.style.cssText = 'margin-top:6px;font-size:12px;line-height:1.6;color:#8a8078';
   chu_.textContent = coNeo
-    ? (ctx.daBamDeXuat
-      ? 'Lần trước không lan thêm được ai. Gần như luôn nghĩa là một điểm neo ' +
-        'đang chỉ nhầm người — xem lại những dòng bạn đã khai.'
-      : 'App đi theo bố mẹ · vợ chồng · con từ những người bạn đã khai, và chỉ ' +
-        'đề xuất khi còn đúng một người khớp. Mập mờ thì nó im.')
+    ? 'App đi theo bố mẹ · vợ chồng · con từ những người bạn đã khai. Ai còn ' +
+      'đúng một người khớp thì nối vào người ấy; ai không thì để là người mới. ' +
+      'Chọn xong bạn rà lại một lượt rồi mới bấm Hợp nhất.'
     : 'Khai đúng một người ở cột phải trước đã. Chưa có điểm neo nào thì app ' +
       'không có chỗ nào để bắt đầu lan.';
   o.append(chu_);
@@ -594,7 +623,7 @@ function veDangHang(h) {
 
   if (trong) { h.nhan.textContent = ''; return; }
   if (laLan) {
-    h.nhan.textContent = 'app ĐỀ XUẤT — chưa nhận';
+    h.nhan.textContent = 'app tự chọn — hãy rà lại';
     h.nhan.style.color = '#8a6a2a';
     return;
   }
@@ -637,10 +666,11 @@ function hienDem() {
   ctx.oTinh.innerHTML = '';
   ctx.oTinh.append(dongChu(
     'Bạn khai: ' + tay + ' · App nhận ra: ' + may + ' · Chưa quyết: ' + trong));
-  // Đếm riêng một dòng chứ không cộng vào ba con số trên: đề xuất chưa nhận
-  // KHÔNG cùng loại với ba thứ kia — ba thứ kia là câu trả lời, nó thì chưa.
+  // Đếm riêng một dòng chứ không cộng vào ba con số trên: dòng app tự chọn
+  // là thứ người dùng CÒN PHẢI RÀ, ba con số kia thì không. Gộp vào là giấu
+  // mất đúng con số nói ra còn bao nhiêu việc phải nhìn.
   if (lan > 0) {
-    const d = dongChu('Đề xuất chưa nhận: ' + lan);
+    const d = dongChu('App tự chọn, cần bạn rà lại: ' + lan);
     d.style.color = '#8a6a2a';
     ctx.oTinh.append(d);
   }
@@ -675,7 +705,7 @@ function hienKetQua(kq) {
 
   if (!kq.duocTron) {
     o.append(veLoiNhan(LY_DO_CHAN[kq.lyDoChan] || kq.loi ||
-                       'Chưa trộn được.',
+                       'Chưa hợp nhất được.',
                        kq.lyDoChan === 'neoMauThuan' || kq.lyDoChan === 'neoVoLy'));
     for (const l of kq.loiNeoTay) {
       o.append(veLoiNhan('· ' + moTaFile(l.trongFile) + ': ' + l.vi, true));
@@ -684,7 +714,7 @@ function hienKetQua(kq) {
     return;
   }
 
-  o.append(veNhanKhoi('Sau khi trộn'));
+  o.append(veNhanKhoi('Sau khi hợp nhất'));
 
   const t = kq.thongKe;
   const so = document.createElement('div');
@@ -735,13 +765,8 @@ function hienKetQua(kq) {
   }
 
   if (t.soChuaNeo > 0) {
-    const soLan = demDeXuat();
-    o.append(veLoiNhan(soLan > 0
-      ? 'Còn ' + t.soChuaNeo + ' bản ghi chưa quyết, trong đó ' + soLan +
-        ' dòng đang là ĐỀ XUẤT của app. Nhận hoặc bỏ chúng thì mới trộn được ' +
-        '— app không tự coi cái nó đoán là câu trả lời của bạn.'
-      : 'Còn ' + t.soChuaNeo + ' bản ghi chưa quyết. Mỗi dòng bên trái phải ' +
-        'có một câu trả lời thì mới trộn được.', false));
+    o.append(veLoiNhan('Còn ' + t.soChuaNeo + ' bản ghi chưa quyết. Mỗi dòng ' +
+      'bên trái phải có một câu trả lời thì mới hợp nhất được.', false));
   }
   veNutTron(o, t.soChuaNeo === 0, t);
 }
@@ -767,7 +792,7 @@ function veNutTron(o, sanSang, thongKe) {
   b.type = 'button';
   b.dataset.viec = 'tron-vao-cay';
   b.disabled = !chay;
-  b.textContent = 'Trộn vào gia phả đang mở';
+  b.textContent = 'Hợp nhất vào gia phả đang mở';
   b.style.cssText =
     'display:block;width:100%;margin:14px auto 0;min-height:44px;padding:8px 14px;' +
     'max-width:' + RONG_NUT_TOI_DA + ';font-size:14px;font-family:inherit;' +
@@ -780,7 +805,7 @@ function veNutTron(o, sanSang, thongKe) {
     b.addEventListener('click', () => {
       if (b.disabled) return;
       b.disabled = true;
-      b.textContent = 'Đang trộn…';
+      b.textContent = 'Đang hợp nhất…';
       oLoi.textContent = '';
       oLoi.style.display = 'none';
 
@@ -791,8 +816,8 @@ function veNutTron(o, sanSang, thongKe) {
         if (!ctx || !lopPhu || !b.isConnected) return;
         if (kq2 && kq2.ok) return;          // xong rồi — nơi gọi tự lo phần sau
         b.disabled = false;
-        b.textContent = 'Trộn vào gia phả đang mở';
-        oLoi.textContent = (kq2 && kq2.loi) || 'Chưa trộn được, và chưa ghi gì.';
+        b.textContent = 'Hợp nhất vào gia phả đang mở';
+        oLoi.textContent = (kq2 && kq2.loi) || 'Chưa hợp nhất được, và chưa ghi gì.';
         oLoi.style.display = '';
       });
     });
