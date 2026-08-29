@@ -3,7 +3,7 @@
 // Vai trò  : Nghiệp vụ hôn nhân và quan hệ cha mẹ – con
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: utils/id.js, utils/date.js, config.js
-// Phiên bản: 1.7.0 · Cập nhật: 26/08/2026 21:30
+// Phiên bản: 1.8.0 · Cập nhật: 29/08/2026 09:44
 // ============================================================
 //
 // --- BẢN HỢP NHẤT HAI NHÁNH (26/08/2026) --------------------------------
@@ -96,6 +96,26 @@ export function rankCua(u, personId) {
   // những gì dữ liệu cũ chứa. Gỡ khi mọi file JSON đang dùng đã có `ranks`.
   const cu = u && Number(u.rank);
   return (Number.isFinite(cu) && cu > 0) ? cu : 1;
+}
+
+/**
+ * Bảng thứ bậc theo người mà bản ghi NÓI RÕ — không có cầu tạm nào.
+ *
+ * ⚠ Khác `rankCua` một chỗ sống còn: `rankCua` **luôn trả về một số** (vắng là
+ * 1, và `rank` cũ dùng cho mọi người trong cặp). Cái đó đúng để HIỂN THỊ, sai
+ * để GHI RA FILE: `rank` cũ là một số cho cả cặp, không nói của ai; đem nó gán
+ * cho từng người là dựng ra một sự thật bản ghi không chứa — mà xét Dũng thì
+ * Lan là vợ 2, xét Lan thì Dũng là chồng 1. Hàm này trả về bảng RỖNG khi bản
+ * ghi chỉ có `rank` cũ, để nơi xuất tự chọn cách ghi mơ hồ tương ứng.
+ */
+export function ranksRoRang(u) {
+  const ra = {};
+  if (!u || !u.ranks) return ra;
+  for (const id of Object.keys(u.ranks)) {
+    const n = Number(u.ranks[id]);
+    if (Number.isInteger(n) && n > 1) ra[id] = n;
+  }
+  return ra;
 }
 
 /**

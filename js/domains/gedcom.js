@@ -2,8 +2,8 @@
 // giapha · js/domains/gedcom.js
 // Vai trò  : Xuất gia phả ra GEDCOM 5.5.1, và ĐỌC file .ged thành bản xem trước
 // Lớp      : domains — HÀM THUẦN, không chạm DOM, không gọi services
-// Phụ thuộc: utils/date, utils/text, utils/id, config
-// Phiên bản: 1.1.0 · Cập nhật: 29/08/2026 10:40
+// Phụ thuộc: utils/date, utils/text, utils/id, config, domains/union
+// Phiên bản: 1.2.0 · Cập nhật: 29/08/2026 09:44
 // ============================================================
 //
 // XUẤT: GEDCOM 5.5.1. Cũ hơn 7.0 nhưng gần như mọi phần mềm gia phả đọc được.
@@ -83,6 +83,7 @@ import { parseLooseDate, formatDate } from '../utils/date.js';
 import { coGiaTri } from '../utils/text.js';
 import { isValidId } from '../utils/id.js';
 import { QUAN_HE_CON_NHAN } from '../config.js';
+import { ranksRoRang } from './union.js';
 
 // ============================================================
 // Hằng số
@@ -760,6 +761,7 @@ function docCap(r, gom) {
     marriage: khoiNgayRong(),
     note: '',
     rank: 0,
+    ranksTho: {},     // xref người -> thứ bậc, từ `_RANK` cấp 2
   };
   let coLyHon = false;
 
@@ -770,10 +772,21 @@ function docCap(r, gom) {
       // hai chỗ này biết tới hai chữ `husband`/`wife`.
       case 'HUSB':
       case 'WIFE':
-      case '_BANDOI':
+      case '_BANDOI': {
         n.dung = true;
-        tho.banDoiXref.push(troToi(n));
+        const x = troToi(n);
+        tho.banDoiXref.push(x);
+        // `_RANK` CẤP 2 — thứ bậc của riêng người này. Bản xuất từ b57 ghi ở
+        // đây; lối cũ (một số cấp 1 dưới `FAM`) vẫn đọc được ở `case '_RANK'`
+        // dưới kia, vì những file đã xuất ra ngoài không sửa lại được nữa.
+        const cRank = conThe(n, '_RANK');
+        if (cRank) {
+          cRank.dung = true;
+          const s2 = Number(giaTriChu(cRank));
+          if (Number.isInteger(s2) && s2 > 1 && x) tho.ranksTho[x] = s2;
+        }
         break;
+      }
       case 'CHIL':
         n.dung = true;
         tho.conXref.push(troToi(n));
@@ -897,11 +910,21 @@ function noiCapVaNguoi(thoCap, bang, coNguoi, gom) {
       note: c.note,
       deleted: false,
     };
-    // `_RANK` của bản xuất là MỘT số cho cả cặp — lược đồ cũ. Giữ nguyên nó ở
-    // trường `rank`, đúng chỗ mà cầu tạm `rankCua()` đang đọc. Bịa ra một
-    // bảng `ranks` khoá theo người từ một con số không nói của ai là dựng ra
-    // một sự thật mà file không hề chứa.
-    if (c.rank > 0) u.rank = c.rank;
+    // Hai lối viết thứ bậc, và chúng KHÔNG ngang hàng nhau:
+    //
+    // · `_RANK` CẤP 2 (bản xuất từ b57) nói rõ *của ai* — dựng thẳng thành
+    //   `ranks`, đúng lược đồ b46.
+    // · `_RANK` CẤP 1 (bản xuất b55, và file cũ đã gửi đi) là MỘT số cho cả
+    //   cặp. Giữ nguyên ở trường `rank`, chỗ cầu tạm `rankCua()` đang đọc.
+    //   Bịa ra `ranks` từ một con số không nói của ai là dựng ra một sự thật
+    //   mà file không hề chứa.
+    const ranks = {};
+    for (const x of Object.keys(c.ranksTho)) {
+      const id = doi(x);
+      if (id && banDoi.indexOf(id) >= 0) ranks[id] = c.ranksTho[x];
+    }
+    if (Object.keys(ranks).length > 0) u.ranks = ranks;
+    else if (c.rank > 0) u.rank = c.rank;
     unions.push(u);
   }
 
@@ -1226,9 +1249,10 @@ function veCap(ds, c, theoMa, boAn, anhTheoChu) {
   ds.push('0 @' + u.id + '@ FAM');
 
   const vaiTro = chiaVaiTro(c.banDoi, u.partnerOrder, theoMa);
-  if (vaiTro.husb) ds.push('1 HUSB @' + vaiTro.husb + '@');
-  if (vaiTro.wife) ds.push('1 WIFE @' + vaiTro.wife + '@');
-  for (const id of vaiTro.thua) ds.push('1 _BANDOI @' + id + '@');
+  const bacRieng = ranksRoRang(u);
+  if (vaiTro.husb) veBanDoi(ds, 'HUSB', vaiTro.husb, bacRieng);
+  if (vaiTro.wife) veBanDoi(ds, 'WIFE', vaiTro.wife, bacRieng);
+  for (const id of vaiTro.thua) veBanDoi(ds, '_BANDOI', id, bacRieng);
 
   // Con xếp theo `order` — thứ tự anh em là một sự thật của gia đình, và bản
   // xuất ra phải giữ được nó dù GEDCOM không có thẻ nào nói ra thứ tự ấy.
@@ -1253,9 +1277,32 @@ function veCap(ds, c, theoMa, boAn, anhTheoChu) {
   const tt = String(u.status || '').trim();
   if (tt === 'divorced') ds.push('1 DIV Y');
   if (tt !== '' && tt !== 'married') themDong(ds, 1, '_TRANGTHAI', tt);
-  if (Number.isInteger(u.rank) && u.rank > 0) {
+
+  // Cặp còn ở lược đồ CŨ (`rank`, một số cho cả cặp): ghi lại đúng lối cũ,
+  // cấp 1. Không nâng nó lên `_RANK` cấp 2 cho từng người — xem `ranksRoRang`.
+  if (Object.keys(bacRieng).length === 0 &&
+      Number.isInteger(u.rank) && u.rank > 0) {
     themDong(ds, 1, '_RANK', String(u.rank));
   }
+}
+
+/**
+ * Một người trong cặp, kèm thứ bậc của RIÊNG NGƯỜI ẤY.
+ *
+ * ⚠ **`_RANK` đứng ở CẤP 2, dưới tên người — không phải cấp 1 dưới `FAM`.**
+ * Bản xuất đầu (b55) ghi một số cho cả cặp, đúng lược đồ `rank` cũ mà b46 đã
+ * bỏ. Cặp nào đã mang `ranks` khoá theo người thì thứ bậc **rơi im lặng** lúc
+ * xuất: "thứ mấy" chỉ có nghĩa khi hỏi *của ai* — xét Dũng thì Lan là vợ 2,
+ * xét Lan thì Dũng là chồng 1. Một con số treo dưới `FAM` không nói được điều
+ * đó, nên nó phải đi theo người.
+ *
+ * Chỉ ghi khi khác 1: vắng thẻ đã có nghĩa là 1 (`rankCua`), ghi thêm là hai
+ * cách viết cùng một sự thật.
+ */
+function veBanDoi(ds, the, personId, bacRieng) {
+  ds.push('1 ' + the + ' @' + personId + '@');
+  const n = bacRieng[personId];
+  if (Number.isInteger(n) && n > 1) ds.push('2 _RANK ' + n);
 }
 
 function veNguon(ds, s) {
