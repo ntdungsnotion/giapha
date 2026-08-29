@@ -1,14 +1,21 @@
 // ============================================================
 // giapha · js/pages/import-export.js
-// Vai trò  : Màn hình XUẤT GEDCOM (nhập GEDCOM là việc 11, xuất ảnh là việc 12)
+// Vai trò  : Hai màn hình — XUẤT GEDCOM, và NHẬP GEDCOM (mới xem trước)
 // Lớp      : pages — được phép gọi mọi lớp dưới
-// Phụ thuộc: state, domains/gedcom, config
-// Phiên bản: 1.1.0 · Cập nhật: 28/08/2026 15:10
+// Phụ thuộc: state, domains/gedcom, utils/{date,text}, config
+// Phiên bản: 1.2.0 · Cập nhật: 29/08/2026 10:40
 // ============================================================
 //
-// Màn hình này làm đúng MỘT việc: biến gia phả đang mở thành một file `.ged`
-// nằm trong máy người dùng. Không gọi máy chủ một lần nào — cây đã nằm sẵn
-// trong `state.tree`, và việc dựng chữ là hàm thuần ở `domains/gedcom.js`.
+// File này giữ HAI màn hình, và chúng là hai chiều của cùng một cửa:
+//
+// - `openXuatGedcom` — biến gia phả đang mở thành một file `.ged` nằm trong
+//   máy người dùng. Xong từ b55, chủ dự án đã bấm thử trên app thật.
+// - `openNhapGedcom` — đọc một file `.ged` rồi kể ra đọc được gì. ⚠ **Mới
+//   XEM TRƯỚC, chưa ghi gì** — xem ghi chú ngay trên hàm ấy.
+//
+// Cả hai đều KHÔNG gọi máy chủ một lần nào — cây đã nằm sẵn trong
+// `state.tree`, và mọi phép dựng chữ lẫn đọc chữ là hàm thuần ở
+// `domains/gedcom.js`.
 //
 // --- HAI ĐƯỜNG LẤY FILE, và vì sao phải có cả hai -----------------------
 //
@@ -46,12 +53,21 @@
 // mà mục *Sao lưu* đã cất công gom về một chỗ.
 
 import { state } from '../state.js';
-import { exportGedcom, tenFileGedcom, tomTatXuat } from '../domains/gedcom.js';
+import { exportGedcom, tenFileGedcom, tomTatXuat, parseGedcom }
+  from '../domains/gedcom.js';
+import { formatDate } from '../utils/date.js';
+import { fullName } from '../utils/text.js';
 import { rongHop, caoHop, leLopPhu, RONG_NUT_TOI_DA } from '../config.js';
 
 let lopPhu = null;
 let hopKetQua = null;
 let duongTam = '';        // blob: URL đang giữ, phải thu hồi lúc đóng
+
+// Màn hình NHẬP giữ biến riêng, KHÔNG dùng chung `lopPhu` với màn Xuất:
+// hai màn hình có thể chồng nhau (mở Xuất, đóng, mở Nhập) và dùng chung một
+// biến thì cú đóng của màn này gỡ mất lớp phủ của màn kia.
+let lopPhuNhap = null;
+let hopXemTruoc = null;
 
 /**
  * Mở màn hình Xuất GEDCOM.
@@ -347,7 +363,323 @@ function thuHoiDuongTam() {
 }
 
 // ============================================================
-// Việc 11 và việc 12 — chưa làm
+// MÀN HÌNH NHẬP GEDCOM — việc 11, nửa A: CHỈ XEM TRƯỚC
+// ============================================================
+//
+// ⚠ **Màn hình này KHÔNG ghi một chữ nào vào gia phả.** Nó đọc file, kể ra
+// những gì đọc được và những gì sẽ MẤT, rồi dừng. Nút ghi thật nằm ở nửa B.
+//
+// Chia đôi việc 11 như vậy là có lý do, và lý do ấy đo được: nửa này sai thì
+// không mất gì — cùng đúng lý lẽ đã xếp *xuất* đứng trước *nhập*. Nửa B mới
+// là nửa đụng vào dữ liệu, và nó bước vào với một bộ đọc đã chạy đúng trên
+// 59 người thật (`kiem-thu/kiem-nhap-gedcom.mjs`, 60 phép).
+//
+// --- Vì sao bản xem trước kể THỨ MẤT trước thứ được ----------------------
+//
+// Màn *Xuất* kể *"sẽ xuất 59 người"* là đủ, vì xuất không mất gì. Nhập thì
+// ngược lại: file của phần mềm khác mang những trường app này không có chỗ
+// chứa, và nhập vào là chúng biến mất IM LẶNG. Nên khối cảnh báo đứng NGAY
+// TRÊN mấy con số, không nép xuống dưới.
+//
+// Ba điều màn hình này phải nói ra bằng chữ, không được để người dùng tự suy:
+//
+// 1. **Nhập là đường MỘT CHIỀU.** Không có nút hoàn tác.
+// 2. **Nhập vào một gia phả MỚI**, không đè lên gia phả đang mở.
+// 3. **Ảnh không đi theo file `.ged`.**
+//
+// --- HAI đường đưa file vào, cùng lý lẽ với màn Xuất --------------------
+//
+// App chạy trong `<iframe sandbox>` của Apps Script. Nút *Tải về* của màn
+// Xuất từng là chỗ đáng ngờ vì thế, và hoá ra chạy được. Ô CHỌN FILE thì
+// chưa ai thử bao giờ, nên ở đây giữ nguyên nếp cũ: có ô chọn file làm đường
+// chính, và một ô DÁN CHỮ nép sau một dòng hỏi. Ngày ô chọn file bị chặn thì
+// nó cũng chặn im lặng y như cũ.
+
+/**
+ * Mở màn hình Nhập GEDCOM (bản xem trước).
+ *
+ * Không nhận `xuLy` nào, cùng lý do với `openXuatGedcom`: màn hình này không
+ * đổi gì trong cây nên không có việc gì để báo ngược ra ngoài. Ngày nửa B
+ * thêm đường ghi thật thì chỗ ấy PHẢI báo — và đó sẽ là dấu hiệu rõ nhất
+ * rằng màn hình đã đổi bản chất.
+ */
+export function openNhapGedcom() {
+  closeNhapGedcom();
+
+  lopPhuNhap = document.createElement('div');
+  lopPhuNhap.style.cssText =
+    'position:fixed;inset:0;background:rgba(42,38,34,.35);z-index:30;' +
+    'display:flex;align-items:center;justify-content:center;' +
+    'padding:' + leLopPhu() + ';' +
+    'font-family:system-ui,sans-serif;color:#2a2622';
+
+  const hop = document.createElement('div');
+  hop.id = 'giapha-nhap-gedcom';
+  hop.style.cssText =
+    'background:#fffdf9;border-radius:14px;padding:18px;box-sizing:border-box;' +
+    'width:100%;max-width:' + rongHop(380, 600) + ';' +
+    'max-height:' + caoHop(82) + ';overflow:auto;' +
+    'box-shadow:0 8px 32px rgba(42,38,34,.28);' +
+    '-webkit-overflow-scrolling:touch';
+
+  const tieuDe = document.createElement('div');
+  tieuDe.textContent = 'Nhập GEDCOM — xem trước';
+  tieuDe.style.cssText = 'font-size:19px;font-weight:600';
+  hop.append(tieuDe);
+
+  const moDau = document.createElement('div');
+  moDau.textContent =
+    'Chọn một file .ged để xem app đọc được những gì trong đó. Bước này chỉ ' +
+    'ĐỌC — chưa có gì được ghi vào gia phả.';
+  moDau.style.cssText =
+    'font-size:13px;line-height:1.55;color:#8a8078;margin-top:8px';
+  hop.append(moDau);
+
+  // --- Ba điều phải nói TRƯỚC khi người dùng chọn file -------------------
+  const nhacTruoc = document.createElement('div');
+  nhacTruoc.style.cssText =
+    'margin-top:12px;padding:10px 12px;border:1px solid #f0d8d0;border-radius:9px;' +
+    'background:#fbf0ec;color:#8a3a2a;font-size:12px;line-height:1.6';
+  nhacTruoc.append(
+    dongChu('· Nhập là đường MỘT CHIỀU — không có nút hoàn tác.'),
+    dongChu('· Dữ liệu nhập vào sẽ đi vào một gia phả MỚI, không đè lên gia ' +
+            'phả bạn đang mở.'),
+    dongChu('· Ảnh không nằm trong file .ged, nên ảnh không nhập được.'),
+  );
+  hop.append(nhacTruoc);
+
+  // --- Đường 1: chọn file -----------------------------------------------
+  const nhanFile = document.createElement('label');
+  nhanFile.style.cssText =
+    'display:block;margin-top:16px;font-size:14px;font-weight:600';
+  nhanFile.textContent = 'Chọn file .ged';
+  hop.append(nhanFile);
+
+  const oFile = document.createElement('input');
+  oFile.type = 'file';
+  oFile.accept = '.ged,.GED,text/plain';
+  oFile.id = 'giapha-o-chon-ged';
+  oFile.style.cssText =
+    'display:block;width:100%;margin-top:6px;padding:9px;box-sizing:border-box;' +
+    'font-size:13px;font-family:inherit;border:1px solid #e6e0d8;' +
+    'border-radius:9px;background:#faf8f5';
+  oFile.addEventListener('change', () => {
+    const f = oFile.files && oFile.files[0];
+    if (!f) return;
+    docFile(f);
+  });
+  hop.append(oFile);
+
+  // --- Đường 2: dán chữ, nép sau một dòng hỏi ---------------------------
+  hop.append(veDanChu());
+
+  hopXemTruoc = document.createElement('div');
+  hop.append(hopXemTruoc);
+
+  const dong = document.createElement('button');
+  dong.type = 'button';
+  dong.textContent = 'Đóng';
+  dong.style.cssText =
+    'margin:18px auto 0;display:block;width:100%;height:42px;' +
+    'max-width:' + RONG_NUT_TOI_DA + ';font-size:14px;font-family:inherit;' +
+    'border:1px solid #e6e0d8;border-radius:9px;background:#faf8f5;cursor:pointer;' +
+    'touch-action:manipulation';
+  dong.addEventListener('click', () => closeNhapGedcom());
+  hop.append(dong);
+
+  lopPhuNhap.addEventListener('click', (e) => {
+    if (e.target === lopPhuNhap) closeNhapGedcom();
+  });
+  lopPhuNhap.append(hop);
+  document.body.append(lopPhuNhap);
+}
+
+export function closeNhapGedcom() {
+  if (lopPhuNhap) lopPhuNhap.remove();
+  lopPhuNhap = null;
+  hopXemTruoc = null;
+}
+
+// ============================================================
+// Đọc file rồi dựng bản xem trước
+// ============================================================
+
+function veDanChu() {
+  const khoi = document.createElement('div');
+  khoi.style.cssText = 'margin-top:10px';
+
+  const moRa = document.createElement('button');
+  moRa.type = 'button';
+  moRa.dataset.viec = 'mo-dan-ged';
+  moRa.textContent = 'Không chọn được file?';
+  moRa.style.cssText =
+    'display:block;width:100%;padding:9px 4px;font-size:13px;font-family:inherit;' +
+    'color:#8a8078;background:none;border:0;text-align:left;cursor:pointer;' +
+    'text-decoration:underline;text-underline-offset:3px;touch-action:manipulation';
+
+  const ruot = document.createElement('div');
+  ruot.hidden = true;
+
+  const buoc = document.createElement('div');
+  buoc.style.cssText = 'font-size:13px;line-height:1.7;color:#8a8078';
+  buoc.append(
+    dongChu('1. Mở file .ged bằng Notepad (bấm phải vào file, chọn Open with, ' +
+            'chọn Notepad).'),
+    dongChu('2. Bấm Ctrl + A rồi Ctrl + C để chép hết.'),
+    dongChu('3. Bấm vào ô bên dưới, bấm Ctrl + V để dán vào.'),
+  );
+  ruot.append(buoc);
+
+  const o = document.createElement('textarea');
+  o.id = 'giapha-o-dan-ged';
+  o.placeholder = '0 HEAD…';
+  o.style.cssText =
+    'width:100%;height:110px;margin-top:10px;box-sizing:border-box;padding:8px;' +
+    'font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.4;' +
+    'border:1px solid #e6e0d8;border-radius:8px;background:#faf8f5;color:#2a2622;' +
+    'white-space:pre;resize:vertical';
+  ruot.append(o);
+
+  const b = nut('Xem trước nội dung đã dán', false, () => xemTruoc(o.value, 'chữ đã dán'));
+  b.dataset.viec = 'xem-truoc-dan';
+  b.style.marginTop = '8px';
+  ruot.append(b);
+
+  moRa.addEventListener('click', () => {
+    ruot.hidden = !ruot.hidden;
+    moRa.textContent = ruot.hidden ? 'Không chọn được file?' : 'Ẩn cách dán chữ';
+  });
+
+  khoi.append(moRa, ruot);
+  return khoi;
+}
+
+/**
+ * Đọc file bằng `FileReader`, KHÔNG dùng `file.text()`.
+ *
+ * `file.text()` gọn hơn nhưng nó trả về Promise và chỉ đọc được UTF-8. File
+ * `.ged` của phần mềm cũ thì hay là ANSI hoặc UTF-16 — `FileReader` cho ta
+ * chỗ để nói ra điều đó bằng một câu người đọc hiểu được, thay vì một cây
+ * chữ vuông không ai giải thích.
+ */
+function docFile(f) {
+  if (!hopXemTruoc) return;
+  hopXemTruoc.innerHTML = '';
+  hopXemTruoc.append(veNhanKhoi('Đang đọc'));
+
+  const doc = new FileReader();
+  doc.onerror = () => {
+    hopXemTruoc.innerHTML = '';
+    hopXemTruoc.append(veLoiNhan('Không đọc được file này. Thử cách dán chữ ' +
+                                 'bên trên.', true));
+  };
+  doc.onload = () => xemTruoc(String(doc.result || ''), f.name);
+  doc.readAsText(f, 'utf-8');
+}
+
+function xemTruoc(chuoi, tenNguon) {
+  if (!hopXemTruoc) return;
+  hopXemTruoc.innerHTML = '';
+
+  if (String(chuoi).trim() === '') {
+    hopXemTruoc.append(veLoiNhan('Chưa có nội dung nào để đọc.', true));
+    return;
+  }
+
+  let kq;
+  try {
+    kq = parseGedcom(chuoi);
+  } catch (e) {
+    hopXemTruoc.append(veLoiNhan(
+      'Không đọc được file: ' + (e && e.message ? e.message : String(e)), true));
+    return;
+  }
+
+  hopXemTruoc.append(veNhanKhoi('Đọc được gì từ ' + tenNguon));
+
+  // --- Cây nào, phần mềm nào xuất ra ------------------------------------
+  const dsNguon = [];
+  if (kq.tenCay) dsNguon.push('Tên gia phả trong file: ' + kq.tenCay);
+  if (kq.nguonXuat) dsNguon.push('Do phần mềm "' + kq.nguonXuat + '" xuất ra');
+  if (dsNguon.length > 0) {
+    const kNguon = document.createElement('div');
+    kNguon.style.cssText =
+      'font-size:12px;line-height:1.6;color:#8a8078;margin-bottom:8px';
+    for (const c of dsNguon) kNguon.append(dongChu(c));
+    hopXemTruoc.append(kNguon);
+  }
+
+  // --- Con số -----------------------------------------------------------
+  const t = kq.thongKe;
+  const so = document.createElement('div');
+  so.dataset.viec = 'tom-tat-nhap';
+  so.style.cssText =
+    'padding:10px 12px;border:1px solid #e6e0d8;border-radius:9px;' +
+    'background:#faf8f5;font-size:13px;line-height:1.6';
+  const cau = [t.soNguoi + ' người', t.soCap + ' gia đình'];
+  if (t.soNguon > 0) cau.push(t.soNguon + ' nguồn dẫn');
+  so.textContent = cau.join(' · ');
+  hopXemTruoc.append(so);
+
+  // --- Cảnh báo: khối QUAN TRỌNG NHẤT của màn hình này -------------------
+  if (kq.canhBao.length > 0) {
+    hopXemTruoc.append(veNhanKhoi('Những gì sẽ mất, hoặc cần biết trước'));
+    for (const c of kq.canhBao) {
+      hopXemTruoc.append(veLoiNhan(c.chu, c.muc === 'nang'));
+    }
+  }
+
+  // --- Kể tên từng thẻ bị bỏ, để người dùng tra được ---------------------
+  if (kq.theLa.length > 0) {
+    const bang = document.createElement('div');
+    bang.style.cssText =
+      'margin-top:10px;padding:9px 11px;border:1px solid #e6e0d8;border-radius:8px;' +
+      'background:#faf8f5;font-size:12px;line-height:1.7;color:#8a8078';
+    bang.append(dongChu('Từng loại thẻ bị bỏ:'));
+    for (const x of kq.theLa) bang.append(dongChu('· ' + x.the + ' — ' + x.so + ' dòng'));
+    hopXemTruoc.append(bang);
+  }
+
+  // --- Mấy người đầu tiên, để NHÌN BẰNG MẮT xem có đúng không -----------
+  //
+  // Con số nói *"đọc được 59 người"*; nó không nói tên có bị tách nhầm họ với
+  // tên riêng không, ngày có lệch một tháng không. Mười cái tên thật bày ra
+  // đây thì người trong họ liếc một cái là biết.
+  if (kq.persons.length > 0) {
+    hopXemTruoc.append(veNhanKhoi('Mười người đầu tiên'));
+    const ds = document.createElement('div');
+    ds.dataset.viec = 'xem-truoc-nguoi';
+    ds.style.cssText =
+      'padding:9px 11px;border:1px solid #e6e0d8;border-radius:8px;' +
+      'background:#faf8f5;font-size:12px;line-height:1.7';
+    for (const p of kq.persons.slice(0, 10)) ds.append(dongChu(motDongNguoi(p)));
+    if (kq.persons.length > 10) {
+      const them = dongChu('… và ' + (kq.persons.length - 10) + ' người nữa.');
+      them.style.color = '#8a8078';
+      ds.append(them);
+    }
+    hopXemTruoc.append(ds);
+  }
+
+  // --- Điểm dừng, nói thẳng ---------------------------------------------
+  hopXemTruoc.append(veLoiNhan(
+    'Đây mới là bản xem trước — CHƯA có gì được ghi. Đường ghi vào một gia ' +
+    'phả mới đang làm dở, sẽ có ở bản sau.', false));
+}
+
+/** Một dòng người trong bản xem trước: tên · năm sinh–năm mất · mã. */
+function motDongNguoi(p) {
+  const ten = fullName((p.names || [])[0]) || '(chưa có tên)';
+  const sinh = formatDate(p.birth);
+  const mat = formatDate(p.death);
+  const phan = [ten];
+  if (sinh !== '' || mat !== '') phan.push(sinh + ' – ' + mat);
+  phan.push(p.id);
+  return phan.join('  ·  ');
+}
+
+// ============================================================
+// Việc 12 — chưa làm
 // ============================================================
 
 /** Xuất sơ đồ đang hiện thành PNG. */
@@ -355,9 +687,6 @@ export async function exportPng() { /* TODO — việc 12 */ }
 
 /** Xuất PDF khổ lớn để in. */
 export async function exportPdf() { /* TODO — việc 12 */ }
-
-/** Nhập .ged — BẮT BUỘC có bước xem trước và đối chiếu trùng lặp. */
-export async function importGed() { /* TODO — việc 11 */ }
 
 // ============================================================
 // Mấy mẩu dùng chung — cùng khuôn với `pages/settings.js`

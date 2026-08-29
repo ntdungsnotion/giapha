@@ -6,7 +6,7 @@
 //            utils/{text,glyph}, config,
 //            pages/{person-detail,person-edit,person-list,review,settings,
 //            backup,chon-gia-pha,import-export}
-// Phiên bản: 1.33.0 · Cập nhật: 28/08/2026 14:50
+// Phiên bản: 1.34.0 · Cập nhật: 29/08/2026 10:40
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -81,7 +81,8 @@ import { openReview, closeReview } from './review.js';
 import { openSettings, closeSettings } from './settings.js';
 import { openBackup, closeBackup } from './backup.js';
 import { openChonGiaPha, closeChonGiaPha } from './chon-gia-pha.js';
-import { openXuatGedcom, closeXuatGedcom } from './import-export.js';
+import { openXuatGedcom, closeXuatGedcom, openNhapGedcom, closeNhapGedcom }
+  from './import-export.js';
 import { veBieuTuongTron } from '../utils/glyph.js';
 import { rongHop, caoHop, leLopPhu } from '../config.js';
 
@@ -122,6 +123,7 @@ export function mountTreeView(containerEl) {
   closeBackup();
   closeChonGiaPha();
   closeXuatGedcom();
+  closeNhapGedcom();
   containerEl.innerHTML = '';
   containerEl.style.cssText =
     'position:absolute;inset:0;display:flex;flex-direction:column;' +
@@ -820,6 +822,7 @@ function veHopNutTrenPhai() {
       onMoChonGiaPha: () => { closeSettings(); openChonGiaPha(); },
       // Việc 10. Cùng lối, cùng lý do lớp phủ.
       onMoXuatGedcom: () => { closeSettings(); openXuatGedcom(); },
+      onMoNhapGedcom: () => { closeSettings(); openNhapGedcom(); },
     })),
     nutTron('🔍', 'Tìm người trong gia phả', () => moDanhSachNguoi()),
   );
