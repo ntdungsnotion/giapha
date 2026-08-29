@@ -5,7 +5,7 @@
 // Phụ thuộc: state, domains/{bloodline,layout,render,union},
 //            utils/{text,glyph}, config,
 //            pages/{person-detail,person-edit,person-list,review,settings,
-//            backup,chon-gia-pha}
+//            backup,chon-gia-pha,import-export}
 // Phiên bản: 1.33.0 · Cập nhật: 28/08/2026 14:50
 // ============================================================
 //

@@ -1,10 +1,10 @@
 // ============================================================
 // giapha · js/pages/settings.js
 // Vai trò  : Màn hình Cài đặt — người trung tâm mặc định, tuỳ chọn hiển thị,
-//            đường sang màn hình Chọn gia phả và Sao lưu & khôi phục
+//            đường sang Chọn gia phả · Sao lưu & khôi phục · Xuất GEDCOM
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, services/gas, utils/text
-// Phiên bản: 1.14.0 · Cập nhật: 28/08/2026 14:50
+// Phiên bản: 1.14.0 · Cập nhật: 28/08/2026 15:20
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
