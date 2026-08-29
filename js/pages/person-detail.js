@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
 //            utils/{text,date,image,avatar,glyph}, config
-// Phiên bản: 1.29.0 · Cập nhật: 27/08/2026 22:30
+// Phiên bản: 1.30.0 · Cập nhật: 30/08/2026 06:37
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -104,7 +104,7 @@
 import { state } from '../state.js';
 import { suaDuoc } from '../services/repo.js';
 import { getAlternateNames } from '../domains/person.js';
-import { getParentUnions, getPartnerUnions, rankCua } from '../domains/union.js';
+import { getParentUnions, rankCua } from '../domains/union.js';
 import { getMediaFor } from '../domains/media.js';
 import { mauVien } from '../domains/render.js';
 import { fullName, coGiaTri, doiSongNguoi, ngayGio } from '../utils/text.js';
@@ -166,7 +166,7 @@ const KIEU_HOP =
  * @param {string} personId
  * @param {{onChonNguoi?:function(string), onSuaNguoi?:function(string),
  *          onThemChaMe?:function(string,string), onThemBanDoi?:function(string),
- *          onThemCon?:function({unionId?:string, chaMeId?:string}),
+ *          onThemCon?:function({mocId?:string}),
  *          onKetNoi?:function(string), onGoNoi?:function(string),
  *          onXoaNguoi?:function(string), onSuaCap?:function(string),
  *          onSuaGiaDinh?:function(string)}} [xuLy]
@@ -179,7 +179,8 @@ const KIEU_HOP =
  *        `onThemChaMe`  **chỉ có mã người**. Cha hay mẹ thì ô giới tính trong
  *                       form nói ra, menu không hỏi trước (đổi 20/08/2026).
  *        `onThemBanDoi` chỗ chọn cặp nằm ở `person-edit.js`, không nằm đây.
- *        `onThemCon`    kèm CHỖ NỐI đã chọn xong.
+ *        `onThemCon`    **chỉ có mã người mốc**. Cặp cha mẹ nào thì khối
+ *                       *Cha mẹ là ai?* trong form hỏi (bước 65).
  *        `onKetNoi`     nơi gọi mở màn hình Danh sách người để chọn người kia.
  *        `onGoNoi`      nơi gọi mở danh sách mối nối hiện có.
  *        `onXoaNguoi`   thẻ KHÔNG hỏi lại gì.
@@ -1427,11 +1428,12 @@ export function openPersonMenu(personId, xuLy = {}) {
   // ở giữa, mà cái ở giữa mới là nút bấm được.
   hop.append(...veDauThe(p, false));
 
-  // Chỗ hiện bảng chọn phụ ("thêm con vào cặp nào"). Nằm DƯỚI vòng tròn: câu
-  // hỏi phụ phải mọc ra ngay cạnh cái nút vừa bấm, không mọc trên đầu.
-  const khoiChon = document.createElement('div');
-  hop.append(renderActionMenu(p, xuLy, khoiChon));
-  hop.append(khoiChon);
+  // ⚠ KHÔNG còn "chỗ hiện bảng chọn phụ" ở đây (bỏ ở bước 65). Bảng *"Thêm con
+  // vào cặp nào?"* từng mọc ra dưới vòng tròn rồi biến mất khi form mở — chọn
+  // nhầm thì phải đóng form, mở lại thẻ, bấm lại vành. Nay câu hỏi ấy là một
+  // khối TRONG form (`person-edit.js`, luật 13), sửa lại được bất cứ lúc nào
+  // trước khi bấm.
+  hop.append(renderActionMenu(p, xuLy));
 
   const chan = document.createElement('div');
   chan.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:14px';
@@ -1461,7 +1463,7 @@ export function openPersonMenu(personId, xuLy = {}) {
  * ⚠ *Thông tin* ở TÂM là ngoại lệ duy nhất — nó **luôn bấm được**, kể cả khi
  * chỉ có quyền xem, vì nó không sửa gì cả. Sáu mục quanh vành đều ghi dữ liệu.
  */
-function renderActionMenu(p, xuLy, khoiChon) {
+function renderActionMenu(p, xuLy) {
   const boc = document.createElement('div');
   boc.style.cssText = 'margin-top:14px';
 
@@ -1488,7 +1490,7 @@ function renderActionMenu(p, xuLy, khoiChon) {
     'margin:0 auto;aspect-ratio:' + TY_LE_KHUNG + ';';
 
   vong.append(nutTam(p, xuLy));
-  for (const m of VANH) vong.append(nutVanh(m, p, xuLy, khoiChon, coQuyen));
+  for (const m of VANH) vong.append(nutVanh(m, p, xuLy, coQuyen));
 
   boc.append(vong);
   return boc;
@@ -1568,8 +1570,8 @@ function nutTam(p, xuLy) {
   return nut;
 }
 
-function nutVanh(m, p, xuLy, khoiChon, coQuyen) {
-  const chay = viecCuaVanh(m.viec, p, xuLy, khoiChon);
+function nutVanh(m, p, xuLy, coQuyen) {
+  const chay = viecCuaVanh(m.viec, p, xuLy);
   // "Thông tin" không sửa gì nên không cần quyền sửa.
   const bat = !!chay && (coQuyen || m.viec === 'thongTin');
 
@@ -1618,7 +1620,7 @@ function nutVanh(m, p, xuLy, khoiChon, coQuyen) {
  * *Thông tin* là ngoại lệ, và **không phải ngoại lệ của luật ấy**: thẻ thông
  * tin sống trong CHÍNH file này, nên gọi thẳng không đi qua lớp nào cả.
  */
-function viecCuaVanh(viec, p, xuLy, khoiChon) {
+function viecCuaVanh(viec, p, xuLy) {
   if (viec === 'chaMe') {
     // KHÔNG hỏi "thêm cha hay thêm mẹ" nữa: ô giới tính trong form đã là chỗ
     // nói ra điều đó, và hỏi hai lần cho một câu thì hai câu trả lời có thể
@@ -1630,8 +1632,14 @@ function viecCuaVanh(viec, p, xuLy, khoiChon) {
     return xuLy.onThemBanDoi
       ? () => { closePersonDetail(); xuLy.onThemBanDoi(p.id); } : null;
   }
+  // ⚠ KHÔNG hỏi "thêm con vào cặp nào" nữa ở ĐÂY (bước 65) — cùng đúng lý lẽ
+  // đã bỏ câu "thêm cha hay thêm mẹ" ở trên: câu hỏi ấy nay là một khối TRONG
+  // form, nơi nó đứng cạnh mọi câu khác và sửa lại được. Và khối kia làm được
+  // một việc màn hình này chưa bao giờ làm: cho khai một người con ĐƠN THÂN kể
+  // cả khi người mốc đã có cặp.
   if (viec === 'con') {
-    return xuLy.onThemCon ? () => moChonCap(p, xuLy, khoiChon) : null;
+    return xuLy.onThemCon
+      ? () => { closePersonDetail(); xuLy.onThemCon({ mocId: p.id }); } : null;
   }
   if (viec === 'ketNoi') {
     return xuLy.onKetNoi ? () => { closePersonDetail(); xuLy.onKetNoi(p.id); } : null;
@@ -1645,75 +1653,12 @@ function viecCuaVanh(viec, p, xuLy, khoiChon) {
   return null;
 }
 
-/**
- * Chọn xem người con mới thuộc về cặp nào, rồi giao lại cho nơi gọi.
- *
- * Ba đường, và đường thứ ba là lý do phải có hàm này:
- *   - chưa có cặp nào  → nối vào chính người này; form sẽ tạo một cặp một người
- *     trong cùng lần lưu. Gia phả cũ đầy những bà mẹ không còn ai nhớ tên chồng,
- *     nên đây KHÔNG phải ca hiếm;
- *   - đúng một cặp     → đi thẳng, không hỏi;
- *   - từ hai cặp trở lên → PHẢI hỏi. Đoán hộ ở đây là nối người con vào nhầm
- *     đời vợ, và cái sai ấy nằm im trong dữ liệu cho tới lúc có người xem sơ đồ
- *     quanh đúng người ấy. `U0004`/`U0005` — hai đời vợ ông Cương — là ca thật
- *     đang có sẵn trong dữ liệu làm việc.
- */
-function moChonCap(p, xuLy, khoiChon) {
-  const cacCap = getPartnerUnions(state.index, p.id);
-
-  if (cacCap.length === 0) {
-    closePersonDetail();
-    xuLy.onThemCon({ chaMeId: p.id });
-    return;
-  }
-  if (cacCap.length === 1) {
-    closePersonDetail();
-    xuLy.onThemCon({ unionId: cacCap[0].id });
-    return;
-  }
-
-  khoiChon.innerHTML = '';
-
-  const nhan = document.createElement('div');
-  nhan.textContent = 'Thêm con vào cặp nào?';
-  nhan.style.cssText =
-    'margin-top:16px;margin-bottom:6px;font-size:12px;font-weight:600;' +
-    'letter-spacing:.04em;color:#8a8078';
-  khoiChon.append(nhan);
-
-  for (const u of cacCap) {
-    const banDoi = (Array.isArray(u.partners) ? u.partners : [])
-      .filter((id) => id !== p.id && state.index.personById.has(id))
-      .map((id) => fullName(state.index.personById.get(id)));
-
-    const nut = document.createElement('button');
-    nut.type = 'button';
-    nut.style.cssText =
-      'display:block;width:100%;text-align:left;margin-top:6px;padding:9px 11px;' +
-      'font-family:inherit;font-size:14px;color:#2a2622;border:1px solid #e6e0d8;' +
-      'border-radius:8px;background:#fff;cursor:pointer;touch-action:manipulation';
-
-    const dong1 = document.createElement('div');
-    dong1.textContent = banDoi.length > 0
-      ? 'Với ' + banDoi.join(' và ')
-      : 'Một mình ' + fullName(p) + ' (cặp chưa có bạn đời)';
-
-    const dong2 = document.createElement('div');
-    const soCon = (Array.isArray(u.children) ? u.children : []).length;
-    dong2.textContent = [ghiChuHonNhan(u, p.id), soCon > 0 ? soCon + ' con' : 'chưa có con', u.id]
-      .filter(coGiaTri).join('  ·  ');
-    dong2.style.cssText = 'font-size:12px;color:#8a8078;margin-top:2px';
-
-    nut.append(dong1, dong2);
-    nut.addEventListener('click', () => {
-      closePersonDetail();
-      xuLy.onThemCon({ unionId: u.id });
-    });
-    khoiChon.append(nut);
-  }
-
-  khoiChon.scrollIntoView({ block: 'nearest' });
-}
+// ⚠ `moChonCap()` ĐÃ BỎ ở bước 65 (30/08/2026). Nó là màn hình "Thêm con vào
+// cặp nào?" mọc ra dưới vòng tròn, và nó hỏng theo hai cách: chọn xong là nó
+// biến mất nên sửa lại phải đóng cả form mở lại từ đầu, và nó chỉ hỏi khi
+// người ấy có từ HAI cặp — người có đúng một cặp không có đường nào khai một
+// người con ĐƠN THÂN. Cả hai chỗ ấy nay do khối "Cha mẹ là ai?" trong
+// `person-edit.js` lo (luật 13). Vành chỉ còn việc gọi `onThemCon({ mocId })`.
 
 function nutChan(chu, chinh, chay, tat) {
   const nut = document.createElement('button');

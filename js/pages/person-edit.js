@@ -8,7 +8,7 @@
 //            xoa,anh}.js, state,
 //            domains/{person,union,validate,media,purge,render},
 //            services/{repo,gas}, utils/{graph,text,date,image,avatar}, config
-// Phiên bản: 1.40.0 · Cập nhật: 28/08/2026 00:20
+// Phiên bản: 1.41.0 · Cập nhật: 30/08/2026 06:37
 // ============================================================
 //
 // NGƯỢC với hai màn hình kia: form HIỆN ĐỦ MỌI Ô, kèm chữ mờ gợi ý.
@@ -165,6 +165,51 @@
 //    ⚠ GÕ SAI THÌ KHÔNG ĐOÁN HỘ, VÀ FORM PHẢI NÓI RA — cùng đúng luật của ô
 //    Đời (bước 32). Ô để trống hay gõ chữ thì app ghi thứ 1 và kể ra điều đó
 //    trong khối cảnh báo, chứ không lặng lẽ chọn một con số nào khác.
+//
+// --- BA HỘP THOẠI: luật thứ mười ba (bước 65, 30/08/2026) --------------
+//
+// 13. CÂU HỎI VỀ CHỖ NỐI PHẢI NẰM TRONG CHÍNH CÁI FORM, KHÔNG ĐỨNG TRƯỚC VÀ
+//    KHÔNG ĐỨNG SAU NÓ. Chủ dự án đưa ba ảnh chụp My Family Tree
+//    (`tai-lieu/anh/My Family Tree - them *.png`) và chốt: thêm một người là
+//    MỘT màn hình, mọi câu hỏi hiện cùng lúc, sửa lại được trước khi bấm.
+//
+//    Trước hôm nay app hỏi ở hai chỗ khác, và cả hai đều sai chỗ:
+//      · TRƯỚC form — "Thêm con vào cặp nào?" mọc ra ở thẻ người, rồi biến mất
+//        khi form mở. Chọn nhầm thì phải đóng form, mở lại thẻ, bấm lại vành.
+//        Và nó chỉ hỏi khi có từ HAI cặp, nên người có đúng một cặp không có
+//        đường nào khai một người con ĐƠN THÂN.
+//      · SAU form — "Nối vào cặp Uxxxx sẵn có" (bước 63) mọc trong khối cảnh
+//        báo, tức sau khi người ta đã gõ xong và bấm nút. Đó đúng cái bệnh nếp
+//        (35) của bước 64 gọi tên: **một cửa canh đặt SAU khi người ta đã
+//        quyết thì không canh gì cả.**
+//
+//    Nay cả hai câu ấy là KHỐI TRONG FORM. Nút "Nối vào cặp sẵn có" vẫn còn,
+//    nhưng chỉ cho những cặp mà khối trong form KHÔNG kể tới — cặp một người
+//    CHƯA CÓ CON. Hỏi lại một câu người ta vừa trả lời là tự mâu thuẫn.
+//
+//    ⚠ THÊM VỢ/CHỒNG: Ô TÍCH THEO TỪNG NGƯỜI CON, NHƯNG NHẬN THEO CẢ CẶP.
+//    Ảnh mẫu bày mỗi người con một ô tích. Mô hình ở đây thì đặt quan hệ cha
+//    mẹ – con ở CẶP (luật 9), nên bước vào một cặp là thành cha/mẹ của TẤT CẢ
+//    con của cặp ấy — không có nửa vời. Hai điều ấy dung hoà được mà không nói
+//    dối: ô tích vẽ theo từng người con đúng như ảnh, nhưng tích một ô là app
+//    tích luôn cả nhóm và nói ra vì sao. Người dùng thấy hệ quả NGAY LÚC BẤM,
+//    chứ không đọc một dòng luật rồi tự suy.
+//
+//    ⚠ CON CỦA CẶP ĐÃ ĐỦ HAI NGƯỜI THÌ CHỈ KỂ, KHÔNG CHO TÍCH. `addPartner`
+//    không nhét được người thứ ba. Không kể ra thì người dùng nhìn danh sách
+//    thiếu mất đứa con họ đang nghĩ tới và tưởng app quên; kể mà cho tích thì
+//    hứa một việc không làm được.
+//
+//    ⚠ ĐỔI CHỖ NỐI LÀ XOÁ MỌI CÂU TRẢ LỜI ĐÃ CHO. Tích một cặp khác, hay chọn
+//    một cặp cha mẹ khác, thì `daXemCanhBao` · `daXemThuTu` · `sapXepLai` đều
+//    về `false` và ô thứ bậc vẽ lại. Cảnh báo cũ nói về một chỗ nối không còn
+//    được chọn nữa — giữ lại là cho người ta bấm "Vẫn thêm" cho một câu hỏi
+//    khác với câu họ đã đọc.
+//
+//    ⚠ Ô TÍCH "con nuôi" ĐỔI THÀNH Ô CHỌN ĐỦ NĂM MÃ. Ảnh mẫu bày một ô chọn,
+//    và lược đồ vốn có năm mã (`QUAN_HE_CON_NHAN`) trong khi ô tích chỉ ghi
+//    được `adopted`. Hạn chế ấy ghi trong `KE-HOACH` từ việc 8 — nay đóng, ở
+//    cả ba cửa: thêm con · thêm cha/mẹ · hộp Kết nối.
 
 // ⚠ Nhập từ các file `form-*.js` đã tách ra: vòng nhập hai chiều, và nó CỐ Ý.
 // Chạy được vì mọi lời gọi nằm trong thân hàm, không ở top-level — xem
@@ -267,8 +312,25 @@ let quanHe    = null;
 // ⚠ Giữ THAM CHIẾU tới ô, không đọc ngược từ `document`. `hienNhan()` xoá sạch
 // `N.khoiKetQua` mỗi lần nó nói một câu mới, nên sau khối cảnh báo thì mấy cái ô
 // này không còn nằm trong trang nữa — nhưng tham chiếu vẫn sống và vẫn giữ
-// đúng con số người dùng đã gõ. Cùng cơ chế mà `o.conNuoi` đã sống nhờ.
+// đúng con số người dùng đã gõ. Cùng cơ chế mà `o.quanHe` đã sống nhờ.
 let thuBacNhap = [];
+
+// --- BA HỘP THOẠI KIỂU MY FAMILY TREE (bước 65, 30/08/2026) -------------
+//
+// Xem luật 13 ở đầu file. Ba bản làm việc, cùng lối `tenPhu` và `quanHe`: form
+// giữ RIÊNG tham chiếu tới từng ô, không đọc ngược từ `document`. Lý do y hệt
+// `thuBacNhap` — `hienNhan()` xoá sạch `N.khoiKetQua` mỗi lần nó nói một câu,
+// và mấy khối này thì vẽ lại được giữa chừng.
+//
+// `chonChaMe` : { mocId, cacO:[{ma,input}] } — hộp "Cha mẹ là ai?" của thêm con
+// `khoiThuBac`: hộp CHỨA ô thứ bậc, để vẽ lại một mình nó khi chỗ nối đổi
+// `khoiHon`   : hộp CHỨA ba ô của cuộc hôn nhân, cùng lý do vẽ lại như trên
+// `conSanCo`  : [{ personId, unionId, hop, oQh }] — bảng con sẵn có của thêm
+//               vợ/chồng. `hop` là ô tích, `oQh` là ô chọn quan hệ đẻ/nuôi.
+let chonChaMe  = null;
+let khoiThuBac = null;
+let khoiHon    = null;
+let conSanCo   = [];
 
 
 /**
@@ -310,14 +372,21 @@ export function openPersonForm(personId, xuLy = {}) {
 /**
  * Mở form THÊM MỘT NGƯỜI CON.
  *
- * @param {string|{unionId?:string, chaMeId?:string}} vao
- *        mã union để nối con vào; hoặc `{ chaMeId }` khi người ấy chưa có cặp
- *        nào — lúc đó form tạo luôn một union MỘT NGƯỜI trong cùng lần lưu.
+ * @param {string|{mocId?:string, unionId?:string, chaMeId?:string}} vao
+ *        `{ mocId }` — CÁCH GỌI CHÍNH từ bước 65: người mà ta đang thêm con
+ *        cho; form tự vẽ khối *"Cha mẹ là ai?"* và người dùng chọn ngay trong
+ *        đó. Hai dạng cũ vẫn chạy: mã union để nối thẳng vào, hoặc
+ *        `{ chaMeId }` để tạo một union MỘT NGƯỜI trong cùng lần lưu.
  * @param {{onDaLuu?:function(string)}} [xuLy]
  *
  * Nhận cả chuỗi lẫn object: bản khung 15/08 ghi `quickAddChild(unionId)`, và
  * đường ấy vẫn chạy. Chỉ thêm dạng object cho ca người chưa có vợ/chồng — ca
  * rất thường gặp trong gia phả cũ, nơi rất nhiều bà mẹ không còn ai nhớ tên.
+ *
+ * ⚠ `{ unionId }` KHÔNG vẽ khối chọn cha mẹ, và đó là chủ ý: đường ấy đi từ
+ * màn hình *Sửa thông tin gia đình*, nơi người dùng đang đứng trong đúng một
+ * gia đình cụ thể. Bày lại một câu hỏi họ vừa trả lời bằng cách mở màn hình ấy
+ * là mời họ đổi một thứ không ai định đụng.
  */
 export function quickAddChild(vao, xuLy = {}) {
   const nv = chuanNoiVao(vao);
@@ -351,6 +420,17 @@ function chuanNoiVao(vao) {
   const v = (typeof vao === 'string') ? { unionId: vao } : (vao || {});
   if (v.unionId && index.unionById.has(v.unionId)) return { unionId: v.unionId };
   if (v.chaMeId && index.personById.has(v.chaMeId)) return { chaMeId: v.chaMeId };
+
+  // Dạng `{ mocId }`: chỗ nối CHƯA quyết, khối trong form sẽ quyết. Điền sẵn
+  // cặp đầu tiên chứ không để trống — mở form ra mà không nút nào được chọn thì
+  // người dùng phải bấm một cái chỉ để về lại đúng ca thường gặp nhất. Người
+  // chưa có cặp nào thì chỉ có một câu trả lời, và khối kia tự im.
+  if (v.mocId && index.personById.has(v.mocId)) {
+    const ds = getPartnerUnions(index, v.mocId);
+    return ds.length === 0
+      ? { mocId: v.mocId, chaMeId: v.mocId }
+      : { mocId: v.mocId, unionId: ds[0].id };
+  }
   return null;
 }
 
@@ -417,6 +497,10 @@ export function closePersonForm() {
   khoiTenPhu   = null;
   quanHe       = null;
   thuBacNhap   = [];
+  chonChaMe    = null;
+  khoiThuBac   = null;
+  khoiHon      = null;
+  conSanCo     = [];
 }
 
 /**
@@ -511,10 +595,13 @@ function moTaChoNoi() {
   }
 
   if (N.cheDo === 'themBanDoi') {
-    return 'Vợ / chồng của ' + tenNguoi(noiVao.banDoiId) +
-           ' — app tạo một cặp mới cho hai người. Người này KHÔNG tự thành ' +
-           'cha/mẹ của con sẵn có của ' + tenNguoi(noiVao.banDoiId) + '.';
+    return 'Vợ / chồng của ' + tenNguoi(noiVao.banDoiId) + '.';
   }
+
+  // Chỗ nối chưa quyết — khối "Cha mẹ là ai?" ngay dưới mới là chỗ nói ra nó,
+  // và nó đổi được sau khi form đã mở. Nhắc lại ở đây một câu có thể cũ đi
+  // trong vòng một cú bấm thì thà không nói.
+  if (noiVao.mocId) return 'Con của ' + tenNguoi(noiVao.mocId) + '.';
 
   if (noiVao.chaMeId) {
     return 'Con của ' + tenNguoi(noiVao.chaMeId) +
@@ -544,23 +631,34 @@ function veCacO(nguoi) {
   const ra = [];
   const ten = mucTenChinh(nguoi);
 
+  // Luật 13: CÂU HỎI "NỐI VÀO ĐÂU" LUÔN ĐỨNG ĐẦU FORM, ở cả ba chế độ thêm
+  // quan hệ. Nó quyết định nghĩa của mọi ô đứng dưới — ô quan hệ đẻ/nuôi nói
+  // về CẶP nào, ô thứ bậc đếm theo những cặp nào — nên hỏi sau là bắt người ta
+  // trả lời mấy câu rồi mới biết chúng nói về cái gì.
   if (N.cheDo === 'themCon') {
+    ra.push(...khoiChonChaMe());
     ra.push(veNhan('Quan hệ với cặp này'));
-    ra.push(veConNuoi('Là con nuôi (không phải con đẻ)'));
+    ra.push(oQuanHeMoi('Quan hệ của người con với cặp này', 'con'));
   }
   // Chỉ hỏi khi đang TẠO cặp cha mẹ mới. Nối thêm một người vào cặp đã có thì
   // quan hệ đẻ/nuôi của người con với cặp ấy đã ghi từ trước, và hỏi lại ở đây
   // là mời người dùng đổi một thứ họ không định đụng tới.
   if (N.cheDo === 'themChaMe' && !noiVao.unionId) {
     ra.push(veNhan('Quan hệ với ' + tenNguoi(noiVao.childId)));
-    ra.push(veConNuoi('Là cha / mẹ NUÔI (không phải cha mẹ đẻ)'));
+    ra.push(oQuanHeMoi('Quan hệ của cha / mẹ này với ' + tenNguoi(noiVao.childId),
+                       'chaMe'));
   }
 
-  // Luật 12. Đứng ĐẦU form, cùng chỗ với hai ô quan hệ ở trên và cùng một lý
-  // do: nó nói về CHỖ ĐỨNG của người sắp thêm, không nói về bản thân họ. Người
-  // vừa được thêm luôn là cặp thứ nhất của chính họ, nên chỉ hỏi phía kia.
-  if (N.cheDo === 'themBanDoi' && !noiVao.unionId) {
-    ra.push(...khoiHoiThuBac(noiVao.banDoiId, ''));
+  // Ba khối của hộp *Thêm vợ / chồng*, đúng thứ tự nhân quả: bảng con sẵn có
+  // quyết CẶP NÀO, cặp nào quyết ô thứ bậc còn phải hỏi hay không, rồi mới tới
+  // mấy ô của chính cuộc hôn nhân ấy. Ô thứ bậc nằm trong một hộp riêng để vẽ
+  // lại được một mình nó khi bảng trên đổi (luật 12 + luật 13).
+  if (N.cheDo === 'themBanDoi') {
+    ra.push(...khoiConSanCo());
+    khoiThuBac = document.createElement('div');
+    veLaiThuBac();
+    ra.push(khoiThuBac);
+    ra.push(...khoiHonNhan());
   }
 
   // Ảnh chỉ hiện ở chế độ SỬA hồ sơ, cố ý. Ở các chế độ thêm người, bản ghi
@@ -967,7 +1065,11 @@ function tenBanDoiTrongCap(index, u, personId) {
   const ds = (Array.isArray(u.partners) ? u.partners : [])
     .filter((id) => id && id !== personId && index.personById.has(id))
     .map(tenNguoi);
-  return ds.length > 0 ? ds.join('  và  ') : '(cặp mới có một người)';
+  // ⚠ Chữ thay thế phải đúng ở CẢ HAI nơi gọi. Bản cũ ghi *"(cặp mới có một
+  // người)"* — đọc lọt tai trong khối Quan hệ, nhưng ở danh sách *"Đang có:"*
+  // của ô thứ bậc thì nó nói dối: cặp ấy là cặp CŨ, có khi đã mang mấy người
+  // con. Bước 65 làm chỗ ấy hiện ra thường xuyên nên lỗi lộ ngay.
+  return ds.length > 0 ? ds.join('  và  ') : '(chưa có tên người kia)';
 }
 
 /**
@@ -1208,16 +1310,21 @@ function veNhanO(chu) {
  * hiển thị. Không nói ra thì người dùng không biết app hiểu mình thế nào, và
  * cũng không biết vì sao thẻ thông tin lại hiện "khoảng 74 tuổi".
  */
-function oNgay(khoa, khoiNgay) {
+function oNgay(khoa, khoiNgay, nhanRieng) {
   const boc = document.createElement('div');
   boc.style.cssText = 'margin-top:6px';
+
+  // Nhãn suy từ khoá cho hai ô đã có từ đầu; ô nào mọc sau thì tự mang nhãn
+  // của mình. Thêm một nhánh `khoa === '…'` nữa vào chuỗi ba ngôi là dựng một
+  // bảng tra ngầm nằm rải trong thân hàm.
+  const nhan = nhanRieng || (khoa === 'birth' ? 'Ngày sinh' : 'Ngày mất');
 
   const cu = khoiNgayCua(khoiNgay);
   const input = document.createElement('input');
   input.type = 'text';
   input.value = coGiaTri(cu.raw) ? String(cu.raw) : '';
   input.placeholder = '1948  ·  12/3/1948  ·  khoảng 1948';
-  input.setAttribute('aria-label', khoa === 'birth' ? 'Ngày sinh' : 'Ngày mất');
+  input.setAttribute('aria-label', nhan);
   input.style.cssText = KIEU_O;
   o[khoa] = input;
 
@@ -1228,7 +1335,7 @@ function oNgay(khoa, khoiNgay) {
   input.addEventListener('input', capNhat);
   capNhat();
 
-  boc.append(veNhanO(khoa === 'birth' ? 'Ngày sinh' : 'Ngày mất'), input, doc);
+  boc.append(veNhanO(nhan), input, doc);
   return boc;
 }
 
@@ -1358,31 +1465,43 @@ function veConSong(dangSong) {
 }
 
 /**
- * Công tắc con nuôi. Chỉ có ở chế độ thêm con.
+ * Ô chọn quan hệ đẻ/nuôi cho một mối nối SẮP TẠO RA — đủ **năm** mã.
  *
  * Không phải chuyện hình thức: `validate.js` bỏ qua MỌI phép rà tuổi sinh học
- * khi thấy đúng chữ `'adopted'` (cha mẹ nuôi trẻ hơn con nuôi là hợp lệ). Đánh
- * dấu sai ở đây là tắt mất bốn phép rà, hoặc bật nhầm bốn phép rà lên một quan
- * hệ không mang ràng buộc nào.
+ * khi thấy quan hệ khác `'birth'` (cha mẹ nuôi trẻ hơn con nuôi là hợp lệ).
+ * Chọn sai ở đây là tắt mất bốn phép rà, hoặc bật nhầm bốn phép rà lên một
+ * quan hệ không mang ràng buộc nào.
+ *
+ * ⚠ **Trước bước 65 đây là một Ô TÍCH, và ô tích chỉ ghi được `adopted`** —
+ * hạn chế đã ghi trong `KE-HOACH` từ việc 8: muốn ghi *mẹ kế* (`step`) thì
+ * phải thêm người xong rồi vào form hồ sơ đổi lại. Nay ba cửa cùng dùng đúng
+ * `oChonQuanHe()` mà khối Quan hệ (việc 3) vẫn dùng, nên năm mã ghi được ngay
+ * lúc nhập, và không có bản logic thứ hai nào để trôi lệch.
+ *
+ * @param {string} nhan  chữ cho trình đọc màn hình — ô này không có nhãn riêng,
+ *        nhãn của nó là dòng `veNhan()` ngay trên
+ * @param {'con'|'chaMe'} phia  đọc từ phía nào
  */
-function veConNuoi(chuNhan) {
-  const nhan = document.createElement('label');
-  nhan.style.cssText =
-    'display:flex;align-items:center;gap:9px;margin-top:6px;padding:9px 11px;' +
-    'border:1px solid #e6e0d8;border-radius:9px;background:#faf8f5;' +
-    'font-size:14px;cursor:pointer;touch-action:manipulation';
+function oQuanHeMoi(nhan, phia) {
+  const boc = document.createElement('div');
+  boc.style.cssText = 'margin-top:6px;display:flex';
 
-  const hop = document.createElement('input');
-  hop.type = 'checkbox';
-  hop.checked = false;
-  hop.style.cssText = 'width:18px;height:18px;accent-color:#2a2622';
-  o.conNuoi = hop;
+  // `maCu` là 'birth' chứ không phải chuỗi rỗng: đây là quan hệ CHẶT nhất, và
+  // mặc định phải là thứ bật đủ mọi phép rà lên. Mặc định lỏng là mặc định im.
+  const chon = oChonQuanHe(nhan, 'birth', phia, () => {});
+  o.quanHe = chon;
 
-  const chu = document.createElement('span');
-  chu.textContent = chuNhan || 'Là con nuôi (không phải con đẻ)';
+  boc.append(chon);
+  return boc;
+}
 
-  nhan.append(hop, chu);
-  return nhan;
+/**
+ * Mã quan hệ đang chọn. Không có ô — hoặc ô mang một mã lạ — thì `'birth'`,
+ * cùng đúng phép chuẩn hoá mà `union.addChild` dùng khi ghi.
+ */
+function docQuanHeMoi() {
+  const v = o.quanHe ? String(o.quanHe.value || '') : '';
+  return QUAN_HE_CON_NHAN.some((x) => x.ma === v) ? v : 'birth';
 }
 
 function veChan(nguoi, luuDuoc) {
@@ -1661,7 +1780,7 @@ async function handleAddChild() {
 
   const luc    = stampNow();
   const boi    = (state.phien && state.phien.email) || '';
-  const quanHe = (o.conNuoi && o.conNuoi.checked) ? 'adopted' : 'birth';
+  const quanHe = docQuanHeMoi();
 
   const dung = dungCayThemCon(state.tree, gomThayDoi(), quanHe, { boi, luc });
   if (!dung) {
@@ -2660,6 +2779,425 @@ function loiThuBacGoSai() {
 }
 
 // ============================================================
+// BA HỘP THOẠI KIỂU MY FAMILY TREE — luật 13 (bước 65, 30/08/2026)
+// ============================================================
+
+/** Một hàng có ô tích / ô tròn, kiểu dùng chung cho cả hai khối dưới. */
+const KIEU_HANG_TICH =
+  'display:flex;align-items:flex-start;gap:9px;margin-top:6px;padding:9px 11px;' +
+  'border:1px solid #e6e0d8;border-radius:9px;background:#faf8f5;' +
+  'font-size:14px;line-height:1.4;cursor:pointer;touch-action:manipulation';
+
+const KIEU_O_TICH = 'width:18px;height:18px;flex:0 0 auto;margin-top:1px;accent-color:#2a2622';
+
+/** Dòng chữ nhỏ giải thích, dùng lại ở cả ba khối. */
+function dongNhac(chu) {
+  const d = document.createElement('div');
+  d.textContent = chu;
+  d.style.cssText = 'font-size:11px;line-height:1.45;color:#8a8078;margin-top:4px';
+  return d;
+}
+
+/**
+ * ⚠ ĐỔI CHỖ NỐI LÀ XOÁ MỌI CÂU TRẢ LỜI ĐÃ CHO CHO CHỖ NỐI CŨ.
+ *
+ * `daXemCanhBao` nghĩa là *"tôi đã đọc mấy lời cảnh báo ấy và vẫn muốn thêm"* —
+ * mà mấy lời ấy nói về một cặp khác. Giữ lại là để một cú bấm "Vẫn thêm" dành
+ * cho câu hỏi A đi qua luôn câu hỏi B. `daXemThuTu`/`sapXepLai` cũng thế: thứ
+ * tự anh chị em đếm trong CẶP, đổi cặp là đổi cả hàng anh em.
+ *
+ * Chữ trên nút phải trả về như cũ, không thì nút còn ghi "Vẫn thêm" trong khi
+ * chẳng còn cảnh báo nào trên màn hình.
+ */
+function quenCauTraLoiCu() {
+  N.daXemCanhBao = false;
+  daXemThuTu     = false;
+  sapXepLai      = false;
+
+  if (N.khoiKetQua) N.khoiKetQua.innerHTML = '';
+  if (N.nutLuu && !N.dangLuu) N.nutLuu.textContent = tieuDeForm();
+
+  // Lời "bạn chỉ có quyền xem" nói về CẢ FORM chứ không về chỗ nối, nên nó
+  // phải sống lại ngay — nếu không, dọn xong là mất luôn câu duy nhất giải
+  // thích vì sao nút lưu đang mờ.
+  const canTro = canTroLuu();
+  if (canTro) hienNhan(canTro, true);
+}
+
+// --- HỘP 1: THÊM CON — "Cha mẹ là ai?" ---------------------------------
+
+/**
+ * Khối chọn CẶP CHA MẸ cho người con sắp thêm, đúng cái hộp ở ảnh mẫu
+ * `tai-lieu/anh/My Family Tree - them con.png`.
+ *
+ * @returns {HTMLElement[]} rỗng khi không có gì để chọn
+ *
+ * ⚠ **LUÔN CÓ MỤC "MỘT MÌNH X", kể cả khi người ấy đã có cặp.** Đây là điều
+ * màn hình cũ không làm được, và nó không phải ca hiếm: gia phả cũ đầy những
+ * người con mà không còn ai nhớ mẹ là ai. Trước bước 65, người đã có đúng một
+ * cặp bị đưa thẳng vào cặp ấy, không có đường nào khai một người con đơn thân —
+ * phải thêm vào cặp rồi vào *Sửa thông tin gia đình* gỡ ra.
+ *
+ * ⚠ **Người CHƯA có cặp nào thì khối này im.** Một câu hỏi chỉ có một câu trả
+ * lời là bắt người ta đọc để rồi bấm cái duy nhất — cùng lý lẽ đã dùng cho
+ * `chonCap()` và cho ô thứ bậc.
+ */
+function khoiChonChaMe() {
+  const index = state.index;
+  if (!index || !noiVao || !noiVao.mocId) return [];
+
+  const mocId = noiVao.mocId;
+  const dsCap = getPartnerUnions(index, mocId);
+  if (dsCap.length === 0) return [];
+
+  const ten = tenNguoi(mocId);
+  const boc = document.createElement('div');
+  chonChaMe = { mocId, cacO: [] };
+
+  const themHang = (ma, dong1, dong2, chon) => {
+    const nhan = document.createElement('label');
+    nhan.style.cssText = KIEU_HANG_TICH;
+
+    const nut = document.createElement('input');
+    nut.type = 'radio';
+    nut.name = 'giapha-cha-me';
+    nut.value = ma;
+    nut.checked = chon;
+    nut.dataset.chaMeCap = ma;   // mốc cho bài kiểm, xem kiem-ba-hop-thoai.mjs
+    nut.style.cssText = KIEU_O_TICH;
+    nut.addEventListener('change', () => { if (nut.checked) datChoNoiCon(ma); });
+    chonChaMe.cacO.push({ ma, input: nut });
+
+    const chu = document.createElement('span');
+    const d1 = document.createElement('div');
+    d1.textContent = dong1;
+    const d2 = document.createElement('div');
+    d2.textContent = dong2;
+    d2.style.cssText = 'font-size:12px;color:#8a8078;margin-top:2px';
+    chu.append(d1, d2);
+
+    nhan.append(nut, chu);
+    boc.append(nhan);
+  };
+
+  for (const u of dsCap) {
+    themHang(u.id, keTenPartner(u.id), moTaCap(u), u.id === noiVao.unionId);
+  }
+  themHang('', 'Một mình ' + ten,
+           'Chưa biết người kia là ai — app dựng một cặp riêng chỉ có ' + ten + '.',
+           !noiVao.unionId);
+
+  boc.append(dongNhac(
+    'Trong gia phả này quan hệ cha mẹ – con đi QUA CẶP, nên câu hỏi phải là ' +
+    '"cặp nào" chứ không phải "ai". Chọn nhầm thì đổi lại ngay ở đây, không ' +
+    'phải đóng form.'));
+
+  return [veNhan('Cha mẹ là ai?'), boc];
+}
+
+/** Ghi lựa chọn của khối trên vào `noiVao`. Chuỗi rỗng = một mình người mốc. */
+function datChoNoiCon(unionId) {
+  if (!noiVao || !noiVao.mocId) return;
+  if ((noiVao.unionId || '') === unionId) return;
+
+  if (unionId) {
+    noiVao.unionId = unionId;
+    delete noiVao.chaMeId;
+  } else {
+    noiVao.unionId = '';
+    noiVao.chaMeId = noiVao.mocId;
+  }
+  quenCauTraLoiCu();
+}
+
+// --- HỘP 2 và 3: THÊM VỢ / CHỒNG ---------------------------------------
+
+/** Những người con THẬT của một cặp — bỏ mã trỏ vào người không còn trong chỉ mục. */
+function conThatCua(u) {
+  const index = state.index;
+  return (Array.isArray(u && u.children) ? u.children : [])
+    .filter((c) => c && c.personId && index && index.personById.has(c.personId));
+}
+
+/**
+ * Bảng CON SẴN CÓ của người mốc — hộp thoại thứ hai của ảnh mẫu
+ * (`My Family Tree - them vo sau khi them con.png`). Rỗng khi người ấy chưa có
+ * con nào, và lúc ấy form thành đúng hộp thoại thứ ba (`… khi chua them con`).
+ *
+ * @returns {HTMLElement[]}
+ *
+ * --- Ô TÍCH THEO NGƯỜI, NHẬN THEO CẢ CẶP ------------------------------
+ *
+ * Xem luật 13. Tích một ô là app tích luôn cả nhóm của cặp ấy và bỏ tích mọi
+ * nhóm khác — vì bước vào một cặp là thành cha/mẹ của TẤT CẢ con của cặp ấy,
+ * và một người chỉ bước vào được MỘT cặp trong một lần thêm.
+ *
+ * --- Vì sao chỉ cặp MỘT NGƯỜI mới tích được ---------------------------
+ *
+ * `addPartner` không nhét được người thứ ba, và trong gia phả này nhiều vợ /
+ * nhiều chồng là NHIỀU CẶP chứ không phải một cặp ba người. Con của những cặp
+ * đã đủ hai người vẫn được KỂ RA — không kể thì người dùng nhìn danh sách
+ * thiếu mất đứa con họ đang nghĩ tới và tưởng app quên mất nó.
+ */
+function khoiConSanCo() {
+  const index = state.index;
+  if (!index || !noiVao || !noiVao.banDoiId) return [];
+
+  const mocId = noiVao.banDoiId;
+  const dsCap = getPartnerUnions(index, mocId).filter((u) => conThatCua(u).length > 0);
+  const tichDuoc = dsCap.filter((u) => soPartner(u) < 2);
+  const chiKe    = dsCap.filter((u) => soPartner(u) >= 2);
+  if (dsCap.length === 0) return [];
+
+  const ten = tenNguoi(mocId);
+  const boc = document.createElement('div');
+  conSanCo = [];
+
+  for (const u of tichDuoc) {
+    for (const c of conThatCua(u)) {
+      // ⚠ Hàng là một `div`, KHÔNG phải một `label` bọc cả hàng. Ô chọn quan hệ
+      // nằm trong hàng, mà một `label` bọc quanh nó thì mỗi lần mở danh sách
+      // chọn là một lần có nguy cơ lật cả ô tích. Nhãn chỉ ôm ĐÚNG ô tích và
+      // cái tên — đúng cặp mà nó nói về.
+      const hang = document.createElement('div');
+      hang.style.cssText = KIEU_HANG_TICH + ';flex-wrap:wrap;align-items:center';
+
+      const hop = document.createElement('input');
+      hop.type = 'checkbox';
+      hop.checked = false;
+      hop.dataset.conCua = u.id;   // mốc cho bài kiểm
+      hop.style.cssText = KIEU_O_TICH + ';margin-top:0';
+      hop.addEventListener('change', () => chonNhomCon(u.id, hop.checked));
+
+      // Tên và ô chọn nằm CÙNG MỘT HÀNG, đúng như ảnh mẫu. Bản đầu để ô chọn
+      // rộng hết hàng ngay dưới cái tên: hai người con là bốn dòng, năm người
+      // con là một bức tường ô chọn che mất chính mấy cái tên phải đọc.
+      const nhan = document.createElement('label');
+      nhan.style.cssText =
+        'display:flex;align-items:center;gap:9px;flex:1 1 140px;min-width:0;' +
+        'cursor:pointer;touch-action:manipulation';
+      const ten = document.createElement('span');
+      ten.textContent = tenNguoi(c.personId);
+      ten.style.cssText = 'overflow-wrap:anywhere';
+      nhan.append(hop, ten);
+
+      const oQh = oChonQuanHe('Quan hệ với ' + tenNguoi(c.personId),
+                              c.relation || 'birth', 'con', () => {});
+      oQh.dataset.quanHeCua = c.personId;   // mốc cho bài kiểm — xem ghi chú dưới
+      const boQh = document.createElement('div');
+      boQh.style.cssText = 'display:flex;flex:0 1 132px;min-width:112px';
+      boQh.append(oQh);
+
+      conSanCo.push({ personId: c.personId, unionId: u.id, hop, oQh });
+      hang.append(nhan, boQh);
+      boc.append(hang);
+    }
+
+    boc.append(dongNhac(
+      'Mấy người trên là con của cặp ' + u.id + ', cặp mà ' + ten + ' đang đứng ' +
+      'một mình. Tích một người là tích cả ' + conThatCua(u).length + ' người ' +
+      'của cặp ấy, vì quan hệ cha mẹ – con đi QUA CẶP: bước vào cặp là thành ' +
+      'cha/mẹ của tất cả, không có nửa vời.'));
+  }
+
+  for (const u of chiKe) {
+    const d = document.createElement('div');
+    d.textContent = 'Không tích được: ' +
+      conThatCua(u).map((c) => tenNguoi(c.personId)).join(' · ') +
+      ' (cặp ' + u.id + ' — ' + keTenPartner(u.id) + ' — đã đủ hai người).';
+    d.style.cssText =
+      'margin-top:6px;padding:9px 11px;font-size:12px;line-height:1.5;' +
+      'border:1px dashed #e6e0d8;border-radius:9px;color:#8a8078';
+    boc.append(d);
+  }
+
+  boc.append(dongNhac(
+    'Không tích ô nào thì app dựng một CẶP MỚI, và người vừa thêm KHÔNG thành ' +
+    'cha/mẹ của ai trong danh sách trên — đúng ca người vợ sau không phải mẹ ' +
+    'của con chồng.'));
+
+  return [veNhan('Con sẵn có của ' + ten), boc];
+}
+
+/**
+ * Tích / bỏ tích cả nhóm con của một cặp, và bỏ tích mọi nhóm khác.
+ *
+ * Một người chỉ bước vào được MỘT cặp trong một lần thêm, nên hai nhóm cùng
+ * được tích là một câu app không ghi nổi. Bỏ tích nhóm kia ngay tại chỗ, để
+ * người dùng thấy điều đó lúc bấm chứ không đọc nó trong một lời cảnh báo.
+ */
+function chonNhomCon(unionId, bat) {
+  for (const m of conSanCo) m.hop.checked = bat && m.unionId === unionId;
+  datChoNoiBanDoi(bat ? unionId : '');
+}
+
+/** Ghi chỗ nối của đường thêm vợ/chồng, rồi vẽ lại hai khối phụ thuộc vào nó. */
+function datChoNoiBanDoi(unionId) {
+  if (!noiVao || (noiVao.unionId || '') === unionId) return;
+  noiVao.unionId = unionId;
+  quenCauTraLoiCu();
+  veLaiThuBac();
+  veLaiHonNhan();
+}
+
+/**
+ * Vẽ lại ô thứ bậc theo chỗ nối HIỆN TẠI.
+ *
+ * ⚠ Phải vẽ lại chứ không để nguyên, và con số là lý do: `khoiHoiThuBac` đếm
+ * *"số cặp đang có + 1"*, mà cặp sắp bước vào thì không được tính vào số ấy —
+ * nó chính là cặp đang bàn tới. Người mốc có đúng một cặp một người và người
+ * dùng tích nhận con của nó, thì cặp ấy là cặp THỨ NHẤT, và câu hỏi thứ bậc
+ * biến mất hẳn (chưa có cặp nào khác để mà xếp thứ).
+ *
+ * `thuBacNhap` phải dọn trước: nó là mảng THAM CHIẾU tới ô, và ô cũ đã bị gỡ
+ * khỏi trang — để lại thì `docThuBacNhap()` đọc một con số không ai còn nhìn
+ * thấy nữa.
+ */
+function veLaiThuBac() {
+  if (!khoiThuBac) return;
+  khoiThuBac.innerHTML = '';
+  thuBacNhap = [];
+  khoiThuBac.append(...khoiHoiThuBac(noiVao.banDoiId, noiVao.unionId || ''));
+}
+
+/** Khối *Cuộc hôn nhân này* — trạng thái, ngày và nơi kết hôn. */
+function khoiHonNhan() {
+  khoiHon = document.createElement('div');
+  veLaiHonNhan();
+  return [khoiHon];
+}
+
+/**
+ * ⚠ ĐIỀN SẴN TỪ CẶP SẮP BƯỚC VÀO, KHÔNG PHẢI ĐỂ TRỐNG.
+ *
+ * Cặp cũ có thể đã mang ngày cưới và nơi cưới. Ba ô trống mà vẫn gửi đi thì
+ * `updateUnion` thấy `'1990' → ''` và **xoá mất** thứ đang lưu — người dùng chỉ
+ * thêm một người vợ mà mất một ngày cưới, không lời nào báo. Điền sẵn là cách
+ * duy nhất giữ đúng luật 1: thứ nhìn thấy trên màn hình đúng là thứ được ghi.
+ */
+function veLaiHonNhan() {
+  if (!khoiHon) return;
+
+  // Thứ người dùng ĐÃ GÕ, đọc trước khi xoá khối. Cặp cũ có ngày cưới thì ngày
+  // ấy thắng; cặp cũ để trống thì giữ nguyên chữ người ta vừa gõ. Vẽ lại mà
+  // quét trắng hai ô này là lấy mất công của họ vì một cú tích ở khối trên.
+  const daGoNgay = docO('marriage');
+  const daGoNoi  = docO('marriagePlace');
+  khoiHon.innerHTML = '';
+
+  const u = (noiVao && noiVao.unionId && state.index)
+    ? state.index.unionById.get(noiVao.unionId) : null;
+  const m = (u && u.marriage && typeof u.marriage === 'object') ? u.marriage : null;
+
+  const ngay = (m && coGiaTri(m.raw)) ? m.raw : daGoNgay;
+  const noi  = (m && coGiaTri(m.place)) ? m.place : daGoNoi;
+
+  khoiHon.append(veNhan('Cuộc hôn nhân này'));
+  khoiHon.append(oChonTrangThaiCap((u && u.status) || 'married'));
+  khoiHon.append(oNgay('marriage', { iso: null, raw: ngay, place: '' }, 'Ngày kết hôn'));
+  khoiHon.append(oChu('marriagePlace', 'Nơi kết hôn', noi, 'Đình làng Vân, Hà Nam'));
+}
+
+/**
+ * Ô chọn trạng thái của cặp.
+ *
+ * ⚠ Mã lạ được THÊM vào danh sách chứ không bị thay — đúng bài học của
+ * `oChonQuanHe`: không thêm thì `<select>` tự nhảy về mục đầu tiên, và người
+ * dùng chỉ mở form ra xem cũng đủ biến `widowed` của một file GEDCOM nhập vào
+ * thành `married`.
+ */
+function oChonTrangThaiCap(maCu) {
+  const boc = document.createElement('div');
+  boc.style.cssText = 'margin-top:6px';
+
+  const chon = document.createElement('select');
+  chon.setAttribute('aria-label', 'Trạng thái của cặp');
+  chon.style.cssText = KIEU_O;
+
+  const ds = TRANG_THAI_CAP.slice();
+  if (!ds.some((x) => x.ma === maCu)) ds.push({ ma: maCu, chu: nhanTrangThaiCap(maCu) });
+
+  for (const t of ds) {
+    const op = document.createElement('option');
+    op.value = t.ma;
+    op.textContent = t.chu;
+    if (t.ma === maCu) op.selected = true;
+    chon.append(op);
+  }
+  o.tinhTrangCap = chon;
+
+  boc.append(veNhanO('Đang là vợ chồng hay đã ly hôn'), chon);
+  return boc;
+}
+
+/** Ba ô của khối trên, đọc thành đúng khuôn `createUnion` / `updateUnion`. */
+function docKhoiHonNhan() {
+  const ma = o.tinhTrangCap ? String(o.tinhTrangCap.value || '') : '';
+  const raw = docO('marriage').trim();
+  return {
+    status: ma || 'married',
+    marriage: { raw, iso: parseLooseDate(raw).iso, place: docO('marriagePlace').trim() },
+  };
+}
+
+/**
+ * Ghi lại quan hệ đẻ/nuôi mà người dùng vừa chọn cho từng người con được tích.
+ *
+ * Chỉ chạm những người con của ĐÚNG cặp được bước vào. `updateChildRelation`
+ * tự trả về `thayDoi:false` khi mã không đổi, nên gọi cho cả nhóm là an toàn —
+ * nhưng `diff` thì chỉ nở ra ở những chỗ thật sự đổi.
+ *
+ * @returns {{tree:object}|null}
+ */
+function apQuanHeConDaChon(cay, unionId, diff) {
+  let tree = cay;
+  for (const m of conSanCo) {
+    if (m.unionId !== unionId || !m.hop.checked) continue;
+    const kq = updateChildRelation(tree, unionId, m.personId, String(m.oQh.value || 'birth'));
+    if (!kq) return null;
+    tree = kq.tree;
+    Object.assign(diff, kq.diff);
+  }
+  return { tree };
+}
+
+/**
+ * Một dòng cho những cặp mà bảng *Con sẵn có* ĐÃ hỏi và người dùng đã trả lời
+ * "không".
+ *
+ * Lời rà soát *"cặp Uxxxx trùng với Uyyyy"* vẫn hiện — nó là phép rà chung, và
+ * hai cặp cùng người thì đáng nhìn lại thật. Nhưng ở đúng ca này nó nghe như
+ * app đang trách người dùng về một việc họ vừa cố ý làm. Dòng này nói ra rằng
+ * app hiểu câu trả lời của họ, chứ không phải bày thêm một cửa canh nữa.
+ */
+function veLoiDaHoiOForm(cacCap) {
+  if (!N.khoiKetQua || !cacCap || cacCap.length === 0) return;
+
+  const d = document.createElement('div');
+  d.textContent =
+    'Về ' + cacCap.map((u) => 'cặp ' + u.id).join(' · ') + ': bạn vừa cố ý ' +
+    'KHÔNG tích người con nào của nó ở khối "Con sẵn có" — tức người vừa thêm ' +
+    'không phải cha/mẹ của họ — nên app dựng một cặp riêng, đúng ý bạn. Bấm ' +
+    '"Vẫn thêm" để giữ cặp mới ấy.';
+  d.style.cssText =
+    'margin-top:10px;padding:7px 10px;font-size:12px;line-height:1.5;' +
+    'border-radius:8px;background:#faf8f5;border:1px solid #f0ebe4;color:#5c554e';
+  N.khoiKetQua.append(d);
+}
+
+/**
+ * Cặp này đã được hỏi ngay trong form chưa?
+ *
+ * Luật 13: hỏi lại ở khối cảnh báo một câu người ta vừa trả lời trong form là
+ * tự mâu thuẫn — họ vừa cố ý KHÔNG tích mấy người con ấy. Nút *"Nối vào cặp
+ * sẵn có"* (bước 63) vì thế chỉ còn giữ đúng phần mà bảng con không kể tới:
+ * cặp một người CHƯA CÓ CON, nơi không có hệ quả nào để bày ra thành ô tích.
+ */
+function capDaHoiOForm(unionId) {
+  return conSanCo.some((m) => m.unionId === unionId);
+}
+
+// ============================================================
 // THÊM CHA / MẸ và THÊM VỢ / CHỒNG — người MỚI
 // ============================================================
 
@@ -2747,7 +3285,7 @@ async function handleAddNguoiThan() {
 
   const luc    = stampNow();
   const boi    = (state.phien && state.phien.email) || '';
-  const quanHe = (o.conNuoi && o.conNuoi.checked) ? 'adopted' : 'birth';
+  const quanHe = docQuanHeMoi();
   const laChaMe = N.cheDo === 'themChaMe';
 
   const dung = laChaMe
@@ -2782,9 +3320,16 @@ async function handleAddNguoiThan() {
 
   // Cặp vừa dựng TRÙNG với một cặp một người đã có — người dùng phải có đường
   // thứ ba, không chỉ "Vẫn thêm" hoặc "Huỷ". Lý do đầy đủ ở `veNutNoiVaoCapCu`.
-  const capCu = (!laChaMe && dung.laUnionMoi)
+  // Luật 13: bỏ những cặp mà bảng *Con sẵn có* trong form ĐÃ hỏi rồi. Người
+  // dùng vừa cố ý không tích chúng — bày lại đúng câu ấy trong khối cảnh báo là
+  // tự mâu thuẫn, và tệ hơn: nó dạy người ta rằng câu trả lời trong form không
+  // được tính. Còn lại đúng phần bảng kia không kể tới: cặp một người CHƯA CÓ
+  // CON, nơi không có hệ quả nào để bày thành ô tích.
+  const capTrung = (!laChaMe && dung.laUnionMoi)
     ? capTrungNoiVaoDuoc(dung.tree, dung.union.id)
     : [];
+  const capCu    = capTrung.filter((u) => !capDaHoiOForm(u.id));
+  const capDaHoi = capTrung.filter((u) => capDaHoiOForm(u.id));
 
   if (canhBao.length > 0 && !N.daXemCanhBao) {
     N.daXemCanhBao = true;
@@ -2795,6 +3340,7 @@ async function handleAddNguoiThan() {
         'lỗi, nên app không chặn — bấm "Vẫn thêm" nếu bạn biết là đúng:',
       false, canhBao);
     veNutNoiVaoCapCu(dung.tree, capCu, dung.person);
+    veLoiDaHoiOForm(capDaHoi);
     return;
   }
 
@@ -2876,7 +3422,14 @@ function dungCayThemChaMe(cay, thayDoi, quanHe, ghiNhan) {
            laUnionMoi: true, diff };
 }
 
-/** Cây mới cho `themBanDoi`. @returns {{tree, person, union, laUnionMoi, diff}|null} */
+/**
+ * Cây mới cho `themBanDoi`. @returns {{tree, person, union, laUnionMoi, diff}|null}
+ *
+ * ⚠ Từ bước 65 hàm này còn mang theo BA thứ nữa mà form vừa hỏi: trạng thái
+ * cặp, ngày và nơi kết hôn (`docKhoiHonNhan`), và quan hệ đẻ/nuôi của những
+ * người con được tích (`apQuanHeConDaChon`). Cả ba đi trong ĐÚNG MỘT lần
+ * `luuCay()` cùng người mới — luật 4.
+ */
 function dungCayThemBanDoi(cay, thayDoi, ghiNhan) {
   if (!cay || !noiVao || !noiVao.banDoiId) return null;
 
@@ -2885,28 +3438,38 @@ function dungCayThemBanDoi(cay, thayDoi, ghiNhan) {
 
   const tree = kqP.tree;
   const diff = Object.assign({}, kqP.diff);
+  const hon  = docKhoiHonNhan();
 
-  // Nối vào một cặp ĐÃ CÓ. Từ 27/08/2026 đây không còn là nhánh chết: nút thứ
-  // ba của hộp cảnh báo trùng (`veNutNoiVaoCapCu`) đặt `noiVao.unionId` rồi gọi
-  // lại hàm lưu, và đường đi tiếp là đúng nhánh này.
+  // Nối vào một cặp ĐÃ CÓ. Hai cửa dẫn vào đây, và từ bước 65 cửa thứ hai mới
+  // là cửa chính: bảng *Con sẵn có* trong form (`datChoNoiBanDoi`), và nút
+  // *"Nối vào cặp sẵn có"* của khối cảnh báo (bước 63, `veNutNoiVaoCapCu`).
   if (noiVao.unionId) {
     const kqA = addPartner(tree, noiVao.unionId, kqP.person.id);
     if (!kqA) return null;
     Object.assign(diff, kqA.diff);
 
-    // `addPartner` cố ý không nhận `ranks`, nên thứ bậc ghi bằng một hàm nữa
-    // NỐI ĐUÔI ngay sau — y hệt `dungCayNoi` nhánh vợ/chồng có sẵn cặp. Câu
-    // trả lời của người dùng nói về CHỖ ĐỨNG của cặp này trong đời người kia,
-    // nên nó vẫn đúng khi cặp ấy là cặp cũ chứ không phải cặp vừa dựng.
+    // `addPartner` cố ý không nhận `ranks` — nó làm đúng một việc. Thứ bậc và
+    // ba ô hôn nhân ghi bằng một hàm nữa NỐI ĐUÔI ngay sau, y hệt `dungCayNoi`
+    // nhánh vợ/chồng có sẵn cặp. Câu trả lời của người dùng nói về CHỖ ĐỨNG của
+    // cặp này trong đời người kia, nên nó vẫn đúng khi cặp ấy là cặp cũ.
+    const sua = Object.assign({}, hon);
     const bac = docThuBacNhap();
-    if (Object.keys(bac).length === 0) {
-      return { tree: kqA.tree, person: kqP.person, union: kqA.union,
-               laUnionMoi: false, diff };
-    }
-    const kqR = updateUnion(kqA.tree, noiVao.unionId, { ranks: bac });
+    if (Object.keys(bac).length > 0) sua.ranks = bac;
+
+    const kqR = updateUnion(kqA.tree, noiVao.unionId, sua);
     if (!kqR) return null;
     Object.assign(diff, kqR.diff);
-    return { tree: kqR.tree, person: kqP.person, union: kqR.union,
+
+    const kqC = apQuanHeConDaChon(kqR.tree, noiVao.unionId, diff);
+    if (!kqC) return null;
+
+    // Đọc lại bản ghi cặp TỪ CÂY CUỐI CÙNG, không dùng `kqR.union`: mấy lời gọi
+    // `updateChildRelation` ở trên đã sinh ra một bản mới, và trả về bản cũ là
+    // đưa cho `luuCay()` một cặp thiếu đúng cái vừa sửa.
+    const uCuoi = kqC.tree.unions.find((x) => x && x.id === noiVao.unionId);
+    if (!uCuoi) return null;
+
+    return { tree: kqC.tree, person: kqP.person, union: uCuoi,
              laUnionMoi: false, diff };
   }
 
@@ -2914,7 +3477,7 @@ function dungCayThemBanDoi(cay, thayDoi, ghiNhan) {
   // khi `noiVao.banDoiId` đã có cặp khác, nên ca thường gặp — lấy vợ/chồng lần
   // đầu — vẫn đi qua đây với một bảng rỗng, đúng như trước.
   const kqU = createUnion(tree, [noiVao.banDoiId, kqP.person.id],
-                          { ranks: docThuBacNhap() });
+                          Object.assign({ ranks: docThuBacNhap() }, hon));
   if (!kqU) return null;
   Object.assign(diff, kqU.diff);
 
@@ -2990,8 +3553,12 @@ function veNutNoiVaoCapCu(cay, cacCap, nguoiMoi) {
     const hang = document.createElement('div');
     hang.style.cssText = 'margin-top:10px';
     hang.append(nutChon('Nối vào cặp ' + u.id + ' sẵn có', false, () => {
-      noiVao.unionId = u.id;
-      N.daXemCanhBao = false;
+      // `datChoNoiBanDoi` chứ không gán thẳng `noiVao.unionId`: nó vẽ lại ô thứ
+      // bậc và khối *Cuộc hôn nhân này* theo đúng cặp sắp bước vào. Gán thẳng
+      // thì ba ô hôn nhân còn đang rỗng của một cặp MỚI, và `updateUnion` sẽ
+      // ghi chúng đè lên ngày cưới đang lưu của cặp cũ — mất dữ liệu, không
+      // một lời báo (luật 13).
+      datChoNoiBanDoi(u.id);
       handleAddNguoiThan();
     }));
     N.khoiKetQua.append(hang);
@@ -3142,11 +3709,14 @@ function moHopXacNhanNoi(ctx, xuLy) {
   // với cặp ấy đã ghi từ trước — hỏi lại là mời đổi một thứ không ai định đụng.
   const hoiNuoi = (loai === 'child') || (loai === 'parent' && !unionId);
   if (hoiNuoi) {
-    N.khoiKetQua.append(veConNuoi(loai === 'child'
-      ? 'Là con nuôi (không phải con đẻ)'
-      : 'Là cha / mẹ NUÔI (không phải cha mẹ đẻ)'));
+    N.khoiKetQua.append(veNhan(loai === 'child'
+      ? 'Quan hệ của người con với cặp này'
+      : 'Quan hệ của cha / mẹ này với ' + tenNguoi(personId)));
+    N.khoiKetQua.append(oQuanHeMoi(loai === 'child'
+      ? 'Quan hệ của người con với cặp này'
+      : 'Quan hệ của cha / mẹ này với ' + tenNguoi(personId), loai === 'child' ? 'con' : 'chaMe'));
   } else {
-    o.conNuoi = null;
+    o.quanHe = null;
   }
 
   // Luật 12 — chỉ đường VỢ/CHỒNG mới sinh ra một cuộc hôn nhân. Hai vai kia nối
@@ -3255,7 +3825,7 @@ function cauKeNoi() {
 async function chayNoi() {
   if (N.dangLuu || !noiCtx) return;
 
-  const quanHe = (o.conNuoi && o.conNuoi.checked) ? 'adopted' : 'birth';
+  const quanHe = docQuanHeMoi();
   const dung = dungCayNoi(quanHe);
   if (!dung) {
     hienNhan('Không nối được hai người này. Có thể gia phả vừa thay đổi trong lúc ' +
