@@ -3,7 +3,7 @@
 // Vai trò  : Xuất gia phả ra GEDCOM 5.5.1, và ĐỌC file .ged thành bản xem trước
 // Lớp      : domains — HÀM THUẦN, không chạm DOM, không gọi services
 // Phụ thuộc: utils/date, utils/text, utils/id, config, domains/union
-// Phiên bản: 1.4.0 · Cập nhật: 29/08/2026 11:51
+// Phiên bản: 1.4.1 · Cập nhật: 29/08/2026 16:20
 // ============================================================
 //
 // XUẤT: GEDCOM 5.5.1. Cũ hơn 7.0 nhưng gần như mọi phần mềm gia phả đọc được.
@@ -82,7 +82,7 @@
 
 import { parseLooseDate, formatDate } from '../utils/date.js';
 import { coGiaTri, fullName } from '../utils/text.js';
-import { isValidId } from '../utils/id.js';
+import { isValidId, loaiCua } from '../utils/id.js';
 import { QUAN_HE_CON_NHAN, nhanQuanHeCon, nhanTrangThaiCap } from '../config.js';
 import { ranksRoRang } from './union.js';
 
@@ -969,7 +969,7 @@ function dungBangMa(banGhi) {
     const tt = nhom[r.the];
     if (!tt || !r.xref) continue;
     const ma = r.xref.trim().toUpperCase();
-    if (isValidId(ma) && ma.charAt(0) === tt && !daDung.has(ma)) {
+    if (isValidId(ma) && loaiCua(ma) === tt && !daDung.has(ma)) {
       daDung.add(ma);
       r.ma = ma;
       bang.set(r.xref, ma);

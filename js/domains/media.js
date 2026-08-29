@@ -3,7 +3,7 @@
 // Vai trò  : Nghiệp vụ ảnh và tư liệu (không tự tải lên — việc đó của services)
 // Lớp      : domains — HÀM THUẦN, được gọi bởi: pages · được phép gọi: utils
 // Phụ thuộc: utils/id, utils/text
-// Phiên bản: 1.0.0 · Cập nhật: 20/08/2026 12:40
+// Phiên bản: 1.0.1 · Cập nhật: 29/08/2026 16:20
 // ============================================================
 //
 // BỐN LUẬT CỦA FILE NÀY
@@ -34,7 +34,7 @@
 //    không có chỗ nào cần tập `visited`. Nếu về sau có hàm đi theo quan hệ
 //    (ví dụ "gom mọi ảnh của cả một chi"), hàm đó BẮT BUỘC phải có `visited`.
 
-import { nextId } from '../utils/id.js';
+import { nextId, loaiCua } from '../utils/id.js';
 import { coGiaTri } from '../utils/text.js';
 
 /**
@@ -261,7 +261,7 @@ export function getPortrait(tree, personId) {
 /** Người hoặc hôn nhân mang mã này, hoặc null. */
 function tra(tree, id) {
   if (!coGiaTri(id)) return null;
-  const ds = String(id).charAt(0) === 'U'
+  const ds = loaiCua(id) === 'U'
     ? (Array.isArray(tree.unions) ? tree.unions : [])
     : (Array.isArray(tree.persons) ? tree.persons : []);
   return ds.find((x) => x && x.id === id) || null;

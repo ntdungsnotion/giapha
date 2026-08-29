@@ -4,8 +4,8 @@
 //            và bỏ ảnh đại diện, và phép áp mọi thay đổi ấy lên cây lúc lưu
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: pages/person-edit.js (nền dùng chung), state, domains/{media,render},
-//            services/{repo,gas}, utils/{date,image,avatar}, config
-// Phiên bản: 1.0.0 · Cập nhật: 27/08/2026 22:05
+//            services/{repo,gas}, utils/{date,image,avatar,id}, config
+// Phiên bản: 1.0.1 · Cập nhật: 29/08/2026 16:20
 // ============================================================
 //
 // Tách khỏi `person-edit.js` ngày 27/08/2026 (bước 48, đợt 5 của
@@ -21,6 +21,7 @@ import { state } from '../state.js';
 import { attachMedia, detachMedia, setPortrait, clearPortrait,
          getMediaFor, getPortrait } from '../domains/media.js';
 import { mauVien } from '../domains/render.js';
+import { loaiCua } from '../utils/id.js';
 import { suaDuoc } from '../services/repo.js';
 import { taiAnh } from '../services/gas.js';
 import { stampNow } from '../utils/date.js';
@@ -111,7 +112,7 @@ export function donDepAnh() {
 export function veKhoiAnh(subjectId, nen) {
   khoiAnh = document.createElement('div');
   anhCuaAi = String(subjectId);
-  anhCoDaiDien = anhCuaAi.charAt(0) !== 'U';
+  anhCoDaiDien = loaiCua(anhCuaAi) !== 'U';
   docKhoAnh(nen);
   veLaiKhoiAnh(nen);
   return khoiAnh;

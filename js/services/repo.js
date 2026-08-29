@@ -2,8 +2,8 @@
 // giapha · js/services/repo.js
 // Vai trò  : Nạp/lưu cây gia phả, dựng chỉ mục, giữ trạng thái phiên.
 // Lớp      : services — được gọi bởi: pages · gọi: services/gas, utils
-// Phụ thuộc: services/gas.js, utils/graph.js, state.js
-// Phiên bản: 0.6.0 · Cập nhật: 29/08/2026 09:44
+// Phụ thuộc: services/gas.js, utils/graph.js, utils/id.js, state.js
+// Phiên bản: 0.7.0 · Cập nhật: 29/08/2026 16:05
 // ============================================================
 //
 // RANH GIỚI ĐỔI KHO LƯU TRỮ.
@@ -16,6 +16,7 @@
 import * as gas from './gas.js';
 import { state, notify } from '../state.js';
 import { buildIndex } from '../utils/graph.js';
+import { sinhMaCay } from '../utils/id.js';
 import { DATA_VERSION } from '../config.js';
 
 /**
@@ -217,7 +218,35 @@ export function nangCapNeuCan(raw) {
     if (!Array.isArray(raw[ten])) raw[ten] = [];
   }
 
+  themMaCayNeuThieu(raw);
+
   return raw;
+}
+
+/**
+ * Điền `tree.treeCode` cho cây chưa có, để mã sinh từ nay mang tiền tố cây
+ * (`NTBK7R3_P0060`). KHÔNG đụng một mã nào đang có — chủ dự án chốt 29/08/2026:
+ * mã cũ để nguyên, chỉ mã mới mang tiền tố.
+ *
+ * ⚠ HẠT GIỐNG PHẢI ỔN ĐỊNH, và đó là cả lý do hàm này trông kỳ quặc. Nó chạy
+ * ở MỌI máy MỌI lần nạp cây, mà cây chỉ ghi được mã ấy xuống file ở lần lưu
+ * đầu tiên sau đó. Giữa hai mốc ấy, hai người cùng mở app phải tính ra CÙNG
+ * một mã — nếu không, ai lưu trước đặt một tiền tố, người kia thêm người với
+ * một tiền tố khác, và cây mọc ra hai tiền tố mà không có gì báo. Nên hạt
+ * giống lấy từ hai thứ có sẵn trong file và không đổi theo máy: ngày tạo và
+ * tên cây. `Math.random()` ở đây là sai, dù đọc thì thấy tự nhiên hơn.
+ *
+ * Đổi tên cây SAU khi mã đã ghi xuống file thì mã giữ nguyên — mã đã nằm
+ * trong `raw.tree.treeCode` và hàm này không đụng tới nữa.
+ */
+function themMaCayNeuThieu(raw) {
+  const t = raw.tree;
+  if (typeof t.treeCode === 'string' && t.treeCode) return;
+
+  const hat = String(t.createdAt || t.id || '') + '|' + String(t.name || '');
+  t.treeCode = sinhMaCay(t.name, hat);
+  console.log('[repo] cây chưa có mã cây, đặt: ' + t.treeCode +
+              ' (mã người đang có giữ nguyên)');
 }
 
 // ============================================================
