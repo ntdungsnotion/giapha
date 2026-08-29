@@ -3,7 +3,7 @@
 // Vai trò  : Nghiệp vụ hôn nhân và quan hệ cha mẹ – con
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: utils/id.js, utils/date.js, config.js
-// Phiên bản: 1.8.0 · Cập nhật: 29/08/2026 09:44
+// Phiên bản: 1.9.0 · Cập nhật: 29/08/2026 17:45
 // ============================================================
 //
 // --- BẢN HỢP NHẤT HAI NHÁNH (26/08/2026) --------------------------------
@@ -58,7 +58,7 @@
 // Để hàm gỡ tự xoá cặp thì nó hết thuần theo nghĩa "làm đúng một việc", và nơi
 // gọi mất mất cơ hội kể cho người dùng biết là cả cặp sắp biến mất.
 
-import { nextId } from '../utils/id.js';
+import { nextId, sinhUid, maCayCuaCay } from '../utils/id.js';
 import { mocNgay, parseLooseDate } from '../utils/date.js';
 import { QUAN_HE_CON_NHAN } from '../config.js';
 
@@ -178,6 +178,7 @@ export function createUnion(tree, partnerIds, data) {
 
   const union = {
     id:           ma,
+    uid:          sinhUid(maCayCuaCay(tree), ma),
     partners:     ds.slice(),
     // Mặc định đúng bằng `partners`. Chiều trái/phải thật sự do `layout.js`
     // tính theo giới tính (nam trái, nữ phải); `partnerOrder` chỉ được dùng khi

@@ -3,7 +3,7 @@
 // Vai trò  : Nạp/lưu cây gia phả, dựng chỉ mục, giữ trạng thái phiên.
 // Lớp      : services — được gọi bởi: pages · gọi: services/gas, utils
 // Phụ thuộc: services/gas.js, utils/graph.js, utils/id.js, state.js
-// Phiên bản: 0.7.0 · Cập nhật: 29/08/2026 16:05
+// Phiên bản: 0.8.0 · Cập nhật: 29/08/2026 17:45
 // ============================================================
 //
 // RANH GIỚI ĐỔI KHO LƯU TRỮ.
@@ -16,7 +16,7 @@
 import * as gas from './gas.js';
 import { state, notify } from '../state.js';
 import { buildIndex } from '../utils/graph.js';
-import { sinhMaCay } from '../utils/id.js';
+import { sinhMaCay, sinhUid, maCayCuaCay } from '../utils/id.js';
 import { DATA_VERSION } from '../config.js';
 
 /**
@@ -219,8 +219,35 @@ export function nangCapNeuCan(raw) {
   }
 
   themMaCayNeuThieu(raw);
+  themUidNeuThieu(raw);
 
   return raw;
+}
+
+/**
+ * Điền `uid` cho bản ghi chưa có — điểm neo đi theo con người.
+ *
+ * RẺ VÀ KHÔNG RỦI RO, khác hẳn chuyện đổi mã: **không con trỏ nào trỏ tới
+ * `uid`**, nên thêm nó không kéo theo phải sửa chỗ nào khác. Đó là lý do việc
+ * này làm được cho cả bản ghi cũ, còn đổi mã thì không.
+ *
+ * Sinh từ mã cây + mã bản ghi nên hai máy ra cùng kết quả, cùng lý lẽ với
+ * `themMaCayNeuThieu`. Bản ghi ĐÃ CÓ `uid` thì không đụng — `uid` nhập về từ
+ * phần mềm khác là mã của họ, tính lại từ mã của ta là làm đứt đúng cái neo
+ * vừa nhận được.
+ */
+function themUidNeuThieu(raw) {
+  const maCay = maCayCuaCay(raw);
+  let dem = 0;
+  for (const ten of ['persons', 'unions']) {
+    for (const b of raw[ten]) {
+      if (!b || typeof b !== 'object' || !b.id) continue;
+      if (typeof b.uid === 'string' && b.uid) continue;
+      b.uid = sinhUid(maCay, b.id);
+      dem++;
+    }
+  }
+  if (dem) console.log('[repo] điền uid cho ' + dem + ' bản ghi chưa có');
 }
 
 /**

@@ -3,7 +3,7 @@
 // Vai trò  : Sinh ID bất biến cho person / union / media / source
 // Lớp      : utils — được gọi bởi: services, domains, pages
 // Phụ thuộc: utils/text.js
-// Phiên bản: 1.1.0 · Cập nhật: 29/08/2026 16:05
+// Phiên bản: 1.2.0 · Cập nhật: 29/08/2026 17:30
 // ============================================================
 //
 // HÀM THUẦN. Không đọc đồng hồ máy, không sinh số ngẫu nhiên: cùng một cây thì
@@ -62,6 +62,9 @@ import { removeDiacritics } from './text.js';
 const TIEN_TO   = ['P', 'U', 'M', 'S'];
 const MANG      = ['persons', 'unions', 'media', 'sources'];
 const SO_CHU_SO = 4;
+
+/** Khuôn UID: 8-4-4-4-12 chữ số hex, chữ thường. */
+const KHUON_UID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** Khuôn mã cây đứng một mình: chữ hoa mở đầu, rồi chữ hoa hoặc số. */
 const KHUON_MA_CAY = /^[A-Z][A-Z0-9]{0,13}$/;
@@ -223,16 +226,92 @@ function phanDocDuoc(ten) {
 
 /** Bốn ký tự xen kẽ chữ–số–chữ–số, băm ra từ hạt giống. */
 function phanPhanBiet(hat) {
-  let h = 2166136261;
-  for (let i = 0; i < hat.length; i++) {
-    h ^= hat.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  h = h >>> 0;
-
+  const h = bam(hat, 2166136261);
   const lay = (bang, dich) => bang.charAt(Math.floor(h / dich) % bang.length);
   return lay(CHU_BAM, 1) + lay(SO_BAM, 32) +
          lay(CHU_BAM, 512) + lay(SO_BAM, 16384);
+}
+
+// ============================================================
+// UID — điểm neo đi theo CON NGƯỜI, không theo cây
+// ============================================================
+//
+// Mã người (`NTBK6W4_P0060`) chỉ neo được trong nhà: nó nói *"bản ghi này ở ô
+// nào của cây này"*. Nhập từ phần mềm khác thì mã ấy vô nghĩa — PAF gọi cùng
+// một con người là `@I1@`, Gramps gọi là `@I0001@`, và app ta cấp cho cả hai
+// một mã mới của riêng mình.
+//
+// UID là tầng neo trên: một mã sinh MỘT LẦN rồi đi theo bản ghi qua mọi phần
+// mềm nào chịu giữ nó (`_UID` ở GEDCOM 5.5.1, `UID` ở 7.0). Cùng con người ấy
+// dù nằm trong file của phần mềm nào cũng mang đúng một UID.
+//
+// ⚠ SINH RA THÌ TÍNH ĐƯỢC, NHƯNG PHẢI CẤT ĐI. Mã sinh từ `maCay` + mã người
+// nên tính lại lúc nào cũng ra thế — tiện cho bài kiểm, và cho việc điền bù
+// hàng loạt mà hai máy vẫn ra cùng kết quả. Nhưng bản ghi nhập từ cây khác
+// vào sẽ ĐƯỢC CẤP MÃ MỚI, mà UID của nó thì phải giữ nguyên cái cũ — tính lại
+// từ mã mới là bịa ra một con người khác. Nên `uid` luôn được GHI XUỐNG file,
+// không bao giờ suy ra lúc cần.
+//
+// Dạng UUID phiên bản 8 (RFC 9562 — "dành cho cách sinh riêng của từng nơi").
+// Không ghi 4: phiên bản 4 nghĩa là sinh ngẫu nhiên, mà mã này thì không.
+
+/**
+ * Sinh UID cho một bản ghi. HÀM THUẦN.
+ *
+ * @param {string} maCay  mã cây đang giữ bản ghi, ví dụ 'NTBK6W4'
+ * @param {string} id     mã bản ghi, ví dụ 'NTBK6W4_P0060' hoặc 'P0004'
+ * @returns {string} ví dụ '3f2a9c1e-7b4d-8a6f-9e3c-5d1a2b4c6e80'
+ *
+ * Duy nhất trên toàn cầu nhờ `maCay` duy nhất — hai cây khác nhau không bao
+ * giờ đưa vào cùng một cặp tham số.
+ */
+export function sinhUid(maCay, id) {
+  const hat = String(maCay == null ? '' : maCay) + '|' + String(id == null ? '' : id);
+  const k = [bam(hat, 2166136261), bam(hat, 271828183),
+             bam(hat, 314159265), bam(hat, 987654321)];
+  const hex = k.map((n) => n.toString(16).padStart(8, '0')).join('');
+
+  // Nibble 13 là số phiên bản, nibble 17 là biến thể — hai chỗ RFC quy định
+  // cứng. Đặt thẳng chứ không mong phép băm tình cờ ra đúng.
+  const c = hex.split('');
+  c[12] = '8';
+  c[16] = '89ab'.charAt(parseInt(c[16], 16) % 4);
+  const h = c.join('');
+  return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' +
+         h.slice(16, 20) + '-' + h.slice(20, 32);
+}
+
+/** Chuỗi có đúng dạng UID không. Nhận cả dạng 32 hex không gạch nối. */
+export function laUid(x) {
+  return typeof x === 'string' && KHUON_UID.test(x);
+}
+
+/**
+ * Đưa UID của phần mềm khác về dạng chuẩn của app, hoặc trả rỗng.
+ *
+ * Nhận ba dạng đang gặp ngoài đời: có gạch nối; 32 hex trơn; và 36 hex trơn —
+ * dạng cuối là 32 hex cộng bốn chữ số kiểm của mấy phần mềm đời PAF, phần
+ * kiểm ấy KHÔNG thuộc về mã nên cắt bỏ. Cắt nhầm thì hai bản ghi cùng người
+ * mang hai UID khác nhau, tức mất neo — nên chỉ cắt đúng ca 36.
+ */
+export function chuanUid(x) {
+  const s = String(x == null ? '' : x).trim().toLowerCase();
+  if (KHUON_UID.test(s)) return s;
+  const tron = s.replace(/[^0-9a-f]/g, '');
+  const h = tron.length === 36 ? tron.slice(0, 32) : tron;
+  if (h.length !== 32) return '';
+  return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' +
+         h.slice(16, 20) + '-' + h.slice(20, 32);
+}
+
+/** Băm FNV-1a 32 bit, hạt mở đầu đổi được để lấy nhiều đoạn khác nhau. */
+function bam(chuoi, mo) {
+  let h = mo >>> 0;
+  for (let i = 0; i < chuoi.length; i++) {
+    h ^= chuoi.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
 }
 
 /**

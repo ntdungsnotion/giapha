@@ -3,11 +3,11 @@
 // Vai trò  : Nghiệp vụ hồ sơ cá nhân — tạo, sửa, đọc thông tin một người
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: utils/{text,date,id}
-// Phiên bản: 1.7.0 · Cập nhật: 21/08/2026 14:25
+// Phiên bản: 1.8.0 · Cập nhật: 29/08/2026 17:45
 // ============================================================
 import { fullName, coGiaTri, removeDiacritics, doiSongNguoi } from '../utils/text.js';
 import { parseLooseDate } from '../utils/date.js';
-import { nextId } from '../utils/id.js';
+import { nextId, sinhUid, maCayCuaCay } from '../utils/id.js';
 
 /**
  * Tạo bản ghi người mới với đầy đủ trường mặc định.
@@ -41,6 +41,9 @@ export function createPerson(tree, data, ghiNhan) {
 
   const tron = {
     id:    ma,
+    // Điểm neo đi theo CON NGƯỜI, không theo cây: người này xuất sang phần mềm
+    // khác rồi quay về vẫn nhận ra được, dù mã bên kia đặt là gì. Xem `id.js`.
+    uid:   sinhUid(maCayCuaCay(tree), ma),
     names: [],
     sex:   'U',
     birth: { iso: null, raw: '', place: '' },

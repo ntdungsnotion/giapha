@@ -3,7 +3,7 @@
 // Vai trò  : Xuất gia phả ra GEDCOM 5.5.1, và ĐỌC file .ged thành bản xem trước
 // Lớp      : domains — HÀM THUẦN, không chạm DOM, không gọi services
 // Phụ thuộc: utils/date, utils/text, utils/id, config, domains/union
-// Phiên bản: 1.4.1 · Cập nhật: 29/08/2026 16:20
+// Phiên bản: 1.6.0 · Cập nhật: 29/08/2026 18:25
 // ============================================================
 //
 // XUẤT: GEDCOM 5.5.1. Cũ hơn 7.0 nhưng gần như mọi phần mềm gia phả đọc được.
@@ -82,7 +82,8 @@
 
 import { parseLooseDate, formatDate } from '../utils/date.js';
 import { coGiaTri, fullName } from '../utils/text.js';
-import { isValidId, loaiCua } from '../utils/id.js';
+import { isValidId, loaiCua, maCayCua, maCayCuaCay, chuanUid }
+  from '../utils/id.js';
 import { QUAN_HE_CON_NHAN, nhanQuanHeCon, nhanTrangThaiCap } from '../config.js';
 import { ranksRoRang } from './union.js';
 
@@ -300,7 +301,7 @@ export function tomTatXuat(tree, tuyChon) {
  * @param {string} text  nội dung file, kèm hay không kèm BOM đều được
  * @returns {{
  *   persons: object[], unions: object[], sources: object[],
- *   tenCay: string, nguonXuat: string,
+ *   tenCay: string, nguonXuat: string, maNguon: string,
  *   thongKe: {soNguoi:number, soCap:number, soNguon:number, soAnhBoQua:number,
  *             soDongHong:number, soDongBoQua:number, soAn:number, soDoiMa:number},
  *   theLa: {the:string, so:number}[],
@@ -417,6 +418,7 @@ export function parseGedcom(text) {
     sources,
     tenCay: tenCayTuFile(head, subm),
     nguonXuat: nguonTuHead(head),
+    maNguon: maNguonTuHead(head),
     thongKe: {
       soNguoi: persons.length,
       soCap: unions.length,
@@ -517,13 +519,64 @@ const TRUONG_CAP = [
 const GIOI_CHU = { M: 'Nam', F: 'Nữ' };
 
 /**
- * Dò bản ghi trùng MÃ giữa dữ liệu nhập vào và cây hiện có.
+ * Dò bản ghi trùng giữa dữ liệu nhập vào và cây hiện có.
  *
  * HÀM THUẦN: không đụng vào `tree` lẫn `imported`, không đọc đồng hồ, không
  * chạm DOM. Cùng hai tham số vào thì luôn ra cùng một kết quả.
  *
+ * --- ĐIỂM NEO: mã nào được phép kết luận, mã nào không -------------------
+ *
+ * Không phải mã nào trong `imported` cũng là mã CỦA FILE. `parseGedcom` cấp
+ * mã mới cho bản ghi không đúng khuôn app — `@I1@` của PAF và `@I0001@` của
+ * Gramps đều thành `P0001`. Lấy mã ấy làm neo là kết luận hai người **khác
+ * hẳn nhau** là một, chỉ vì cả hai tình cờ đứng đầu file mình.
+ *
+ * Đo thật 29/08/2026: nhập file PAF (Nguyễn Trọng Bậc, Vũ Thị Ngọc) rồi nhập
+ * tiếp file Gramps (Lê Văn Trác, Trần Thị Mai) vào cùng cây — bản trước hàm
+ * này báo *2 ca trùng · 0 người mới*. Thứ duy nhất chặn một lần gộp sai là
+ * dòng cảnh báo "khác tên", tức là một CON NGƯỜI đọc và bắt được.
+ *
+ * Nên mã chỉ được làm neo trong đúng hai ca, và cả hai đều là *"mã này đi ra
+ * từ chính cây này"*:
+ *
+ *   · `uid`    — mã bền đi theo con người (`_UID`), tầng neo MẠNH NHẤT và là
+ *                tầng duy nhất còn ăn khi file đến từ phần mềm khác. Khớp
+ *                bằng `uid` thì mã hai bên khác nhau là chuyện thường — mã
+ *                của cây đích nằm ở `id`, mã trong file nằm ở `idTrongFile`.
+ *   · `ma-cay` — mã mang mã cây trùng mã cây của cây đích (`NTBK6W4_P0004`).
+ *   · `ma-cu`  — mã đời cũ không mang mã cây, VÀ file khai `SOUR GIAPHA`, tức
+ *                do chính app này xuất ra trước ngày có mã cây.
+ *
+ * Mọi bản ghi còn lại rơi vào `nguoiChuaNeo`/`capChuaNeo`: **không kết luận
+ * gì cả**, để dành cho bảng ghép đôi hai cột — người dùng chỉ ra ai là ai,
+ * rồi cặp ấy được ghi lại làm điểm neo cho lần nhập sau. Không kết luận vẫn
+ * hơn kết luận sai, vì nhập là đường một chiều.
+ *
+ * --- LUẬT ĐIỂM NEO ĐẦU TIÊN (chủ dự án chốt 29/08/2026) ------------------
+ *
+ * **Người nhập BẮT BUỘC khai tay ít nhất một điểm neo, và điểm ấy app KHÔNG
+ * được tự xác định.** Chưa khai thì hàm này không kết luận một ca trùng nào —
+ * `caTrung` rỗng, mọi bản ghi nằm ở `nguoiChuaNeo`/`capChuaNeo`, và
+ * `duocTron` là `false`.
+ *
+ * ⚠ Chưa khai thì cũng KHÔNG bày đề xuất. Đây là chỗ dễ làm hỏng luật nhất mà
+ * vẫn tưởng đang tuân thủ: bày sẵn 40 dòng app đoán rồi mời người dùng xác
+ * nhận một dòng thì "khai tay" tụt xuống thành "bấm Đồng ý", và cái app đoán
+ * sai vẫn trôi qua. Muốn người ta thật sự nhìn thì cột phải phải TRỐNG.
+ *
+ * Điểm neo tay làm hai việc, và việc thứ hai mới là việc quý:
+ *
+ * 1. Chặn ca nhập nhầm hẳn file của dòng họ khác — không tìm nổi một người
+ *    chung nào thì file ấy không có lý do gì để trộn vào cây này.
+ * 2. **Làm phép thử ngược cho chính máy.** Người khai *file X là người Y*, mà
+ *    `uid`/mã của X lại chỉ sang người Z — thì một trong hai bên sai, và hàm
+ *    DỪNG (`lyDoChan: 'neoMauThuan'`) chứ không lặng lẽ chọn bên nào. Không có
+ *    điểm neo tay thì mâu thuẫn này vĩnh viễn không ai phát hiện.
+ *
  * @param {object} tree      cây đích — gia phả đang mở
  * @param {object} imported  kết quả `parseGedcom`
+ * @param {{diemNeoTay?: {trongFile:string, trongCay:string}[]}} [tuyChon]
+ *        `diemNeoTay` là những cặp NGƯỜI DÙNG tự chỉ ra. Thiếu là bị chặn.
  * @returns {{
  *   ok: boolean, lyDo: string, loi: string,
  *   caTrung: {
@@ -531,19 +584,27 @@ const GIOI_CHU = { M: 'Nam', F: 'Nữ' };
  *     tenDangCo: string, tenTrongFile: string,
  *     khacTen: boolean, daXoa: boolean, giongHet: boolean,
  *     boSung:   {truong:string, nhan:string, giaTri:string}[],
- *     mauThuan: {truong:string, nhan:string, dangCo:string, trongFile:string}[]
+ *     mauThuan: {truong:string, nhan:string, dangCo:string, trongFile:string}[],
+ *     neo: 'tay'|'uid'|'ma-cay'|'ma-cu', idTrongFile: string
  *   }[],
  *   nguoiMoi: string[], capMoi: string[],
+ *   duocTron: boolean,
+ *   lyDoChan: ''|'cayRong'|'chuaKhaiDiemNeo'|'neoSai'|'neoMauThuan',
+ *   neoTay: {trongFile:string, trongCay:string}[],
+ *   loiNeoTay: {trongFile:string, trongCay:string, vi:string}[],
+ *   nguoiChuaNeo: string[], capChuaNeo: string[],
  *   thongKe: {soCaTrung:number, soCaNguoi:number, soCaCap:number,
  *             soGiongHet:number, soKhacTen:number, soDaXoa:number,
  *             soBoSung:number, soMauThuan:number,
- *             soNguoiMoi:number, soCapMoi:number}
+ *             soNguoiMoi:number, soCapMoi:number, soChuaNeo:number}
  * }}
  */
-export function detectDuplicates(tree, imported) {
+export function detectDuplicates(tree, imported, tuyChon) {
   const thua = (lyDo, loi) => ({
     ok: false, lyDo, loi,
-    caTrung: [], nguoiMoi: [], capMoi: [], thongKe: thongKeRong(),
+    caTrung: [], nguoiMoi: [], capMoi: [],
+    duocTron: false, lyDoChan: 'khongdocduoc', neoTay: [], loiNeoTay: [],
+    nguoiChuaNeo: [], capChuaNeo: [], thongKe: thongKeRong(),
   });
 
   if (!tree || typeof tree !== 'object') return thua('khongcocay', 'Chưa nạp được gia phả đích.');
@@ -564,29 +625,155 @@ export function detectDuplicates(tree, imported) {
     if (p && chu(p.id) && !tenTheoMa.has(p.id)) tenTheoMa.set(p.id, fullName(p));
   }
 
+  // Mã do CHÍNH `parseGedcom` cấp lúc nhập, không phải mã của file. Danh sách
+  // này đã có sẵn từ b56 — tới hôm nay mới có ai đọc nó.
+  const maAppTuCap = new Set();
+  for (const cap of mang(imported.doiMa)) {
+    if (Array.isArray(cap) && chu(cap[1])) maAppTuCap.add(chu(cap[1]));
+  }
+  const maCayTa   = maCayCuaCay(tree);
+  const tuAppNay  = chu(imported.maNguon).toUpperCase() === 'GIAPHA';
+
+  /** Mã này có đủ tư cách làm điểm neo không, và neo kiểu gì. */
+  const neoCua = (id) => {
+    if (maAppTuCap.has(id)) return '';
+    const mc = maCayCua(id);
+    if (mc) return mc === maCayTa ? 'ma-cay' : '';
+    return tuAppNay ? 'ma-cu' : '';
+  };
+
+  // Tầng neo TRÊN mã: UID đi theo con người qua mọi phần mềm.
+  const theoUid = new Map();
+  for (const p of mang(tree.persons)) if (p && chu(p.uid)) theoUid.set(chu(p.uid), p);
+  for (const u of mang(tree.unions))  if (u && chu(u.uid)) theoUid.set(chu(u.uid), u);
+
+  // ---- Điểm neo TAY: luật 29/08/2026 ----------------------------------
+  const nguoiFile = new Map();
+  for (const p of imported.persons) if (p && chu(p.id)) nguoiFile.set(chu(p.id), p);
+  const capFile = new Map();
+  for (const u of mang(imported.unions)) if (u && chu(u.id)) capFile.set(chu(u.id), u);
+
+  const { neoTay, loiNeoTay } = docNeoTay(
+    tuyChon && tuyChon.diemNeoTay, nguoiCay, capCay, nguoiFile, capFile);
+
   const caTrung = [];
   const nguoiMoi = [];
   const capMoi = [];
+  const nguoiChuaNeo = [];
+  const capChuaNeo = [];
+
+  // Chưa khai điểm neo nào thì KHÔNG kết luận gì, và cũng không đề xuất gì.
+  // Trả về đủ danh sách hai bên để bảng ghép đôi có cái mà bày, thế thôi.
+  if (neoTay.size === 0 || loiNeoTay.length > 0) {
+    for (const id of nguoiFile.keys()) nguoiChuaNeo.push(id);
+    for (const id of capFile.keys()) capChuaNeo.push(id);
+
+    // Cây rỗng là ca riêng, và phải nói riêng: ở đây không phải người dùng
+    // QUÊN khai điểm neo, mà là không có gì để khai. Bảo họ "hãy khai một
+    // điểm neo" lúc cây chưa có ai là chỉ họ đi vào một cửa không mở được.
+    // Cửa đúng là đường TẠO GIA PHẢ MỚI.
+    const cayRong = nguoiCay.size === 0 && capCay.size === 0;
+    return khungKetQua({
+      caTrung, nguoiMoi, capMoi, nguoiChuaNeo, capChuaNeo,
+      duocTron: false,
+      lyDoChan: cayRong ? 'cayRong'
+              : (loiNeoTay.length > 0 ? 'neoSai' : 'chuaKhaiDiemNeo'),
+      neoTay: capNeoTay(neoTay), loiNeoTay,
+    });
+  }
+
+  // Một bản ghi trong cây chỉ được ghép với ĐÚNG MỘT bản ghi của file. Hai
+  // dòng cùng trỏ vào một người là hai lần ghi đè lên nhau, mà lần sau xoá
+  // mất lần trước và không có gì báo.
+  const daGhep = new Set();
+
+  /**
+   * Tìm bản ghi trong cây tương ứng, theo thứ tự neo mạnh → yếu.
+   * @returns {{cu:object|null, neo:string}} `neo` rỗng nghĩa là KHÔNG neo được
+   */
+  const timBanCu = (banGhi, idFile, theoMa) => {
+    // Tầng 0 — người dùng đã chỉ tận tay. Không gì đè lên được.
+    const tay = neoTay.get(idFile);
+    if (tay) {
+      const cu = theoMa.get(tay);
+      return cu && !daGhep.has(cu.id) ? { cu, neo: 'tay' } : { cu: null, neo: '' };
+    }
+    const uid = chu(banGhi && banGhi.uid);
+    if (uid) {
+      const cu = theoUid.get(uid);
+      if (cu && !daGhep.has(cu.id)) return { cu, neo: 'uid' };
+      if (cu) return { cu: null, neo: '' };
+    }
+    const neo = neoCua(idFile);
+    if (!neo) return { cu: null, neo: '' };
+    const cu = theoMa.get(idFile) || null;
+    if (cu && daGhep.has(cu.id)) return { cu: null, neo: '' };
+    return { cu, neo };
+  };
+
+  // Phép thử ngược: với mỗi điểm neo tay, hỏi xem máy TỰ nó sẽ chỉ vào ai.
+  // Máy chỉ sang người khác nghĩa là một trong hai bên sai — dừng, không chọn.
+  const xungDot = [];
+  for (const [idFile, idCay] of neoTay) {
+    const banGhi = nguoiFile.get(idFile) || capFile.get(idFile);
+    const uid = chu(banGhi && banGhi.uid);
+    const may = (uid && theoUid.get(uid)) ||
+                (neoCua(idFile) ? (nguoiCay.get(idFile) || capCay.get(idFile)) : null);
+    if (may && may.id !== idCay) {
+      xungDot.push({
+        trongFile: idFile, trongCay: idCay,
+        vi: 'người khai đây là ' + idCay + ', nhưng ' +
+            (uid && theoUid.get(uid) ? 'mã bền (uid)' : 'mã bản ghi') +
+            ' của nó chỉ sang ' + may.id + '.',
+      });
+    }
+  }
+  if (xungDot.length > 0) {
+    for (const id of nguoiFile.keys()) nguoiChuaNeo.push(id);
+    for (const id of capFile.keys()) capChuaNeo.push(id);
+    return khungKetQua({
+      caTrung, nguoiMoi, capMoi, nguoiChuaNeo, capChuaNeo,
+      duocTron: false, lyDoChan: 'neoMauThuan',
+      neoTay: capNeoTay(neoTay), loiNeoTay: xungDot,
+    });
+  }
 
   for (const p of imported.persons) {
-    const id = chu(p && p.id);
-    if (!id) continue;
-    const cu = nguoiCay.get(id);
-    if (!cu) { nguoiMoi.push(id); continue; }
-    caTrung.push(caNguoi(id, cu, p));
+    const idFile = chu(p && p.id);
+    if (!idFile) continue;
+    const { cu, neo } = timBanCu(p, idFile, nguoiCay);
+    if (!neo) { nguoiChuaNeo.push(idFile); continue; }
+    if (!cu)  { nguoiMoi.push(idFile); continue; }
+    daGhep.add(cu.id);
+    caTrung.push(Object.assign(caNguoi(cu.id, cu, p), { neo, idTrongFile: idFile }));
   }
 
   for (const u of mang(imported.unions)) {
-    const id = chu(u && u.id);
-    if (!id) continue;
-    const cu = capCay.get(id);
-    if (!cu) { capMoi.push(id); continue; }
-    caTrung.push(caCap(id, cu, u, tenTheoMa));
+    const idFile = chu(u && u.id);
+    if (!idFile) continue;
+    const { cu, neo } = timBanCu(u, idFile, capCay);
+    if (!neo) { capChuaNeo.push(idFile); continue; }
+    if (!cu)  { capMoi.push(idFile); continue; }
+    daGhep.add(cu.id);
+    caTrung.push(Object.assign(caCap(cu.id, cu, u, tenTheoMa), { neo, idTrongFile: idFile }));
   }
 
+  return khungKetQua({
+    caTrung, nguoiMoi, capMoi, nguoiChuaNeo, capChuaNeo,
+    duocTron: true, lyDoChan: '',
+    neoTay: capNeoTay(neoTay), loiNeoTay: [],
+  });
+}
+
+/** Gói kết quả — một chỗ duy nhất tính `thongKe`, để bốn đường ra không lệch nhau. */
+function khungKetQua(k) {
+  const caTrung = k.caTrung;
   return {
     ok: true, lyDo: '', loi: '',
-    caTrung, nguoiMoi, capMoi,
+    caTrung, nguoiMoi: k.nguoiMoi, capMoi: k.capMoi,
+    duocTron: k.duocTron, lyDoChan: k.lyDoChan,
+    neoTay: k.neoTay, loiNeoTay: k.loiNeoTay,
+    nguoiChuaNeo: k.nguoiChuaNeo, capChuaNeo: k.capChuaNeo,
     thongKe: {
       soCaTrung:   caTrung.length,
       soCaNguoi:   caTrung.filter((c) => c.kieu === 'nguoi').length,
@@ -596,16 +783,62 @@ export function detectDuplicates(tree, imported) {
       soDaXoa:     caTrung.filter((c) => c.daXoa).length,
       soBoSung:    caTrung.reduce((n, c) => n + c.boSung.length, 0),
       soMauThuan:  caTrung.reduce((n, c) => n + c.mauThuan.length, 0),
-      soNguoiMoi:  nguoiMoi.length,
-      soCapMoi:    capMoi.length,
+      soNguoiMoi:  k.nguoiMoi.length,
+      soCapMoi:    k.capMoi.length,
+      soChuaNeo:   k.nguoiChuaNeo.length + k.capChuaNeo.length,
+      soNeoTay:    k.neoTay.length,
     },
   };
+}
+
+const capNeoTay = (m) =>
+  Array.from(m, ([trongFile, trongCay]) => ({ trongFile, trongCay }));
+
+/**
+ * Đọc và kiểm danh sách điểm neo người dùng khai.
+ *
+ * Sai một điểm thì chặn cả lần nhập, không lặng lẽ bỏ điểm sai đi mà chạy
+ * tiếp bằng những điểm còn lại: người khai bốn điểm mà chỉ ba điểm được dùng
+ * là một sự thật họ cần biết trước khi ghi, không phải sau.
+ */
+function docNeoTay(ds, nguoiCay, capCay, nguoiFile, capFile) {
+  const neoTay = new Map();
+  const loiNeoTay = [];
+  const dungRoi = new Set();
+
+  for (const c of mang(ds)) {
+    const trongFile = chu(c && c.trongFile);
+    const trongCay  = chu(c && c.trongCay);
+    const ghiLoi = (vi) => loiNeoTay.push({ trongFile, trongCay, vi });
+
+    if (!trongFile || !trongCay) { ghiLoi('thiếu một trong hai vế.'); continue; }
+
+    const coFile = nguoiFile.has(trongFile) || capFile.has(trongFile);
+    const coCay  = nguoiCay.has(trongCay)  || capCay.has(trongCay);
+    if (!coFile) { ghiLoi('file không có bản ghi ' + trongFile + '.'); continue; }
+    if (!coCay)  { ghiLoi('cây không có bản ghi ' + trongCay + '.'); continue; }
+
+    // Người với người, cặp với cặp. Ghép chéo là một lỗi gõ, không phải một ý.
+    const laNguoi = nguoiFile.has(trongFile);
+    if (laNguoi !== nguoiCay.has(trongCay)) {
+      ghiLoi('một vế là người, vế kia là gia đình.');
+      continue;
+    }
+
+    if (neoTay.has(trongFile)) { ghiLoi('bản ghi trong file được khai hai lần.'); continue; }
+    if (dungRoi.has(trongCay)) { ghiLoi('bản ghi trong cây được khai hai lần.'); continue; }
+
+    neoTay.set(trongFile, trongCay);
+    dungRoi.add(trongCay);
+  }
+  return { neoTay, loiNeoTay };
 }
 
 function thongKeRong() {
   return {
     soCaTrung: 0, soCaNguoi: 0, soCaCap: 0, soGiongHet: 0, soKhacTen: 0,
     soDaXoa: 0, soBoSung: 0, soMauThuan: 0, soNguoiMoi: 0, soCapMoi: 0,
+    soChuaNeo: 0,
   };
 }
 
@@ -1004,6 +1237,8 @@ function dungBangMa(banGhi) {
 function docNguoi(r, gom) {
   const p = {
     id: r.ma,
+    uid: '',
+    xrefGoc: chu(r.xref),
     names: [],
     sex: 'U',
     birth: khoiNgayRong(),
@@ -1036,6 +1271,12 @@ function docNguoi(r, gom) {
         n.dung = true;
         const v = giaTriChu(n).toUpperCase();
         p.sex = (v === 'M' || v === 'F') ? v : 'U';
+        break;
+      }
+      case 'UID':
+      case '_UID': {
+        n.dung = true;
+        if (!p.uid) p.uid = chuanUid(giaTriChu(n));
         break;
       }
       case 'BIRT': n.dung = true; p.birth = docSuKien(n); break;
@@ -1194,6 +1435,8 @@ function docAnh(n, chuThe) {
 function docCap(r, gom) {
   const tho = {
     id: r.ma,
+    uid: '',
+    xrefGoc: chu(r.xref),
     banDoiXref: [],
     conXref: [],
     status: '',
@@ -1230,6 +1473,12 @@ function docCap(r, gom) {
         n.dung = true;
         tho.conXref.push(troToi(n));
         break;
+      case 'UID':
+      case '_UID': {
+        n.dung = true;
+        if (!tho.uid) tho.uid = chuanUid(giaTriChu(n));
+        break;
+      }
       case 'MARR': n.dung = true; tho.marriage = docSuKien(n); break;
       case 'DIV': n.dung = true; coLyHon = true; break;
       case '_TRANGTHAI': n.dung = true; tho.status = giaTriChu(n); break;
@@ -1536,6 +1785,20 @@ function tenCayTuFile(head, subm) {
   return '';
 }
 
+/**
+ * Mã THÔ của thẻ `SOUR` trong `HEAD` — `GIAPHA` với file do app này xuất ra.
+ *
+ * Khác `nguonTuHead()` một chỗ quan trọng: hàm kia trả `SOUR.NAME`, tức câu
+ * chữ để BÀY RA cho người đọc ("Gia phả — web app…"), còn hàm này trả cái mã
+ * để MÁY SO. Trộn hai thứ làm một thì đổi một câu chữ hiển thị là lặng lẽ đổi
+ * luôn cách app quyết một file có đáng tin hay không.
+ */
+function maNguonTuHead(head) {
+  if (!head) return '';
+  const c = conThe(head, 'SOUR');
+  return c ? giaTriChu(c).trim().toUpperCase() : '';
+}
+
 function nguonTuHead(head) {
   if (!head) return '';
   const c = conThe(head, 'SOUR');
@@ -1630,8 +1893,22 @@ function veHead(ds, cay, luc, tenFile, soAn, soNguoi, soCap) {
   themDong(ds, 1, 'NAME', coGiaTri(t.name) ? t.name : 'Gia phả');
 }
 
+/**
+ * Ghi `_UID` — điểm neo đi theo con người, không theo cây.
+ *
+ * Thẻ tự đặt (mở đầu bằng gạch dưới) nên 5.5.1 nhận; 7.0 có thẻ chuẩn `UID`
+ * cho đúng việc này, đổi sang lúc nào xuất 7.0. Bản ghi chưa có `uid` thì
+ * KHÔNG ghi dòng nào — luật "không xuất thẻ rỗng" của đường xuất, và một
+ * `_UID` rỗng còn tệ hơn không có, vì bên nhận sẽ coi nó là một mã thật.
+ */
+function veUid(ds, banGhi) {
+  const uid = chu(banGhi && banGhi.uid);
+  if (uid) ds.push('1 _UID ' + uid);
+}
+
 function veNguoi(ds, p, giauChiTiet, dsLamVo, dsLamCon, anhTheoChu) {
   ds.push('0 @' + p.id + '@ INDI');
+  veUid(ds, p);
 
   const ten = Array.isArray(p.names) ? p.names : [];
   const chinh = ten.find((n) => n && n.type === 'chinh') || ten[0] || null;
@@ -1686,6 +1963,7 @@ function veNguoi(ds, p, giauChiTiet, dsLamVo, dsLamCon, anhTheoChu) {
 function veCap(ds, c, theoMa, boAn, anhTheoChu) {
   const u = c.goc;
   ds.push('0 @' + u.id + '@ FAM');
+  veUid(ds, u);
 
   const vaiTro = chiaVaiTro(c.banDoi, u.partnerOrder, theoMa);
   const bacRieng = ranksRoRang(u);
