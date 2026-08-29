@@ -4,7 +4,7 @@
 //            cửa duy nhất khai điểm neo cho chế độ NHẬP BỔ SUNG
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/gedcom, utils/text, config
-// Phiên bản: 1.2.0 · Cập nhật: 29/08/2026 22:10
+// Phiên bản: 1.3.0 · Cập nhật: 29/08/2026 23:20
 // ============================================================
 //
 // Ý lấy từ phần mềm bản đồ, chủ dự án nêu 29/08/2026: chọn điểm A trên bản đồ
@@ -46,6 +46,23 @@
 //    *a + c* trong file sẽ đẻ thêm một cặp thứ hai bên cạnh *A + C* đã có —
 //    hai vợ chồng cưới nhau hai lần trên cùng một sơ đồ.
 //
+// 5. **NÚT ĐỀ XUẤT, và một TRẠNG THÁI THỨ BA (b64).** Đo được: với file `.ged`
+//    của phần mềm khác, cột *"App đề xuất"* của quyết định 4 LUÔN BẰNG 0 —
+//    máy nhận nhau bằng `uid` · sổ nhập · mã bản ghi, mà file ngoài không có
+//    đường nào trong ba (`NK-B63` mục 2.2). Nhánh 12 người thì 11 dòng phải
+//    khai tay; nhánh 30 người thì 29. Nút này gọi `lanTheoQuanHe` để lấp chỗ
+//    đó — đi theo bố mẹ · vợ chồng · con từ những người đã khai.
+//
+//    ⚠ **Không trái luật b60.** Luật ấy cấm *bày sẵn khi chưa khai điểm neo
+//    nào*; đây là nút bấm SAU, và nó khoá cho tới khi có điểm neo đầu tiên.
+//
+//    ⚠ **Đề xuất KHÔNG mở khoá nút Trộn.** `duocTron` chỉ đòi *không còn dòng
+//    trống*; nếu đề xuất được tính là đã quyết thì 29 dòng máy đoán đủ mở một
+//    nút GHI KHÔNG HOÀN TÁC ĐƯỢC. Nên đề xuất là trạng thái thứ ba, nhìn khác
+//    hẳn (viền trái nét đứt, nền ngả vàng — thấy được mà không cần đọc chữ),
+//    và phải qua nút *"Nhận cả N đề xuất"* mới thành lời khai. Chủ dự án chốt
+//    29/08/2026.
+//
 // --- Chỗ màn hình này DỪNG LẠI (b62 dời một bước) -----------------------
 //
 // Tới b62 thì nút trộn mở được, nhưng RANH GIỚI vẫn nguyên chỗ cũ: file này
@@ -59,12 +76,31 @@
 // kiểm nào của hàm thuần bắt được — cả hai lần chạy đều hợp lệ.
 
 import { state } from '../state.js';
-import { detectDuplicates, goiYCapTheoNguoi } from '../domains/gedcom.js';
+import { detectDuplicates, goiYCapTheoNguoi, lanTheoQuanHe }
+  from '../domains/gedcom.js';
 import { fullName, doiSongNguoi } from '../utils/text.js';
 import { rongHop, caoHop, leLopPhu, RONG_NUT_TOI_DA } from '../config.js';
 
 /** Giá trị ô bên phải khi người dùng khai "bản ghi này chưa có trong cây". */
 const MOI = '#moi';
+
+/**
+ * Ba nguồn của một ô bên phải — và ĐỀ XUẤT là một trạng thái riêng, không
+ * phải một câu trả lời (b64).
+ *
+ * · `tay` — con người khai. Câu trả lời.
+ * · `may` — máy nhận ra bằng `uid` · sổ nhập · mã bản ghi, tức CĂN CƯỚC chứ
+ *           không phải phỏng đoán. Câu trả lời. (Đo được: với file `.ged` của
+ *           phần mềm khác thì nguồn này LUÔN rỗng — `NK-B63` mục 2.2.)
+ * · `lan` — máy lan theo quan hệ mà ĐOÁN ra. **Chưa phải câu trả lời.**
+ *
+ * Vì sao `lan` không được tính là đã quyết: `duocTron` chỉ đòi *không còn
+ * dòng trống*. Nếu đề xuất điền vào ô là coi như đã quyết thì 29 dòng do máy
+ * đoán đủ mở khoá một nút GHI KHÔNG HOÀN TÁC ĐƯỢC — một cửa mới mở ra lặng
+ * lẽ. Nên đề xuất hiện lên nhưng KHÔNG mở khoá; con người bấm *"Nhận"* thì
+ * chúng mới thành `tay`. Chủ dự án chốt 29/08/2026.
+ */
+const LAN = 'lan';
 
 let lopPhu = null;
 let ctx = null;
@@ -90,7 +126,12 @@ export function openGhepDoi(imported, khiTron) {
     nguon: new Map(),    // mã trong file → 'tay' | 'may'
     hang: [],            // { id, o, nhan }
     tuyChon: null,       // bộ tuỳ chọn đã dựng nên bản xem trước đang bày
+    banDoDaChot: new Map(),  // b64 — hạt giống của nút đề xuất
+    khaiMoiHienTai: [],
+    duongDi: new Map(),      // mã trong file → { qua, tuNguoi } của đề xuất
+    daBamDeXuat: false,
     oTinh: null,
+    oDeXuat: null,
     oKetQua: null,
     nutTron: null,
   };
@@ -140,6 +181,9 @@ export function openGhepDoi(imported, khiTron) {
   than.dataset.viec = 'bang-ghep-doi';
   for (const p of imported.persons) if (p && p.id) than.append(veHang(p));
   hop.append(than);
+
+  ctx.oDeXuat = document.createElement('div');
+  hop.append(ctx.oDeXuat);
 
   const hangLoat = nut('Những dòng còn trống: đều CHƯA CÓ trong cây', false, () => {
     for (const [id, v] of ctx.chon) if (v === '') datChon(id, MOI, 'tay');
@@ -227,7 +271,13 @@ function veHang(p) {
   o.append(oMuc('', '— chưa quyết —'), oMuc(MOI, 'Chưa có trong cây — thêm mới'));
   for (const x of nguoiTrongCay()) o.append(oMuc(x.id, x.nhan));
   o.addEventListener('change', () => {
-    datChon(p.id, o.value, 'tay');
+    const v = o.value;
+    // ⚠ Đổi một lời khai là đổi CĂN CỨ của mọi đề xuất đã lan ra từ nó. Giữ
+    // lại bộ đề xuất cũ là giữ một kết luận rút từ tiền đề vừa bị thay — và
+    // không phép kiểm nào bắt được, vì bộ cũ vẫn hợp lệ. Bỏ hết rồi bấm lại
+    // rẻ hơn nhiều. (`xoaDeXuat` xoá trước, nên phải giữ `v` từ trước đó.)
+    xoaDeXuat();
+    datChon(p.id, v, 'tay');
     tinhLai();
   });
 
@@ -237,7 +287,7 @@ function veHang(p) {
   phai.append(o, nhan);
 
   hang.append(trai, phai);
-  ctx.hang.push({ id: p.id, o, nhan });
+  ctx.hang.push({ id: p.id, o, nhan, el: hang });
   return hang;
 }
 
@@ -296,6 +346,10 @@ function tinhLai() {
   const khaiMoi = [];
   const banDo = new Map();
   for (const [id, v] of ctx.chon) {
+    // ⚠ Dòng đang là ĐỀ XUẤT thì bỏ qua hẳn — nó phải trông y như một dòng
+    // chưa quyết đối với `detectDuplicates`, nếu không nó tự mở khoá nút
+    // trộn. Xem ghi chú `LAN` ở đầu file.
+    if (ctx.nguon.get(id) === LAN) continue;
     if (v === MOI) { khaiMoi.push(id); continue; }
     if (v === '') continue;
     banDo.set(id, v);
@@ -334,9 +388,162 @@ function tinhLai() {
     kq = detectDuplicates(cay, imported, ctx.tuyChon);
   }
 
+  // Bản đồ NGƯỜI mà máy và người đã chốt xong — hạt giống của nút đề xuất.
+  // Giữ lại đây chứ không dựng lại lúc bấm nút, đúng lý do `ctx.tuyChon` tồn
+  // tại: hai bộ dựng ở hai chỗ thì sớm muộn trôi lệch nhau.
+  ctx.banDoDaChot = new Map(banDo);
+  for (const ca of kq.caTrung) {
+    if (ca.kieu === 'nguoi') ctx.banDoDaChot.set(ca.idTrongFile, ca.id);
+  }
+  ctx.khaiMoiHienTai = khaiMoi.slice();
+
   hienDeXuat(kq);
   hienDem();
+  hienNutDeXuat();
   hienKetQua(kq);
+}
+
+// ============================================================
+// b64 — NÚT ĐỀ XUẤT KẾT NỐI
+// ============================================================
+
+/**
+ * Lan theo quan hệ, đổ kết quả vào những dòng CÒN TRỐNG.
+ *
+ * ⚠ Không trái luật b60. Luật ấy cấm *bày sẵn khi chưa khai điểm neo nào*;
+ * đây là một cái nút bấm SAU, và nó tự khoá cho tới khi có điểm neo đầu tiên.
+ * Chốt chặn thật nằm trong chính `lanTheoQuanHe`: bản đồ rỗng → mảng rỗng.
+ */
+function chayDeXuat() {
+  if (!ctx) return;
+  const ds = lanTheoQuanHe(state.tree, ctx.imported,
+    ctx.banDoDaChot || new Map(), ctx.khaiMoiHienTai || []);
+  ctx.duongDi = new Map();
+  for (const x of ds) {
+    if (ctx.chon.get(x.trongFile) !== '') continue;   // không đè dòng đã quyết
+    datChon(x.trongFile, x.trongCay, LAN);
+    ctx.duongDi.set(x.trongFile, x);
+  }
+  ctx.daBamDeXuat = true;
+  tinhLai();
+}
+
+/** Bỏ mọi đề xuất, trả các dòng ấy về "chưa quyết". */
+function xoaDeXuat() {
+  if (!ctx) return false;
+  let co = false;
+  for (const [id, ng] of [...ctx.nguon]) {
+    if (ng !== LAN) continue;
+    ctx.chon.set(id, '');
+    ctx.nguon.delete(id);
+    const h = ctx.hang.find((x) => x.id === id);
+    if (h) h.o.value = '';
+    co = true;
+  }
+  if (ctx.duongDi) ctx.duongDi.clear();
+  return co;
+}
+
+/** Đổi mọi đề xuất thành lời khai của con người. */
+function nhanDeXuat() {
+  if (!ctx) return;
+  for (const [id, ng] of [...ctx.nguon]) if (ng === LAN) ctx.nguon.set(id, 'tay');
+  if (ctx.duongDi) ctx.duongDi.clear();
+  tinhLai();
+}
+
+function demDeXuat() {
+  let n = 0;
+  for (const ng of ctx.nguon.values()) if (ng === LAN) n++;
+  return n;
+}
+
+/**
+ * Khối nút, dựng lại mỗi lần tính lại.
+ *
+ * Ba trạng thái, và mỗi trạng thái chỉ bày đúng thứ bấm được:
+ *
+ * 1. **Chưa có điểm neo nào** → nút xám, kèm câu nói nó đang đợi gì. Bày một
+ *    nút khoá tử tế hơn im lặng: người dùng biết đường ấy có tồn tại.
+ * 2. **Có điểm neo, còn dòng trống** → nút bấm được.
+ * 3. **Đang có đề xuất** → hai nút *Nhận* / *Bỏ*, và nút Trộn vẫn khoá.
+ */
+function hienNutDeXuat() {
+  const o = ctx.oDeXuat;
+  o.innerHTML = '';
+
+  const soLan = demDeXuat();
+  if (soLan > 0) {
+    const hop = document.createElement('div');
+    hop.dataset.viec = 'khoi-de-xuat';
+    hop.style.cssText =
+      'margin-top:12px;padding:10px 12px;border:1px dashed #b8a888;' +
+      'border-radius:9px;background:#fdfaf2;font-size:13px;line-height:1.6';
+    hop.append(dongChu('App đề xuất ' + soLan + ' dòng. ' +
+      'Đề xuất CHƯA phải là quyết định — nút Trộn vẫn khoá cho tới khi bạn nhận.'));
+
+    const ke = document.createElement('div');
+    ke.dataset.viec = 'ke-de-xuat';
+    ke.style.cssText = 'margin-top:6px;font-size:12px;color:#6a6058';
+    for (const [id, x] of (ctx.duongDi || new Map())) {
+      if (ctx.nguon.get(id) !== LAN) continue;
+      ke.append(dongChu('· ' + tenFile(id) + ' → ' + tenCay(x.trongCay)
+        + '   (suy từ ' + x.qua + ' của ' + tenFile(x.tuNguoi) + ')'));
+    }
+    hop.append(ke);
+
+    const nhan = nut('Nhận cả ' + soLan + ' đề xuất', false, () => nhanDeXuat());
+    nhan.dataset.viec = 'nhan-de-xuat';
+    nhan.style.marginTop = '10px';
+    const bo = nut('Bỏ hết đề xuất', false, () => { xoaDeXuat(); tinhLai(); });
+    bo.dataset.viec = 'bo-de-xuat';
+    bo.style.marginTop = '8px';
+    hop.append(nhan, bo);
+    o.append(hop);
+    return;
+  }
+
+  let conTrong = 0;
+  for (const v of ctx.chon.values()) if (v === '') conTrong++;
+  if (conTrong === 0) return;
+
+  const coNeo = (ctx.banDoDaChot && ctx.banDoDaChot.size > 0);
+  const b = nut('Đề xuất nốt ' + conTrong + ' dòng còn lại', false,
+    () => { if (coNeo) chayDeXuat(); });
+  b.dataset.viec = 'de-xuat-ket-noi';
+  b.disabled = !coNeo;
+  b.style.marginTop = '12px';
+  if (!coNeo) {
+    b.style.cursor = 'default';
+    b.style.background = '#eae4dc';
+    b.style.color = '#8a8078';
+  }
+  o.append(b);
+
+  const chu_ = document.createElement('div');
+  chu_.dataset.viec = 'chu-duoi-de-xuat';
+  chu_.style.cssText = 'margin-top:6px;font-size:12px;line-height:1.6;color:#8a8078';
+  chu_.textContent = coNeo
+    ? (ctx.daBamDeXuat
+      ? 'Lần trước không lan thêm được ai. Gần như luôn nghĩa là một điểm neo ' +
+        'đang chỉ nhầm người — xem lại những dòng bạn đã khai.'
+      : 'App đi theo bố mẹ · vợ chồng · con từ những người bạn đã khai, và chỉ ' +
+        'đề xuất khi còn đúng một người khớp. Mập mờ thì nó im.')
+    : 'Khai đúng một người ở cột phải trước đã. Chưa có điểm neo nào thì app ' +
+      'không có chỗ nào để bắt đầu lan.';
+  o.append(chu_);
+}
+
+function tenFile(id) {
+  const p = ctx.imported.persons.find((x) => x && x.id === id);
+  return p ? (fullName(p) || '(chưa có tên)') : String(id || '');
+}
+
+function tenCay(id) {
+  const cay = state.tree;
+  const ds = (cay && Array.isArray(cay.persons)) ? cay.persons : [];
+  const p = ds.find((x) => x && x.id === id);
+  return p ? (fullName(p) || '(chưa có tên)') + ' (' + id + ')' : String(id || '');
 }
 
 /**
@@ -354,17 +561,50 @@ function hienDeXuat(kq) {
   for (const id of kq.nguoiMoi) if (!deXuat.has(id)) deXuat.set(id, MOI);
 
   for (const h of ctx.hang) {
-    const daKhai = ctx.nguon.get(h.id) === 'tay';
-    if (!daKhai) {
+    const ng = ctx.nguon.get(h.id);
+    // Dòng `lan` cũng phải giữ nguyên như dòng `tay`: nó là kết quả của một
+    // cú bấm, không phải thứ tính lại được từ `kq`.
+    const giuNguyen = (ng === 'tay' || ng === LAN);
+    if (!giuNguyen) {
       const g = deXuat.get(h.id);
       if (g === undefined) datChon(h.id, '', 'may');
       else datChon(h.id, g, 'may');
     }
-    if (ctx.chon.get(h.id) === '') { h.nhan.textContent = ''; continue; }
-    const tay = ctx.nguon.get(h.id) === 'tay';
-    h.nhan.textContent = tay ? 'bạn khai' : 'app đề xuất';
-    h.nhan.style.color = tay ? '#2a6a4a' : '#8a8078';
+    veDangHang(h);
   }
+}
+
+/**
+ * Diện mạo một dòng theo nguồn của nó.
+ *
+ * ⚠ Dòng ĐỀ XUẤT phải nhìn khác hẳn dòng đã quyết, và khác **mà không cần
+ * đọc chữ** — nhãn chữ xám thôi thì không đủ: người ta cuộn qua 29 dòng chứ
+ * không đọc 29 cái nhãn. Nên nó mang thêm viền trái nét đứt và nền ngả vàng,
+ * hai thứ thấy được bằng đuôi mắt.
+ */
+function veDangHang(h) {
+  const ng = ctx.nguon.get(h.id);
+  const trong = ctx.chon.get(h.id) === '';
+  const laLan = ng === LAN;
+
+  h.el.style.borderLeft = laLan ? '3px dashed #b8a888' : '';
+  h.el.style.paddingLeft = laLan ? '8px' : '';
+  h.el.style.background = laLan ? '#fdfaf2' : '';
+  h.o.style.borderStyle = laLan ? 'dashed' : 'solid';
+
+  if (trong) { h.nhan.textContent = ''; return; }
+  if (laLan) {
+    h.nhan.textContent = 'app ĐỀ XUẤT — chưa nhận';
+    h.nhan.style.color = '#8a6a2a';
+    return;
+  }
+  // ⚠ `may` gọi là "app NHẬN RA", không phải "app đề xuất": nó nhận nhau bằng
+  // căn cước (`uid` · sổ nhập · mã bản ghi), không phải phỏng đoán. Chữ "đề
+  // xuất" từ b64 đã có một nghĩa riêng, và một chữ mang hai nghĩa trên cùng
+  // một màn hình là chỗ người dùng hiểu sai mà không biết mình đang hiểu sai.
+  const tay = ng === 'tay';
+  h.nhan.textContent = tay ? 'bạn khai' : 'app nhận ra';
+  h.nhan.style.color = tay ? '#2a6a4a' : '#8a8078';
 }
 
 /**
@@ -385,15 +625,25 @@ function moTaFile(id) {
 function hienDem() {
   let tay = 0;
   let may = 0;
+  let lan = 0;
   let trong = 0;
   for (const [id, v] of ctx.chon) {
+    const ng = ctx.nguon.get(id);
+    if (ng === LAN) { lan++; continue; }
     if (v === '') trong++;
-    else if (ctx.nguon.get(id) === 'tay') tay++;
+    else if (ng === 'tay') tay++;
     else may++;
   }
   ctx.oTinh.innerHTML = '';
   ctx.oTinh.append(dongChu(
-    'Bạn khai: ' + tay + ' · App đề xuất: ' + may + ' · Chưa quyết: ' + trong));
+    'Bạn khai: ' + tay + ' · App nhận ra: ' + may + ' · Chưa quyết: ' + trong));
+  // Đếm riêng một dòng chứ không cộng vào ba con số trên: đề xuất chưa nhận
+  // KHÔNG cùng loại với ba thứ kia — ba thứ kia là câu trả lời, nó thì chưa.
+  if (lan > 0) {
+    const d = dongChu('Đề xuất chưa nhận: ' + lan);
+    d.style.color = '#8a6a2a';
+    ctx.oTinh.append(d);
+  }
 }
 
 // ============================================================
@@ -485,8 +735,13 @@ function hienKetQua(kq) {
   }
 
   if (t.soChuaNeo > 0) {
-    o.append(veLoiNhan('Còn ' + t.soChuaNeo + ' bản ghi chưa quyết. Mỗi dòng ' +
-                       'bên trái phải có một câu trả lời thì mới trộn được.', false));
+    const soLan = demDeXuat();
+    o.append(veLoiNhan(soLan > 0
+      ? 'Còn ' + t.soChuaNeo + ' bản ghi chưa quyết, trong đó ' + soLan +
+        ' dòng đang là ĐỀ XUẤT của app. Nhận hoặc bỏ chúng thì mới trộn được ' +
+        '— app không tự coi cái nó đoán là câu trả lời của bạn.'
+      : 'Còn ' + t.soChuaNeo + ' bản ghi chưa quyết. Mỗi dòng bên trái phải ' +
+        'có một câu trả lời thì mới trộn được.', false));
   }
   veNutTron(o, t.soChuaNeo === 0, t);
 }

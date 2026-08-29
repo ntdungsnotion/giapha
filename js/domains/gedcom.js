@@ -3,7 +3,7 @@
 // Vai trò  : Xuất gia phả ra GEDCOM 5.5.1, và ĐỌC file .ged thành bản xem trước
 // Lớp      : domains — HÀM THUẦN, không chạm DOM, không gọi services
 // Phụ thuộc: utils/date, utils/text, utils/id, utils/graph, config, domains/union
-// Phiên bản: 1.10.0 · Cập nhật: 29/08/2026 22:10
+// Phiên bản: 1.11.0 · Cập nhật: 29/08/2026 23:20
 // ============================================================
 //
 // XUẤT: GEDCOM 5.5.1. Cũ hơn 7.0 nhưng gần như mọi phần mềm gia phả đọc được.
@@ -83,7 +83,7 @@
 //   biết là *cố ý giấu*, không phải *dữ liệu thiếu*.
 
 import { parseLooseDate, formatDate } from '../utils/date.js';
-import { coGiaTri, fullName } from '../utils/text.js';
+import { coGiaTri, fullName, removeDiacritics } from '../utils/text.js';
 import { isValidId, loaiCua, maCayCua, maCayCuaCay, chuanUid, nextId, tachMa,
          sinhUid } from '../utils/id.js';
 import { QUAN_HE_CON_NHAN, nhanQuanHeCon, nhanTrangThaiCap } from '../config.js';
@@ -1385,6 +1385,225 @@ export function goiYCapTheoNguoi(tree, imported, banDoNguoi) {
   return boDi.size === 0
     ? ketQua
     : ketQua.filter((x) => !boDi.has(x.trongCay));
+}
+
+/**
+ * LAN THEO QUAN HỆ — từ những điểm neo đã có, đề xuất nốt người còn lại.
+ *
+ * --- Vì sao phải có hàm này (đo được, 29/08/2026) -------------------------
+ *
+ * `NK-B63` mục 2.2 đã đo: file `.ged` của phần mềm khác KHÔNG có `_UID`, không
+ * có mã chung, không có sổ nhập. Nên `mayChiVao` — cả ba đường tìm của nó —
+ * đều rỗng. Đo tiếp trên chính gia phả thật, cắt một nhánh ra rồi bóc sạch
+ * `_UID` và đổi hẳn không gian mã:
+ *
+ * | Đo | Kết quả |
+ * |---|---|
+ * | Khai tay 1 điểm neo, máy đề xuất thêm được | **0 người** |
+ * | Còn phải khai tay từng dòng (nhánh 12 người) | **11 / 11** |
+ * | Nhánh 30 người | **29 / 29** |
+ *
+ * Tức cột *"App đề xuất"* của bảng ghép đôi, với đúng loại file mà việc 11
+ * sinh ra để nhập, LUÔN BẰNG 0. Hàm này là thứ duy nhất lấp được chỗ đó.
+ *
+ * --- Cách làm: lan trên HAI đồ thị SONG BƯỚC -----------------------------
+ *
+ * Từ mỗi điểm neo `X → A`, đi ba hướng ở CẢ HAI bên: bố mẹ · bạn đời · con.
+ * Ứng viên của `Y` (thân nhân của X trong file) CHỈ được lấy trong đúng tập
+ * thân nhân tương ứng của A trong cây. Nhận khi và chỉ khi tập ấy còn ĐÚNG
+ * MỘT người khớp; mập mờ thì IM, không đoán.
+ *
+ * --- Ba điều số liệu dạy, không ngồi nghĩ ra được ------------------------
+ *
+ * 1. **So HỌ + TÊN, KHÔNG so tên đầy đủ.** File ngoài bỏ tên đệm là chuyện
+ *    rất thường. Đo trên cùng một nhánh: so tên đầy đủ → **0 đề xuất** (lan
+ *    chết ngay bước đầu); so họ&tên → **11/11 đúng**. Tên đệm là chỗ hai
+ *    nguồn dữ liệu lệch nhau nhiều nhất.
+ *
+ * 2. **Quan hệ KHÔNG phải thứ nhận dạng — nó là thứ THU HẸP VÙNG TÌM.** Thử
+ *    bỏ hẳn phép so tên, chỉ dựa vị trí: **1/11**. Vì một người có nhiều con,
+ *    tập ứng viên hiếm khi còn đúng một. Nên tên vẫn là căn cứ; quan hệ là
+ *    cái làm cho tên ĐỦ để kết luận. Đó cũng là chỗ hàm này hơn hẳn dò tên
+ *    trên toàn cây: hai người trùng tên ở hai nhánh khác nhau KHÔNG BAO GIỜ
+ *    rơi vào cùng một tập ứng viên. Đo: cây có 3 người trùng tên người trong
+ *    nhánh → dò tên toàn cây để lại **2 ca mập mờ**, lan theo quan hệ giải
+ *    được **cả hai**.
+ *
+ * 3. **Đề xuất TỰ TẮT khi điểm neo sai.** Thử neo nhầm người đầu tiên vào 31
+ *    người khác cùng giới trong cây: **0 đề xuất sai** ở cả 31 lần, vì mỗi
+ *    bước lan đều đòi tên khớp. ⚠ Nhưng cùng phép đo ấy: lá chắn `kiemNeoVoLy`
+ *    chặn **0/31** — nó canh *điều không thể có thật*, mà neo nhầm vào một
+ *    người rời rạc thì hoàn toàn có thể có thật. Hệ quả dùng được: **bấm nút
+ *    mà không đề xuất được ai gần như luôn nghĩa là điểm neo đang sai**.
+ *
+ * Thử thêm ca ác ý — file có người MỚI mang đúng tên người đang có thật trong
+ * cây: **0 nhận nhầm**, vì những người trùng tên ấy không phải thân nhân của
+ * điểm neo nên không bao giờ vào tập ứng viên.
+ *
+ * --- Vì sao KHÔNG dùng `bfs()` của `utils/graph.js` ----------------------
+ *
+ * `bfs()` duyệt MỘT đồ thị. Đây duyệt HAI đồ thị song bước — mỗi bước phải
+ * hỏi cùng một câu ở cả hai bên rồi mới bắt cặp. Nên tập `visited` phải tự
+ * giữ, và nó nằm ngay trên mặt (`daXet`) chứ không giấu trong hàm nào:
+ * `CLAUDE.md` mục 7 — gia phả là ĐỒ THỊ, quên `visited` là treo trình duyệt
+ * chứ không phải chạy chậm.
+ *
+ * HÀM THUẦN. Không đụng `tree`, không đọc đồng hồ, không gọi services. Nó chỉ
+ * ĐỀ XUẤT — không dòng nào của nó biến thành điểm neo nếu con người không
+ * nhận, xem `pages/form-ghep-doi.js`.
+ *
+ * @param {object} tree      cây đích
+ * @param {object} imported  kết quả `parseGedcom`
+ * @param {Map<string,string>|object} banDoNguoi  mã người TRONG FILE → mã
+ *        người TRONG CÂY, những điểm neo ĐÃ CÓ. Rỗng thì trả về mảng rỗng —
+ *        luật b60: chưa khai điểm neo nào thì không được bày đề xuất nào.
+ * @param {string[]|Set<string>} [boQua]  mã trong file mà người dùng đã khai
+ *        là "chưa có trong cây". Không đề xuất gì cho họ.
+ * @returns {{trongFile:string, trongCay:string, qua:string, tuNguoi:string}[]}
+ *        `qua` là hướng đã lan ('bố mẹ' · 'bạn đời' · 'con'), `tuNguoi` là mã
+ *        trong file của người đã dẫn tới đề xuất này. Hai trường ấy để màn
+ *        hình kể được ĐƯỜNG ĐI — một đề xuất không kể được nó từ đâu ra thì
+ *        không rà lại được.
+ */
+export function lanTheoQuanHe(tree, imported, banDoNguoi, boQua) {
+  const ketQua = [];
+
+  const banDo = new Map();
+  if (banDoNguoi instanceof Map) {
+    for (const [k, v] of banDoNguoi) {
+      if (chu(k) && chu(v)) banDo.set(chu(k), chu(v));
+    }
+  } else if (banDoNguoi && typeof banDoNguoi === 'object') {
+    for (const k of Object.keys(banDoNguoi)) {
+      if (chu(k) && chu(banDoNguoi[k])) banDo.set(chu(k), chu(banDoNguoi[k]));
+    }
+  }
+  if (banDo.size === 0) return ketQua;
+
+  const bo = boQua instanceof Set ? boQua : new Set(mang(boQua).map((x) => chu(x)));
+
+  let qF;
+  let qT;
+  try {
+    qF = chiMucQuanHe(imported);
+    qT = chiMucQuanHe(tree);
+  } catch (e) {
+    return ketQua;      // dữ liệu hỏng thì KHÔNG đề xuất, chứ không đoán bừa
+  }
+
+  // Ô bên cây đã bị chiếm: một người trong cây không thể là hai người trong
+  // file. Chiếm dần trong lúc lan, nên đề xuất trước khoá chỗ của đề xuất sau.
+  const chiem = new Set(banDo.values());
+  const daDeXuat = new Map();
+  const hangDoi = [...banDo.keys()];
+  const daXet = new Set(hangDoi);        // ⚠ visited — xem ghi chú trên
+
+  const HUONG = [
+    ['bố mẹ',   'cha'],
+    ['bạn đời', 'vo'],
+    ['con',     'con'],
+  ];
+
+  while (hangDoi.length > 0) {
+    const x = hangDoi.shift();
+    const a = banDo.get(x) || daDeXuat.get(x);
+    if (!a) continue;
+
+    for (const [ten, khoa] of HUONG) {
+      const thanNhanFile = qF[khoa].get(x);
+      const thanNhanCay = qT[khoa].get(a);
+      if (!thanNhanFile || !thanNhanCay) continue;
+
+      for (const y of thanNhanFile) {
+        if (banDo.has(y) || daDeXuat.has(y) || bo.has(y)) continue;
+        const nguoiFile = qF.nguoi.get(y);
+        if (!nguoiFile) continue;
+
+        const ungVien = [];
+        for (const z of thanNhanCay) {
+          if (chiem.has(z)) continue;
+          const nguoiCay = qT.nguoi.get(z);
+          if (nguoiCay && khopDuocNguoi(nguoiFile, nguoiCay)) ungVien.push(z);
+        }
+        if (ungVien.length !== 1) continue;   // mập mờ thì IM
+
+        daDeXuat.set(y, ungVien[0]);
+        chiem.add(ungVien[0]);
+        ketQua.push({ trongFile: y, trongCay: ungVien[0], qua: ten, tuNguoi: x });
+        if (!daXet.has(y)) { daXet.add(y); hangDoi.push(y); }
+      }
+    }
+  }
+
+  return ketQua;
+}
+
+/**
+ * Ba bản đồ quan hệ của MỘT nguồn: bố mẹ · bạn đời · con.
+ *
+ * Dựng trên `buildIndex` chứ không tự duyệt `unions`: `buildIndex` đã bỏ bản
+ * ghi trong thùng rác và đã nổ khi có hai bản ghi trùng mã, tức hai chuyện mà
+ * một vòng lặp viết tại chỗ luôn quên.
+ */
+function chiMucQuanHe(nguon) {
+  const ix = buildIndex(nguon);
+  const cha = new Map();
+  const vo = new Map();
+  const con = new Map();
+
+  const them = (m, a, b) => {
+    if (!a || !b || a === b) return;
+    if (!m.has(a)) m.set(a, new Set());
+    m.get(a).add(b);
+  };
+
+  for (const id of ix.personById.keys()) {
+    for (const uid of (ix.unionsAsChild.get(id) || [])) {
+      const u = ix.unionById.get(uid);
+      for (const b of banDoiCua(u)) if (ix.personById.has(b)) them(cha, id, b);
+    }
+    for (const uid of (ix.unionsAsPartner.get(id) || [])) {
+      const u = ix.unionById.get(uid);
+      for (const b of banDoiCua(u)) if (ix.personById.has(b)) them(vo, id, b);
+      for (const c of mang(u && u.children)) {
+        const cid = chu(c && c.personId);
+        if (ix.personById.has(cid)) them(con, id, cid);
+      }
+    }
+  }
+
+  return { cha, vo, con, nguoi: ix.personById };
+}
+
+/** Họ + TÊN, bỏ dấu, thường hoá. CỐ Ý bỏ tên đệm — xem điều 1 ở trên. */
+function hoVaTenChuan(p) {
+  const ds = mang(p && p.names);
+  const n = ds.find((x) => x && x.type === 'chinh') || ds[0];
+  if (!n) return '';
+  const s = [n.surname, n.given].filter(coGiaTri).map((x) => String(x).trim()).join(' ');
+  return removeDiacritics(s).toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Hai bản ghi có thể là MỘT con người không?
+ *
+ * Ba câu hỏi, và cả ba đều phải gật. Ngưỡng năm sinh 3 năm lấy đúng con số
+ * `kiemNeoVoLy` đang dùng — hai chỗ hỏi cùng một câu thì phải cùng một ngưỡng,
+ * nếu không sẽ có ca app tự đề xuất rồi tự nhắc là đáng ngờ.
+ */
+function khopDuocNguoi(a, b) {
+  const ta = hoVaTenChuan(a);
+  if (ta === '' || ta !== hoVaTenChuan(b)) return false;
+
+  const sa = chu(a && a.sex);
+  const sb = chu(b && b.sex);
+  if (sa && sb && sa !== 'U' && sb !== 'U' && sa !== sb) return false;
+
+  const na = namSinhCua(a);
+  const nb = namSinhCua(b);
+  if (na && nb && Math.abs(na - nb) >= 3) return false;
+
+  return true;
 }
 
 /**
