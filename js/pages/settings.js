@@ -4,7 +4,7 @@
 //            đường sang Chọn gia phả · Sao lưu & khôi phục · Xuất/Nhập GEDCOM
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, services/gas, utils/text
-// Phiên bản: 1.15.0 · Cập nhật: 29/08/2026 10:40
+// Phiên bản: 1.16.0 · Cập nhật: 29/08/2026 09:44
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
@@ -425,7 +425,7 @@ function veKhoiXuat(vao) {
 }
 
 // ============================================================
-// Khối "Nhập dữ liệu" — việc 11, nửa A
+// Khối "Nhập dữ liệu" — việc 11
 // ============================================================
 //
 // Khối RIÊNG, đứng dưới *Xuất dữ liệu*, chứ không phải một nút thứ hai nằm
@@ -434,13 +434,14 @@ function veKhoiXuat(vao) {
 // là đường MỘT CHIỀU. Xếp chung một khối là mời người dùng coi chúng ngang
 // nhau, rồi bấm cái thứ hai chỉ vì vừa bấm cái thứ nhất.
 //
-// ⚠ Chữ trên nút mang sẵn hai chữ **xem trước** vì nửa A đúng là chỉ có thế.
-// Ngày nửa B ghi thật thì hai chữ ấy phải BỎ ĐI — để lại là nói dối theo
-// chiều nguy hiểm hơn hẳn chiều ngược lại.
+// ✓ Hai chữ *xem trước* ĐÃ BỎ ở nửa sau, đúng lúc màn hình ấy ghi thật — để
+// lại là nói dối theo chiều nguy hiểm hơn hẳn chiều ngược lại.
 //
-// ⚠ Nút này KHÔNG mờ với người chỉ có quyền xem, và ở nửa A thì đó là điều
-// hiển nhiên: đọc một file trên máy mình thì không đụng gì tới gia phả.
-// Ngày nửa B ghi thật, chỗ này phải xét lại — và đây là dòng nhắc.
+// ⚠ Nút này vẫn KHÔNG mờ với người chỉ có quyền xem, và nay đó là một quyết
+// định chứ không còn là chuyện hiển nhiên: đường nhập ghi vào một gia phả
+// MỚI dựng trong Drive của chính người bấm, nơi họ là chủ. Quyền xem trên
+// cây đang mở không dính dáng gì tới việc ấy — chặn họ ở đây là chặn nhầm
+// người ở nhầm cây.
 
 function veKhoiNhap(vao) {
   if (!xuLyNgoai.onMoNhapGedcom) return null;
@@ -449,14 +450,15 @@ function veKhoiNhap(vao) {
   khoi.style.cssText = 'margin-top:20px';
   khoi.append(veNhanKhoi('Nhập dữ liệu'));
 
-  const b = nut('Đọc thử một file GEDCOM (xem trước)', false, true,
+  const b = nut('Nhập từ file GEDCOM', false, true,
                 () => xuLyNgoai.onMoNhapGedcom());
   b.dataset.viec = 'nhap-gedcom';
   b.style.marginTop = '4px';
   khoi.append(b);
 
   const chu = document.createElement('div');
-  chu.textContent = 'Mới xem được file có những gì. Chưa ghi vào gia phả.';
+  chu.textContent = 'Xem file .ged có những gì, rồi ghi vào một gia phả MỚI. '
+                  + 'Gia phả đang mở không bị đụng tới.';
   chu.style.cssText = 'font-size:12px;line-height:1.5;color:#8a8078;margin-top:6px';
   khoi.append(chu);
 

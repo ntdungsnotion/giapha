@@ -3,7 +3,7 @@
 // Vai trò  : Xuất gia phả ra GEDCOM 5.5.1, và ĐỌC file .ged thành bản xem trước
 // Lớp      : domains — HÀM THUẦN, không chạm DOM, không gọi services
 // Phụ thuộc: utils/date, utils/text, utils/id, config, domains/union
-// Phiên bản: 1.2.0 · Cập nhật: 29/08/2026 09:44
+// Phiên bản: 1.3.0 · Cập nhật: 29/08/2026 09:44
 // ============================================================
 //
 // XUẤT: GEDCOM 5.5.1. Cũ hơn 7.0 nhưng gần như mọi phần mềm gia phả đọc được.
@@ -432,11 +432,103 @@ export function parseGedcom(text) {
   };
 }
 
-/** Dò bản ghi trùng giữa dữ liệu nhập vào và cây hiện có. */
-export function detectDuplicates(tree, imported) { /* TODO — việc 11 nửa B */ }
+/**
+ * Dò bản ghi trùng giữa dữ liệu nhập vào và cây hiện có.
+ *
+ * ⚠ CÒN LÀ KHUNG — việc 11 nửa sau. Nó chỉ có việc để làm ở chế độ **bổ sung
+ * vào gia phả đang mở**; chế độ *tạo gia phả mới* ghi vào một cây rỗng nên
+ * không có gì để đối chiếu. Xem `mergeImported`.
+ */
+export function detectDuplicates(tree, imported) { /* TODO — việc 11 nửa sau */ }
 
-/** Trộn dữ liệu đã nhập vào cây, sau khi người dùng xác nhận. */
-export function mergeImported(tree, imported, decisions) { /* TODO — việc 11 nửa B */ }
+/**
+ * Trộn bản đã đọc vào một cây gia phả. HÀM THUẦN: `tree` không bị đụng vào,
+ * cây mới được trả về; không đọc đồng hồ, không gọi máy chủ.
+ *
+ * ⚠ **Chỉ làm chế độ `moi` — đổ vào một cây RỖNG.** Chế độ bổ sung vào gia
+ * phả đang có người thì phải dò trùng trước, và nó là việc riêng ở nửa sau.
+ * Hàm này TỪ CHỐI khi cây đích còn dù chỉ một bản ghi: nhập là đường một
+ * chiều, nên chốt chặn phải nằm ở đây — chỗ dựng dữ liệu — chứ không chỉ ở
+ * màn hình, vì màn hình có thể gọi sai mà dữ liệu thì không lùi lại được.
+ *
+ * Ba thứ CỐ Ý không mang sang:
+ *
+ * · **Ảnh** — `media` để rỗng. Thẻ `OBJE` chỉ có đường dẫn máy khác, còn app
+ *   lưu ảnh bằng `driveFileId` trong thư mục `Anh` của chính gia phả này.
+ * · **`changeLog`** — máy chủ tự ghi một mục khi `luuCay` gật. Chép lịch sử
+ *   của cây khác vào đây là dựng ra một quá khứ chưa từng xảy ra ở cây này.
+ * · **Khối `tree`** — giữ nguyên của cây đích, kể cả `name` người dùng vừa
+ *   gõ và `photoFolderId` máy chủ vừa cấp. Đè `photoFolderId` bằng giá trị
+ *   rỗng của file `.ged` là cắt đứt kho ảnh của cây mới ngay từ lúc dựng.
+ *
+ * @param {object} tree      cây đích, phải RỖNG
+ * @param {object} imported  kết quả `parseGedcom`
+ * @param {{che?:string, luc?:string, nguoiGhi?:string}} [tuyChon]
+ *        `luc` là dấu thời gian `dd/mm/yyyy HH:mm` do nơi gọi đưa vào — hàm
+ *        này không được đọc đồng hồ, nếu không nó hết thuần và hết kiểm được.
+ * @returns {{ok:boolean, lyDo:string, loi:string, cay:object|null,
+ *            tomTat:{soNguoi:number, soCap:number, soNguon:number}|null}}
+ */
+export function mergeImported(tree, imported, tuyChon) {
+  const t = tuyChon || {};
+  const che = chu(t.che) || 'moi';
+  const thua = (lyDo, loi) => ({ ok: false, lyDo, loi, cay: null, tomTat: null });
+
+  if (che !== 'moi') {
+    return thua('chualam',
+      'Mới ghi được vào một gia phả MỚI. Đường bổ sung vào gia phả đang mở ' +
+      'còn đang làm — nó phải dò trùng trước khi trộn.');
+  }
+  if (!imported || !Array.isArray(imported.persons) || imported.persons.length === 0) {
+    return thua('khongcoai', 'File không có người nào, nên không có gì để ghi.');
+  }
+  if (!tree || typeof tree !== 'object' || !tree.tree) {
+    return thua('khongcocay', 'Chưa nạp được gia phả đích nên chưa ghi được gì.');
+  }
+
+  const dem = (x) => (Array.isArray(x) ? x.length : 0);
+  const daCo = dem(tree.persons) + dem(tree.unions) + dem(tree.sources);
+  if (daCo > 0) {
+    return thua('khongrong',
+      'Gia phả đích đã có ' + dem(tree.persons) + ' người và ' +
+      dem(tree.unions) + ' gia đình. Chế độ này chỉ ghi vào một gia phả RỖNG.');
+  }
+
+  // Nhân đôi bằng JSON, cùng lý lẽ với `services/repo.luuCay`: cây là dữ liệu
+  // JSON thuần. Nhân đôi cả `imported` để cây trả về không dùng chung một
+  // object nào với bản xem trước đang bày trên màn hình.
+  const cay = JSON.parse(JSON.stringify(tree));
+  const nhap = JSON.parse(JSON.stringify(imported));
+
+  const luc = chu(t.luc);
+  const boi = chu(t.nguoiGhi);
+  for (const p of nhap.persons) {
+    p.meta = { createdAt: luc, updatedAt: luc, updatedBy: boi };
+  }
+
+  cay.persons = nhap.persons;
+  cay.unions = Array.isArray(nhap.unions) ? nhap.unions : [];
+  cay.sources = Array.isArray(nhap.sources) ? nhap.sources : [];
+  cay.media = [];
+
+  // Người đứng giữa sơ đồ lúc mở cây lần đầu. Lấy người ĐẦU TIÊN của file —
+  // `repo.chonNguoiTrungTam` vẫn có đường lùi khi trường này rỗng, nhưng để
+  // rỗng là bắt app tự đoán ở mỗi lần mở, mà thứ tự của một `Map` thì không
+  // phải thứ ai cũng đoán giống nhau.
+  cay.tree.rootPersonId = chu(nhap.persons[0].id) || null;
+
+  return {
+    ok: true,
+    lyDo: '',
+    loi: '',
+    cay,
+    tomTat: {
+      soNguoi: cay.persons.length,
+      soCap: cay.unions.length,
+      soNguon: cay.sources.length,
+    },
+  };
+}
 
 // ============================================================
 // 2a. Tách chuỗi thành cây nút

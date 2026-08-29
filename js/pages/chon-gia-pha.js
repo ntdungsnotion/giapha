@@ -4,7 +4,7 @@
 //            khác, quay về cây mặc định, và (chỉ chủ dự án) dựng gia phả mới
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, services/gas, config
-// Phiên bản: 0.2.0 · Cập nhật: 28/08/2026 13:40
+// Phiên bản: 0.3.0 · Cập nhật: 29/08/2026 09:44
 // ============================================================
 //
 // Nửa MÁY CHỦ đã xong ở bước 52: `layDanhSachGiaPha` · `chonGiaPha` ·
@@ -75,18 +75,17 @@
 // và ta sẽ báo "đã tạo xong" rồi mở cho người ta một cây đã có dữ liệu.
 //
 // ⚠ Drive đánh chỉ mục tìm kiếm có ĐỘ TRỄ, nên `searchFiles` ngay sau khi tạo
-// có thể chưa thấy file vừa sinh ra. Vì thế hỏi lại tối đa `SO_LAN_HOI` lần,
-// cách nhau `NHIP_HOI` — và câu báo lúc chịu thua phải kể CẢ HAI khả năng,
-// đừng khẳng định là chưa tạo được.
+// có thể chưa thấy file vừa sinh ra. Vì thế phải hỏi lại mấy lần — và câu báo
+// lúc chịu thua phải kể CẢ HAI khả năng, đừng khẳng định là chưa tạo được.
+//
+// ⚠ Đoạn ấy nay ở `services/repo.taoGiaPhaMoi()`, vì màn *Nhập GEDCOM* cũng
+// dựng gia phả mới. Nó là dữ liệu và mạng, không phải màn hình.
 
 import { state } from '../state.js';
-import { coMayChu, layDanhSachGiaPha, chonGiaPha, boChonGiaPha,
-         taoFileDuLieuMoi } from '../services/gas.js';
+import { coMayChu, layDanhSachGiaPha, chonGiaPha,
+         boChonGiaPha } from '../services/gas.js';
+import { taoGiaPhaMoi } from '../services/repo.js';
 import { rongHop, caoHop, leLopPhu, RONG_NUT_TOI_DA } from '../config.js';
-
-/** Hỏi lại mấy lần sau khi tạo, vì Drive đánh chỉ mục có độ trễ. */
-const SO_LAN_HOI = 4;
-const NHIP_HOI   = 1500;
 
 let lopPhu   = null;
 let khoiDs   = null;    // khối danh sách, vẽ lại riêng
@@ -592,48 +591,15 @@ async function chayTaoMoi(o, nutLam, khoiTin) {
   khoiTin.innerHTML = '';
   khoiTin.append(doanChu('Đang dựng "' + ten + '" trên Google Drive…'));
 
-  // 1. Chụp danh sách TRƯỚC.
-  let truoc;
-  try {
-    truoc = await tapMaGiaPha();
-  } catch (e) {
-    return thuaTaoMoi(khoiTin, cauLoiMayChu(e));
+  const kq = await taoGiaPhaMoi(ten, { conSong: () => !!lopPhu });
+  if (!lopPhu) { dangChay = false; return; }
+  if (!kq.ok) {
+    if (kq.lyDo === 'daDong') { dangChay = false; return; }
+    return thuaTaoMoi(khoiTin, kq.loi);
   }
 
-  // 2. Dựng. Hàm này không trả về gì — nó chỉ chạy xong hoặc ném lỗi.
-  try {
-    await taoFileDuLieuMoi(ten);
-  } catch (e) {
-    return thuaTaoMoi(khoiTin, cauLoiMayChu(e));
-  }
-
-  // 3. Hỏi lại tới khi thấy mã mới, hoặc chịu thua. Drive đánh chỉ mục có độ
-  //    trễ, nên lần hỏi đầu chưa thấy KHÔNG có nghĩa là chưa tạo được.
-  for (let lan = 0; lan < SO_LAN_HOI; lan++) {
-    if (!lopPhu) return;
-    if (lan > 0) await nghi(NHIP_HOI);
-
-    let ds;
-    try {
-      ds = await danhSachThuong();
-    } catch (e) {
-      return thuaTaoMoi(khoiTin, cauLoiMayChu(e));
-    }
-    if (!lopPhu) return;
-
-    const moi = ds.find((m) => m && !truoc.has(m.fileId));
-    if (moi) {
-      dangChay = false;
-      return veHopDaTao(moi);
-    }
-  }
-
-  thuaTaoMoi(khoiTin,
-    'Máy chủ chạy xong nhưng chưa thấy gia phả mới nào trong danh sách. Hai ' +
-    'khả năng, và chúng ngược nhau: đã có sẵn một gia phả tên "' + ten +
-    '" nên app không dựng đè lên; hoặc cây đã dựng xong mà Google Drive chưa ' +
-    'kịp đưa vào danh sách tìm kiếm. Đóng màn hình này, mở lại sau một phút ' +
-    'rồi xem có cây mới không — ĐỪNG bấm dựng lần nữa ngay.');
+  dangChay = false;
+  return veHopDaTao(kq.moi);
 }
 
 function thuaTaoMoi(khoiTin, cau) {
@@ -678,12 +644,6 @@ function veHopDaTao(moi) {
   hop.append(nut('Để sau — quay lại danh sách', false, true, () => openChonGiaPha()));
 }
 
-/** Tập mã của mọi gia phả đang thấy. Ném lỗi nếu máy chủ từ chối. */
-async function tapMaGiaPha() {
-  const ds = await danhSachThuong();
-  return new Set(ds.map((m) => m && m.fileId).filter((x) => !!x));
-}
-
 /** `layDanhSachGiaPha` đã bóc vỏ. Ném lỗi thay vì trả về `{ok:false}`. */
 async function danhSachThuong() {
   const kq = await layDanhSachGiaPha();
@@ -691,10 +651,6 @@ async function danhSachThuong() {
     throw new Error((kq && kq.loi) || 'Máy chủ không trả về danh sách gia phả.');
   }
   return Array.isArray(kq.ds) ? kq.ds : [];
-}
-
-function nghi(ms) {
-  return new Promise((xong) => setTimeout(xong, ms));
 }
 
 // ============================================================

@@ -3,7 +3,7 @@
 // Vai trò  : Nạp/lưu cây gia phả, dựng chỉ mục, giữ trạng thái phiên.
 // Lớp      : services — được gọi bởi: pages · gọi: services/gas, utils
 // Phụ thuộc: services/gas.js, utils/graph.js, state.js
-// Phiên bản: 0.5.0 · Cập nhật: 17/08/2026 19:10
+// Phiên bản: 0.6.0 · Cập nhật: 29/08/2026 09:44
 // ============================================================
 //
 // RANH GIỚI ĐỔI KHO LƯU TRỮ.
@@ -218,4 +218,106 @@ export function nangCapNeuCan(raw) {
   }
 
   return raw;
+}
+
+// ============================================================
+// Dựng một gia phả MỚI trên Drive
+// ============================================================
+//
+// ⚠ `gas.taoFileDuLieuMoi()` KHÔNG TRẢ VỀ GÌ — bên máy chủ nó kể mọi thứ bằng
+// `Logger.log`, thứ chỉ đọc được trong trình soạn thảo Apps Script. Nên cây
+// mới phải TÌM lại bằng cách chụp danh sách trước và sau, rồi nhặt `fileId`
+// chưa từng có mặt. So theo TÊN là sai ở đúng ca hỏng: máy chủ gặp thư mục đã
+// chứa sẵn một gia phả thì dừng lặng lẽ, và cây cũ cùng tên vẫn nằm trong
+// danh sách — so tên sẽ tưởng vừa dựng xong.
+//
+// Drive đánh chỉ mục có độ trễ, nên lần hỏi đầu chưa thấy KHÔNG có nghĩa là
+// chưa tạo được. Hỏi lại tối đa `SO_LAN_HOI` lần, cách nhau `NHIP_HOI`.
+//
+// Đứng ở `services/` chứ không ở màn hình vì HAI màn hình cần nó: *Chọn gia
+// phả* (nút Dữ liệu mới) và *Nhập GEDCOM* (ghi vào một gia phả mới). Chép
+// sang màn hình thứ hai là dựng bản thứ hai của một đoạn khó, và bản thứ hai
+// bao giờ cũng là bản quên sửa.
+
+const SO_LAN_HOI = 4;
+const NHIP_HOI   = 1500;
+
+/**
+ * Dựng gia phả mới rồi tìm lại nó trong danh sách.
+ *
+ * KHÔNG chọn, KHÔNG mở, KHÔNG đụng gì vào cây đang mở — nơi gọi tự quyết
+ * bước tiếp theo.
+ *
+ * @param {string} ten  tên gia phả người dùng gõ
+ * @param {{conSong?:function():boolean}} [tuyChon]
+ *        `conSong` trả về `false` thì hàm dừng vòng hỏi lại — dùng khi người
+ *        dùng đã đóng màn hình giữa chừng.
+ * @returns {Promise<{ok:boolean, moi:object|null, lyDo:string, loi:string}>}
+ */
+export async function taoGiaPhaMoi(ten, tuyChon) {
+  const t = tuyChon || {};
+  const conSong = typeof t.conSong === 'function' ? t.conSong : () => true;
+  const thua = (lyDo, loi) => ({ ok: false, moi: null, lyDo, loi });
+
+  const tenGon = String(ten || '').trim();
+  if (!tenGon) return thua('thieuten', 'Chưa gõ tên gia phả.');
+
+  let truoc;
+  try {
+    truoc = await tapMaGiaPha();
+  } catch (e) {
+    return thua('khongnoiduoc', cauLoi(e));
+  }
+
+  try {
+    await gas.taoFileDuLieuMoi(tenGon);
+  } catch (e) {
+    return thua('khongnoiduoc', cauLoi(e));
+  }
+
+  for (let lan = 0; lan < SO_LAN_HOI; lan++) {
+    if (!conSong()) return thua('daDong', 'Màn hình đã đóng giữa chừng.');
+    if (lan > 0) await nghi(NHIP_HOI);
+
+    let ds;
+    try {
+      ds = await danhSachThuong();
+    } catch (e) {
+      return thua('khongnoiduoc', cauLoi(e));
+    }
+    if (!conSong()) return thua('daDong', 'Màn hình đã đóng giữa chừng.');
+
+    const moi = ds.find((m) => m && !truoc.has(m.fileId));
+    if (moi) return { ok: true, moi, lyDo: '', loi: '' };
+  }
+
+  return thua('khongthay',
+    'Máy chủ chạy xong nhưng chưa thấy gia phả mới nào trong danh sách. Hai ' +
+    'khả năng, và chúng ngược nhau: đã có sẵn một gia phả tên "' + tenGon +
+    '" nên app không dựng đè lên; hoặc cây đã dựng xong mà Google Drive chưa ' +
+    'kịp đưa vào danh sách tìm kiếm. Đóng màn hình này, mở lại sau một phút ' +
+    'rồi xem có cây mới không — ĐỪNG bấm dựng lần nữa ngay.');
+}
+
+/** Tập mã của mọi gia phả đang thấy. Ném lỗi nếu máy chủ từ chối. */
+async function tapMaGiaPha() {
+  const ds = await danhSachThuong();
+  return new Set(ds.map((m) => m && m.fileId).filter((x) => !!x));
+}
+
+/** `layDanhSachGiaPha` đã bóc vỏ. Ném lỗi thay vì trả về `{ok:false}`. */
+async function danhSachThuong() {
+  const kq = await gas.layDanhSachGiaPha();
+  if (!kq || !kq.ok) {
+    throw new Error((kq && kq.loi) || 'Máy chủ không trả về danh sách gia phả.');
+  }
+  return Array.isArray(kq.ds) ? kq.ds : [];
+}
+
+function nghi(ms) {
+  return new Promise((xong) => setTimeout(xong, ms));
+}
+
+function cauLoi(e) {
+  return e && e.message ? e.message : String(e);
 }

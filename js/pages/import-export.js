@@ -1,21 +1,23 @@
 // ============================================================
 // giapha · js/pages/import-export.js
-// Vai trò  : Hai màn hình — XUẤT GEDCOM, và NHẬP GEDCOM (mới xem trước)
+// Vai trò  : Hai màn hình — XUẤT GEDCOM, và NHẬP GEDCOM (đọc + ghi thật)
 // Lớp      : pages — được phép gọi mọi lớp dưới
-// Phụ thuộc: state, domains/gedcom, utils/{date,text}, config
-// Phiên bản: 1.2.0 · Cập nhật: 29/08/2026 10:40
+// Phụ thuộc: state, domains/gedcom, services/{gas,repo}, utils/{date,text}, config
+// Phiên bản: 1.3.0 · Cập nhật: 29/08/2026 09:44
 // ============================================================
 //
 // File này giữ HAI màn hình, và chúng là hai chiều của cùng một cửa:
 //
 // - `openXuatGedcom` — biến gia phả đang mở thành một file `.ged` nằm trong
 //   máy người dùng. Xong từ b55, chủ dự án đã bấm thử trên app thật.
-// - `openNhapGedcom` — đọc một file `.ged` rồi kể ra đọc được gì. ⚠ **Mới
-//   XEM TRƯỚC, chưa ghi gì** — xem ghi chú ngay trên hàm ấy.
+// - `openNhapGedcom` — đọc một file `.ged`, kể ra đọc được gì, rồi GHI vào một
+//   gia phả MỚI dựng trên Drive. Nửa sau xong 29/08/2026.
 //
-// Cả hai đều KHÔNG gọi máy chủ một lần nào — cây đã nằm sẵn trong
-// `state.tree`, và mọi phép dựng chữ lẫn đọc chữ là hàm thuần ở
-// `domains/gedcom.js`.
+// ⚠ **Hai màn hình này nay KHÔNG còn cân nhau.** Màn Xuất chỉ đọc: nó không
+// gọi máy chủ một lần nào, cây đã nằm sẵn trong `state.tree`. Màn Nhập thì
+// dựng thư mục trên Drive, đổi gia phả đang chọn và ghi dữ liệu — xem khối
+// *Đường GHI THẬT* ở cuối file. Phép dựng chữ và đọc chữ vẫn là hàm thuần ở
+// `domains/gedcom.js`; chỉ phần điều phối là đụng máy chủ.
 //
 // --- HAI ĐƯỜNG LẤY FILE, và vì sao phải có cả hai -----------------------
 //
@@ -53,9 +55,11 @@
 // mà mục *Sao lưu* đã cất công gom về một chỗ.
 
 import { state } from '../state.js';
-import { exportGedcom, tenFileGedcom, tomTatXuat, parseGedcom }
+import { exportGedcom, tenFileGedcom, tomTatXuat, parseGedcom, mergeImported }
   from '../domains/gedcom.js';
-import { formatDate } from '../utils/date.js';
+import { chonGiaPha } from '../services/gas.js';
+import { taoGiaPhaMoi, khoiTao, luuCay } from '../services/repo.js';
+import { formatDate, stampNow } from '../utils/date.js';
 import { fullName } from '../utils/text.js';
 import { rongHop, caoHop, leLopPhu, RONG_NUT_TOI_DA } from '../config.js';
 
@@ -68,6 +72,7 @@ let duongTam = '';        // blob: URL đang giữ, phải thu hồi lúc đóng
 // biến thì cú đóng của màn này gỡ mất lớp phủ của màn kia.
 let lopPhuNhap = null;
 let hopXemTruoc = null;
+let dangGhi = false;    // chặn bấm hai lần trong lúc chờ máy chủ
 
 /**
  * Mở màn hình Xuất GEDCOM.
@@ -398,10 +403,12 @@ function thuHoiDuongTam() {
 /**
  * Mở màn hình Nhập GEDCOM (bản xem trước).
  *
- * Không nhận `xuLy` nào, cùng lý do với `openXuatGedcom`: màn hình này không
- * đổi gì trong cây nên không có việc gì để báo ngược ra ngoài. Ngày nửa B
- * thêm đường ghi thật thì chỗ ấy PHẢI báo — và đó sẽ là dấu hiệu rõ nhất
- * rằng màn hình đã đổi bản chất.
+ * Vẫn không nhận `xuLy` nào, dù nửa sau đã ghi thật — nhưng lý do đã khác.
+ * Ghi xong thì app đứng ở một gia phả KHÁC, tức mọi màn hình đang mở đều nói
+ * về cây cũ: sơ đồ, người trung tâm, danh sách. Báo ngược ra ngoài để từng
+ * chỗ tự cập nhật là dựng lại cả đường khởi động bằng tay. Nên chỗ này đi
+ * đúng đường màn *Chọn gia phả* đã đi: một nút **Tải lại trang**, và
+ * `location.reload()` chạy lại đúng đường khởi động đã chạy hàng trăm lần.
  */
 export function openNhapGedcom() {
   closeNhapGedcom();
@@ -423,14 +430,14 @@ export function openNhapGedcom() {
     '-webkit-overflow-scrolling:touch';
 
   const tieuDe = document.createElement('div');
-  tieuDe.textContent = 'Nhập GEDCOM — xem trước';
+  tieuDe.textContent = 'Nhập GEDCOM';
   tieuDe.style.cssText = 'font-size:19px;font-weight:600';
   hop.append(tieuDe);
 
   const moDau = document.createElement('div');
   moDau.textContent =
-    'Chọn một file .ged để xem app đọc được những gì trong đó. Bước này chỉ ' +
-    'ĐỌC — chưa có gì được ghi vào gia phả.';
+    'Chọn một file .ged để xem app đọc được những gì trong đó. Xem xong, ' +
+    'cuối màn hình mới tới chỗ ghi — chưa bấm nút ấy thì chưa có gì được ghi.';
   moDau.style.cssText =
     'font-size:13px;line-height:1.55;color:#8a8078;margin-top:8px';
   hop.append(moDau);
@@ -661,10 +668,8 @@ function xemTruoc(chuoi, tenNguon) {
     hopXemTruoc.append(ds);
   }
 
-  // --- Điểm dừng, nói thẳng ---------------------------------------------
-  hopXemTruoc.append(veLoiNhan(
-    'Đây mới là bản xem trước — CHƯA có gì được ghi. Đường ghi vào một gia ' +
-    'phả mới đang làm dở, sẽ có ở bản sau.', false));
+  // --- Ghi vào đâu ------------------------------------------------------
+  hopXemTruoc.append(veKhoiGhi(kq));
 }
 
 /** Một dòng người trong bản xem trước: tên · năm sinh–năm mất · mã. */
@@ -676,6 +681,260 @@ function motDongNguoi(p) {
   if (sinh !== '' || mat !== '') phan.push(sinh + ' – ' + mat);
   phan.push(p.id);
   return phan.join('  ·  ');
+}
+
+// ============================================================
+// Đường GHI THẬT — việc 11 nửa sau
+// ============================================================
+//
+// ⚠ Đây là chỗ màn hình này ĐỔI BẢN CHẤT. Tới hết nửa A nó chỉ đọc, nên sai
+// cũng không mất gì; từ đây nó dựng một gia phả thật trên Drive của người
+// dùng và ghi dữ liệu vào đó.
+//
+// --- Vì sao phải CHỌN cây mới TRƯỚC rồi mới ghi -------------------------
+//
+// `gas.luuCay()` ghi vào gia phả ĐANG được chọn, không nhận `fileId`. Nên
+// muốn ghi vào cây vừa dựng thì bắt buộc: dựng → chọn → nạp → ghi. Hệ quả
+// phải nói thẳng với người dùng, và mã dưới đây nói: nếu bước GHI hỏng sau
+// khi bước CHỌN đã gật, app đang đứng ở một gia phả mới RỖNG — cây cũ vẫn
+// nguyên vẹn, quay về bằng màn *Chọn gia phả*.
+//
+// Đường sạch hơn là thêm một hàm máy chủ nhận `fileId` để ghi thẳng. Không
+// chọn, vì nó bắt sửa `gas/Code.gs` rồi chủ dự án phải triển khai lại bằng
+// tay — và cái giá ấy đắt hơn hẳn một câu giải thích đúng lúc.
+//
+// --- Vì sao KHÔNG có nút "bổ sung vào gia phả đang mở" ------------------
+//
+// Nó là việc riêng, và việc riêng ấy chưa làm: bổ sung thì phải DÒ TRÙNG
+// trước, rồi để người dùng quyết từng ca một. Bày sẵn một cái nút xám cho
+// đúng ý định thiết kế thì tử tế hơn là im lặng — người dùng biết đường ấy
+// có tồn tại và đang đợi.
+
+function veKhoiGhi(kq) {
+  const khoi = document.createElement('div');
+  khoi.dataset.viec = 'khoi-ghi-that';
+
+  khoi.append(veNhanKhoi('Ghi vào đâu'));
+
+  const nhac = document.createElement('div');
+  nhac.style.cssText =
+    'padding:10px 12px;border:1px solid #f0d8d0;border-radius:9px;' +
+    'background:#fbf0ec;color:#8a3a2a;font-size:12px;line-height:1.6';
+  nhac.append(
+    dongChu('· Dữ liệu đi vào một gia phả MỚI trên Google Drive của bạn. ' +
+            'Gia phả đang mở không bị đụng tới.'),
+    dongChu('· Ghi xong KHÔNG có nút hoàn tác.'),
+  );
+  khoi.append(nhac);
+
+  const nhan = document.createElement('label');
+  nhan.style.cssText =
+    'display:block;margin-top:14px;font-size:14px;font-weight:600';
+  nhan.textContent = 'Tên gia phả mới';
+  khoi.append(nhan);
+
+  const o = document.createElement('input');
+  o.type = 'text';
+  o.id = 'giapha-ten-cay-nhap';
+  o.value = kq.tenCay || '';
+  o.placeholder = 'Ví dụ: Họ Nguyễn Trọng — chi Bắc';
+  o.style.cssText =
+    'display:block;width:100%;margin-top:6px;padding:10px;box-sizing:border-box;' +
+    'font-size:14px;font-family:inherit;border:1px solid #e6e0d8;' +
+    'border-radius:9px;background:#faf8f5';
+  khoi.append(o);
+
+  const tin = document.createElement('div');
+  tin.dataset.viec = 'tin-ghi-that';
+  khoi.append(tin);
+
+  const nutGhi = document.createElement('button');
+  nutGhi.type = 'button';
+  nutGhi.dataset.viec = 'ghi-vao-cay-moi';
+  nutGhi.textContent = 'Tạo gia phả mới và ghi vào đó';
+  nutGhi.style.cssText =
+    'display:block;width:100%;margin:14px auto 0;min-height:44px;padding:8px 14px;' +
+    'max-width:' + RONG_NUT_TOI_DA + ';font-size:14px;font-family:inherit;' +
+    'font-weight:600;line-height:1.35;border-radius:9px;cursor:pointer;' +
+    'background:#2a2622;color:#fffdf9;border:1px solid #2a2622;' +
+    'touch-action:manipulation';
+  nutGhi.addEventListener('click', () => chayGhiVaoCayMoi(kq, o, nutGhi, tin));
+  khoi.append(nutGhi);
+
+  const chuaLam = document.createElement('div');
+  chuaLam.style.cssText =
+    'margin-top:12px;font-size:12px;line-height:1.6;color:#8a8078';
+  chuaLam.textContent =
+    'Bổ sung vào gia phả đang mở — chưa làm được. Đường ấy phải dò người ' +
+    'trùng trước khi trộn, và đó là việc riêng của bản sau.';
+  khoi.append(chuaLam);
+
+  return khoi;
+}
+
+/**
+ * Dựng cây mới → chọn nó → nạp → ghi. Bốn bước, mỗi bước một cách hỏng riêng,
+ * nên mỗi bước tự kể ra mình hỏng ở đâu.
+ */
+async function chayGhiVaoCayMoi(kq, o, nutGhi, tin) {
+  if (dangGhi) return;
+
+  const ten = String(o.value || '').trim();
+  if (!ten) {
+    tin.innerHTML = '';
+    tin.append(veLoiNhan('Chưa gõ tên gia phả mới.', true));
+    try { o.focus(); } catch (e) {}
+    return;
+  }
+
+  dangGhi = true;
+  nutGhi.disabled = true;
+  nutGhi.style.opacity = '.45';
+  o.disabled = true;
+  const noi = (chu_) => {
+    if (!lopPhuNhap || !tin.isConnected) return;
+    tin.innerHTML = '';
+    const d = document.createElement('div');
+    d.textContent = chu_;
+    d.style.cssText = 'margin-top:10px;font-size:13px;line-height:1.6;color:#8a8078';
+    tin.append(d);
+  };
+  const thua = (chu_) => {
+    dangGhi = false;
+    if (!lopPhuNhap || !tin.isConnected) return;
+    tin.innerHTML = '';
+    tin.append(veLoiNhan(chu_, true));
+    nutGhi.disabled = false;
+    nutGhi.style.opacity = '1';
+    o.disabled = false;
+  };
+
+  // 1. Dựng trên Drive.
+  noi('Đang dựng "' + ten + '" trên Google Drive…');
+  const daTao = await taoGiaPhaMoi(ten, { conSong: () => !!lopPhuNhap });
+  if (!lopPhuNhap) { dangGhi = false; return; }
+  if (!daTao.ok) {
+    if (daTao.lyDo === 'daDong') { dangGhi = false; return; }
+    return thua(daTao.loi);
+  }
+
+  // 2. Chọn nó. Từ đây trở đi app KHÔNG còn đứng ở cây cũ nữa — mọi lời báo
+  //    hỏng bên dưới phải nói ra điều đó.
+  noi('Đã dựng xong. Đang chuyển sang gia phả mới…');
+  let doi;
+  try {
+    doi = await chonGiaPha(daTao.moi.fileId);
+  } catch (e) {
+    return thua('Đã dựng được gia phả mới nhưng không chuyển sang được: ' +
+                (e && e.message ? e.message : String(e)) +
+                ' — cây cũ vẫn nguyên vẹn.');
+  }
+  if (!doi || !doi.ok) {
+    return thua('Đã dựng được gia phả mới nhưng không chuyển sang được: ' +
+                ((doi && doi.loi) || 'máy chủ không nói lý do') +
+                ' — cây cũ vẫn nguyên vẹn.');
+  }
+
+  // 3. Nạp lại TỪ ĐẦU — `khoiTao()` chứ không phải `napCay()`.
+  //
+  // ⚠ Chỗ này từng là một cái bẫy: `state.phien.suaDuoc` là quyền trên cây
+  // CŨ. Người chỉ có quyền xem cây đang mở vẫn là CHỦ của gia phả vừa dựng
+  // trong Drive của chính mình — nạp mỗi cây mà không hỏi lại phiên thì
+  // `repo.luuCay` chặn họ ghi vào cây của chính họ, và câu từ chối lại nói
+  // về quyền, tức chỉ sai đường.
+  noi('Đang nạp gia phả mới…');
+  try {
+    await khoiTao();
+  } catch (e) {
+    return thua(daChuyenRoi('không nạp được cây mới: ' +
+                            (e && e.message ? e.message : String(e))));
+  }
+
+  // 4. Dựng dữ liệu rồi ghi. `mergeImported` là hàm thuần và đã từ chối sẵn
+  //    mọi cây đích không rỗng — chốt chặn nằm ở đó, không phải ở đây.
+  const dung = mergeImported(state.tree, kq, {
+    che: 'moi',
+    luc: stampNow(),
+    nguoiGhi: (state.phien && state.phien.email) || '',
+  });
+  if (!dung.ok) return thua(daChuyenRoi(dung.loi));
+
+  noi('Đang ghi ' + dung.tomTat.soNguoi + ' người vào gia phả mới…');
+  const luu = await luuCay((banNhap) => {
+    banNhap.persons = dung.cay.persons;
+    banNhap.unions = dung.cay.unions;
+    banNhap.sources = dung.cay.sources;
+    banNhap.media = [];
+    banNhap.tree.rootPersonId = dung.cay.tree.rootPersonId;
+  }, {
+    action: 'nhapGedcom',
+    target: daTao.moi.fileId,
+    note: 'Nhập từ file GEDCOM: ' + dung.tomTat.soNguoi + ' người, ' +
+          dung.tomTat.soCap + ' gia đình.',
+  });
+  if (!luu || !luu.ok) {
+    return thua(daChuyenRoi((luu && luu.loi) || 'máy chủ không nói lý do'));
+  }
+
+  dangGhi = false;
+  veHopDaGhi(daTao.moi, dung.tomTat);
+}
+
+/** Câu báo hỏng SAU khi app đã chuyển cây — chỗ dễ làm người dùng hoảng nhất. */
+function daChuyenRoi(cau) {
+  return 'App đã chuyển sang gia phả mới nhưng chưa ghi được gì vào đó: ' +
+         cau + ' Gia phả cũ của bạn vẫn nguyên vẹn — vào Cài đặt → Chọn gia ' +
+         'phả để quay về.';
+}
+
+/** Ghi xong. Kể lại việc còn phải làm tay trên Drive, cùng khuôn màn Chọn gia phả. */
+function veHopDaGhi(moi, tomTat) {
+  const hop = lopPhuNhap && lopPhuNhap.querySelector('#giapha-nhap-gedcom');
+  if (!hop) return;
+
+  hop.innerHTML = '';
+  hopXemTruoc = null;
+
+  const tieuDe = document.createElement('div');
+  tieuDe.textContent = 'Đã ghi xong';
+  tieuDe.dataset.viec = 'da-ghi-xong';
+  tieuDe.style.cssText = 'font-size:19px;font-weight:600';
+  hop.append(tieuDe);
+
+  const so = document.createElement('div');
+  so.style.cssText =
+    'margin-top:10px;padding:10px 12px;border:1px solid #e6e0d8;border-radius:9px;' +
+    'background:#faf8f5;font-size:13px;line-height:1.6';
+  so.textContent = moi.ten + '  ·  ' + tomTat.soNguoi + ' người · ' +
+                   tomTat.soCap + ' gia đình';
+  hop.append(so);
+
+  const nhac = document.createElement('div');
+  nhac.style.cssText =
+    'margin-top:12px;font-size:12px;line-height:1.7;color:#8a8078';
+  nhac.append(
+    dongChu('· App nay mở gia phả mới này. Muốn quay về cây cũ thì vào Cài ' +
+            'đặt → Chọn gia phả.'),
+    dongChu('· Ảnh không nằm trong file .ged nên gia phả mới chưa có ảnh nào.'),
+    dongChu('· Muốn người trong họ xem được thì vào Google Drive chia sẻ HAI ' +
+            'thứ, từng cái một: file "' + moi.tenFile + '", và thư mục "Anh" ' +
+            'bên cạnh nó. ĐỪNG chia sẻ thư mục mẹ — làm thế là trao luôn ' +
+            'thư mục "Sao_luu", tức quyền ghi đè cả gia phả.'),
+  );
+  hop.append(nhac);
+
+  const nutTai = document.createElement('button');
+  nutTai.type = 'button';
+  nutTai.dataset.viec = 'tai-lai-sau-nhap';
+  nutTai.textContent = 'Tải lại trang';
+  nutTai.style.cssText =
+    'display:block;width:100%;margin:16px auto 0;height:44px;' +
+    'max-width:' + RONG_NUT_TOI_DA + ';font-size:14px;font-family:inherit;' +
+    'font-weight:600;border-radius:9px;cursor:pointer;' +
+    'background:#2a2622;color:#fffdf9;border:1px solid #2a2622;' +
+    'touch-action:manipulation';
+  nutTai.addEventListener('click', () => location.reload());
+  hop.append(nutTai);
 }
 
 // ============================================================
