@@ -4,7 +4,7 @@
 //            cửa duy nhất khai điểm neo cho chế độ NHẬP BỔ SUNG
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/gedcom, utils/text, config
-// Phiên bản: 1.4.0 · Cập nhật: 29/08/2026 23:50
+// Phiên bản: 1.5.0 · Cập nhật: 30/08/2026 10:20
 // ============================================================
 //
 // Ý lấy từ phần mềm bản đồ, chủ dự án nêu 29/08/2026: chọn điểm A trên bản đồ
@@ -699,6 +699,18 @@ const LY_DO_CHAN = {
     'ở cột phải rồi app tự kiểm lại.',
 };
 
+/**
+ * Bảng đã đầy, nút đã mở — nhưng bấm vào thì gia phả KHÔNG đổi một chữ.
+ *
+ * Ba con số, và phải đủ cả ba: không người mới, không gia đình mới, không ô
+ * trống nào được điền. Chỗ hai bên nói khác nhau (`soMauThuan`) KHÔNG tính là
+ * đổi — màn hình này chưa có ô chọn từng chỗ lệch, nên mọi chỗ lệch đều giữ
+ * của cây (xem `veNutTron` nết 3).
+ */
+function khongDoiGiCa(t) {
+  return !!t && t.soNguoiMoi === 0 && t.soCapMoi === 0 && t.soBoSung === 0;
+}
+
 function hienKetQua(kq) {
   const o = ctx.oKetQua;
   o.innerHTML = '';
@@ -714,7 +726,12 @@ function hienKetQua(kq) {
     return;
   }
 
-  o.append(veNhanKhoi('Sau khi hợp nhất'));
+  // ⚠ "NẾU hợp nhất bây giờ", không phải "SAU KHI hợp nhất". Khối này là bản
+  // xem trước, đứng TRÊN cái nút chưa ai bấm — mà tấm biển cũ đọc lên như
+  // một lời báo việc đã xong. Chủ dự án đo 30/08/2026: *"app thông báo đã
+  // hợp nhất nhưng tải lại thì không có dữ liệu mới"*. Đây là một trong hai
+  // chỗ nói được câu ấy mà không hề ghi gì; chỗ kia ở `veHopDaTron`.
+  o.append(veNhanKhoi('Nếu hợp nhất bây giờ'));
 
   const t = kq.thongKe;
   const so = document.createElement('div');
@@ -728,6 +745,22 @@ function hienKetQua(kq) {
     dongChu('· ' + t.soNguoiMoi + ' người mới · ' + t.soCapMoi + ' gia đình mới'),
   );
   o.append(so);
+
+  // ⚠ CỬA CANH ĐẶT Ở CHỖ MẮT ĐANG NHÌN — nếp (35) của b64.
+  //
+  // Bảng đầy, nút mở, mọi dòng đã có câu trả lời: nhìn thì y hệt một lần hợp
+  // nhất bình thường. Nhưng nếu mọi dòng đều trỏ vào người ĐÃ CÓ và không ô
+  // trống nào được điền, thì bấm nút chỉ tốn một lần ghi mà gia phả không
+  // đổi một chữ. Nói ra ở ĐÂY, trước cú bấm — nói sau là nói vào lưng.
+  if (khongDoiGiCa(t)) {
+    const nhac = veLoiNhan(
+      'Bấm nút bên dưới cũng KHÔNG thêm được ai: cả ' + t.soCaTrung +
+      ' bản ghi trong file đều đã có trong gia phả, và không ô nào đang ' +
+      'trống được điền thêm. Gia phả sẽ y nguyên. Bấm chỉ để ghi lại bảng ' +
+      'ghép đôi này cho lần nhập sau.', false);
+    nhac.dataset.viec = 'khong-them-duoc-gi';
+    o.append(nhac);
+  }
 
   const xung = kq.caTrung.filter((c) => c.mauThuan.length > 0);
   if (xung.length > 0) {
@@ -833,10 +866,13 @@ function veNutTron(o, sanSang, thongKe) {
   chu_.dataset.viec = 'chu-duoi-nut-tron';
   chu_.style.cssText =
     'margin-top:8px;font-size:12px;line-height:1.6;color:#8a8078';
-  chu_.textContent = chay
-    ? 'Bấm là ghi thật, và KHÔNG có nút hoàn tác. Chỗ nào hai bên nói khác ' +
-      'nhau thì giữ nguyên của gia phả đang mở — nhập chỉ điền vào ô còn trống.'
-    : 'Ghép xong cả bảng thì đây là chỗ ghi thật.';
+  chu_.textContent = !chay
+    ? 'Ghép xong cả bảng thì đây là chỗ ghi thật.'
+    : khongDoiGiCa(thongKe)
+      ? 'Lần bấm này không thêm ai và không sửa ô nào — nó chỉ cất bảng ghép ' +
+        'đôi vào sổ nhập. Gia phả giữ nguyên.'
+      : 'Bấm là ghi thật, và KHÔNG có nút hoàn tác. Chỗ nào hai bên nói khác ' +
+        'nhau thì giữ nguyên của gia phả đang mở — nhập chỉ điền vào ô còn trống.';
   o.append(chu_);
   ctx.nutTron = b;
 }

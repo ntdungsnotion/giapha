@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, pages/form-ghep-doi, domains/gedcom, services/{gas,repo},
 //            utils/{date,text}, config
-// Phiên bản: 1.5.1 · Cập nhật: 29/08/2026 23:55
+// Phiên bản: 1.6.0 · Cập nhật: 30/08/2026 10:20
 // ============================================================
 //
 // File này giữ HAI màn hình, và chúng là hai chiều của cùng một cửa:
@@ -946,6 +946,21 @@ async function chayTronBoSung(kq, tenNguon, tuyChon, thongKe) {
 
     const t = dung.tomTat;
 
+    // ⚠ CÓ ĐỔI ĐƯỢC GÌ KHÔNG — hỏi TRƯỚC khi ghi, và trả lời bằng chính con
+    // số vừa tính, không bằng chuyện máy chủ có gật hay không.
+    //
+    // Đây là lỗi chủ dự án đo được 30/08/2026: *"app thông báo đã hợp nhất
+    // nhưng tải lại thì không có dữ liệu mới"*. Cả đường ghi chạy đúng, máy
+    // chủ gật thật, file trên Drive đổi thật — nhưng thứ đổi chỉ là số
+    // revision, một mục nhật ký và một mục sổ nhập. Không một con người nào
+    // được thêm. Mà tấm biển trên cùng vẫn đề *"Đã hợp nhất xong"*.
+    //
+    // Xảy ra bất cứ khi nào MỌI bản ghi trong file đều đã có trong cây và
+    // không ô trống nào được điền — ca dễ gặp nhất đời thường: nhập lại đúng
+    // file đã nhập hôm trước. Dựng lại được bằng `kiem-duong-ghi-bo-sung.mjs`.
+    const coDoi = (t.themNguoi + t.themCap + t.themNguon +
+                   t.suaNguoi + t.suaCap) > 0;
+
     // 2. Ghi. `luuCay` tự cập nhật `state.tree` và dựng lại chỉ mục khi máy
     //    chủ gật, nên sơ đồ đằng sau lớp phủ tự vẽ lại — không phải tải trang.
     const luu = await luuCay((banNhap) => {
@@ -957,9 +972,13 @@ async function chayTronBoSung(kq, tenNguon, tuyChon, thongKe) {
       action: 'nhapBoSung',
       target: (state.tree && state.tree.tree && state.tree.tree.id) || '',
       note: 'Bổ sung từ file GEDCOM' + (tenNguon ? ' "' + tenNguon + '"' : '') +
-            ': thêm ' + t.themNguoi + ' người, ' + t.themCap + ' gia đình; ' +
-            'bổ sung chi tiết cho ' + t.suaNguoi + ' người, ' + t.suaCap +
-            ' gia đình.',
+            (coDoi
+              ? ': thêm ' + t.themNguoi + ' người, ' + t.themCap + ' gia đình; ' +
+                'bổ sung chi tiết cho ' + t.suaNguoi + ' người, ' + t.suaCap +
+                ' gia đình.'
+              : ': KHÔNG thêm và KHÔNG sửa bản ghi nào — mọi bản ghi trong ' +
+                'file đều đã có trong cây. Lần ghi này chỉ cất bảng ghép đôi ' +
+                'vào sổ nhập.'),
     });
     if (!luu || !luu.ok) {
       return {
@@ -970,7 +989,7 @@ async function chayTronBoSung(kq, tenNguon, tuyChon, thongKe) {
     }
 
     closeGhepDoi();
-    veHopDaTron(t, dung.boQua, tenNguon);
+    veHopDaTron(t, dung.boQua, tenNguon, coDoi);
     return { ok: true, loi: '' };
   } finally {
     dangGhi = false;
@@ -984,18 +1003,35 @@ async function chayTronBoSung(kq, tenNguon, tuyChon, thongKe) {
  * app không ghi nổi — người dùng tưởng đã nhập hết thì họ sẽ không bao giờ
  * quay lại sửa tay mấy chỗ ấy nữa.
  */
-function veHopDaTron(t, boQua, tenNguon) {
+function veHopDaTron(t, boQua, tenNguon, coDoi) {
   const hop = lopPhuNhap && lopPhuNhap.querySelector('#giapha-nhap-gedcom');
   if (!hop) return;
 
   hop.innerHTML = '';
   hopXemTruoc = null;
 
+  // ⚠ HAI TẤM BIỂN KHÁC HẲN NHAU, và mang HAI `data-viec` khác nhau.
+  //
+  // Dùng chung một tấm biển rồi để mấy con số bên dưới nói sự thật là cách
+  // đã hỏng: người ta đọc dòng chữ to, không đọc bảng số. Và một bài kiểm
+  // dò theo `data-viec` cũng đọc y như thế — chung một tên thì nó không
+  // phân biệt nổi hai ca, tức là canh được đúng một nửa.
   const tieuDe = document.createElement('div');
-  tieuDe.textContent = 'Đã hợp nhất xong';
-  tieuDe.dataset.viec = 'da-tron-xong';
-  tieuDe.style.cssText = 'font-size:19px;font-weight:600';
+  tieuDe.textContent = coDoi
+    ? 'Đã hợp nhất xong'
+    : 'KHÔNG thêm được ai — gia phả giữ nguyên';
+  tieuDe.dataset.viec = coDoi ? 'da-tron-xong' : 'khong-doi-gi';
+  tieuDe.style.cssText = 'font-size:19px;font-weight:600' +
+    (coDoi ? '' : ';color:#8a3a2a');
   hop.append(tieuDe);
+
+  if (!coDoi) {
+    hop.append(veLoiNhan(
+      'Mọi bản ghi trong file đều đã có sẵn trong gia phả, và không ô nào ' +
+      'đang trống được điền thêm. Nên lần này KHÔNG có người mới, KHÔNG có ' +
+      'gia đình mới, và không một ô nào đổi giá trị — tải lại trang cũng sẽ ' +
+      'không thấy gì mới, đó là đúng chứ không phải hỏng.', false));
+  }
 
   const so = document.createElement('div');
   so.dataset.viec = 'tom-tat-da-tron';
