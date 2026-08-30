@@ -4,7 +4,7 @@
 //            cửa duy nhất khai điểm neo cho chế độ NHẬP BỔ SUNG
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/gedcom, utils/text, config
-// Phiên bản: 1.7.0 · Cập nhật: 30/08/2026 19:10
+// Phiên bản: 1.8.0 · Cập nhật: 30/08/2026 18:40
 // ============================================================
 //
 // Ý lấy từ phần mềm bản đồ, chủ dự án nêu 29/08/2026: chọn điểm A trên bản đồ
@@ -94,11 +94,12 @@ import { rongHop, caoHop, leLopPhu, RONG_NUT_TOI_DA } from '../config.js';
 const MOI = '#moi';
 
 /**
- * Cây đông hơn ngần này người thì mỗi dòng mới có ô lọc.
+ * Cây đông hơn ngần này người thì tấm chọn mới có ô tìm.
  *
- * 12 chọn theo cái đo được, không theo cảm giác: một `<select>` mở ra trên
- * điện thoại bày vừa khoảng 8–10 dòng trong một màn. Dưới ngưỡng ấy người
- * dùng thấy hết danh sách mà không phải cuộn, nên ô lọc chỉ tổ choán chỗ.
+ * 12 chọn theo cái đo được, không theo cảm giác: tấm chọn trên khung 390px
+ * bày vừa khoảng 8–10 dòng trong một màn. Dưới ngưỡng ấy người dùng thấy hết
+ * danh sách mà không phải cuộn, nên ô tìm chỉ tổ choán chỗ — và trên điện
+ * thoại nó còn kéo bàn phím ảo lên che mất chính cái danh sách ngắn ấy.
  */
 const NGUONG_O_LOC = 12;
 
@@ -236,6 +237,7 @@ export function openGhepDoi(imported, khiTron) {
 }
 
 export function closeGhepDoi() {
+  dongTamChon();
   if (lopPhu) lopPhu.remove();
   lopPhu = null;
   ctx = null;
@@ -259,19 +261,38 @@ export function closeGhepDoi() {
  * không phép thử ngược nào bắt được. Nên vạch ngăn giữa hai dòng đậm hơn
  * khoảng cách trong lòng một dòng.
  *
- * Ô bên phải là `<select>` chứ không phải một hộp chọn tự dựng: trên điện
- * thoại `<select>` mở ra bộ chọn của chính hệ điều hành — cuộn được bằng
- * ngón tay và không cần một dòng mã nào của ta để làm cho đúng.
+ * Ô bên phải là MỘT CÁI NÚT mở ra tấm chọn, không phải `<select>` (b69).
  *
- * ⚠ Nhưng ghi chú cũ còn viết *"gõ chữ nhảy tới chữ cái ấy"*, và ĐIỀU ẤY SAI
- * trên điện thoại: bộ chọn của Android không có bàn phím. Chủ dự án đo thật
- * 30/08/2026 — *"kéo 70 người để tìm người neo là cực hình"*. Nên từ b68 mỗi
- * dòng có thêm một Ô LỌC đứng ngay trên `<select>`, gõ tên hoặc mã thì danh
- * sách rút lại. Giữ `<select>` chứ không thay hẳn: nó vẫn là thứ mở ra bộ
- * chọn của hệ điều hành, và mọi bài kiểm màn hình đang đọc `select.value`.
+ * ⚠ Đây là chỗ đã đổi ý HAI LẦN, nên ghi lại cả đường đi kẻo có ngày ai đó
+ * "sửa lại cho đúng":
  *
- * Ô lọc chỉ hiện khi cây đông hơn `NGUONG_O_LOC` người. Dưới mức ấy cuộn còn
- * nhanh hơn gõ, và một ô lọc trống giữa danh sách tám người trông như app
+ * · Bản đầu dùng `<select>` với lý lẽ **đúng**: trên điện thoại `<select>` mở
+ *   ra bộ chọn của chính hệ điều hành, cuộn được bằng ngón tay, không tốn một
+ *   dòng mã nào của ta. Nhưng ghi chú lúc ấy còn viết *"gõ chữ nhảy tới chữ
+ *   cái ấy"* — và ĐIỀU ẤY SAI trên điện thoại: bộ chọn của Android không có
+ *   bàn phím. Chủ dự án đo thật 30/08/2026: *"kéo 70 người để tìm người neo
+ *   là cực hình"*.
+ *
+ * · b68 chữa bằng một Ô LỌC đứng cạnh `<select>`. Chạy được, nhưng hai điều
+ *   đo được ở `gd-0.png`: mỗi dòng đội thêm một tầng — nhân với 29 dòng là
+ *   gần một màn hình rưỡi thuần ô lọc — và trên điện thoại nó thành BA cử
+ *   chỉ: gõ ô lọc → tắt bàn phím → mở bộ chọn.
+ *
+ * · b69 gộp cả hai vào một chỗ: nút → tấm chọn cả màn hình, ô tìm nằm SẴN
+ *   trong đó, gõ vài chữ rồi bấm thẳng vào tên. Một tầng một dòng, hai cử chỉ.
+ *
+ * **Cái đánh đổi, nói thẳng:** mất bộ chọn của hệ điều hành, nên cuộn · đóng ·
+ * bàn phím che danh sách đều thành việc của ta. Chấp nhận được vì đúng lối này
+ * đã chạy thật ở `form-gia-dinh.js` (*"Chọn người vào gia đình này"*) với cả
+ * gia phả — không phải một lối mới chưa ai đi.
+ *
+ * ⚠ Tấm chọn dựng **cả màn hình**, không phải một hộp nhỏ thả xuống dưới nút.
+ * Hai lý do, cả hai chỉ thấy trên điện thoại: bàn phím ảo ăn hết nửa dưới màn
+ * hình, nên một hộp cao sáu dòng còn bày được hai; và cái nút nằm trong một
+ * khối đang CUỘN (`overflow:auto`), nên hộp thả xuống bị chính khối ấy cắt cụt.
+ *
+ * Ô tìm chỉ hiện khi cây đông hơn `NGUONG_O_LOC` người. Dưới mức ấy cuộn còn
+ * nhanh hơn gõ, và một ô tìm trống trên danh sách tám người trông như app
  * hỏng — cùng lý lẽ với *"Thùng rác không có ô tìm"* ở `person-list.js`.
  */
 function veHang(p) {
@@ -294,65 +315,158 @@ function veHang(p) {
   const phai = document.createElement('div');
   phai.style.cssText = 'flex:1 1 170px;min-width:0';
 
-  // Nhãn cột và ô lọc đứng CÙNG một hàng, không xếp chồng. Hai lý do, cả hai
-  // nhìn thấy được ở `kiem-thu/gd-0.png`: xếp chồng thì mỗi dòng cao thêm hẳn
-  // một tầng, mà quan trọng hơn — một ô chữ rộng đúng bằng ô chọn, nằm ngay
-  // trên ô chọn, thì đọc lướt qua là tưởng NÓ mới là ô chọn. Đọc nhầm là lỗi
-  // đắt nhất màn hình này đẻ ra được.
-  const hangNhan = document.createElement('div');
-  hangNhan.style.cssText =
-    'display:flex;gap:6px;align-items:center;margin-bottom:2px';
   const nhanCot = document.createElement('div');
   nhanCot.textContent = 'trong cây';
-  nhanCot.style.cssText = 'font-size:11px;color:#8a8078;flex:0 0 auto';
-  hangNhan.append(nhanCot);
-  phai.append(hangNhan);
+  nhanCot.style.cssText = 'font-size:11px;color:#8a8078;margin-bottom:2px';
+  phai.append(nhanCot);
 
-  const o = document.createElement('select');
+  // Cái nút MANG SẴN câu trả lời trên mặt nó — không phải chữ "Chọn…". Người
+  // dùng rà 29 dòng bằng cách đọc cột phải; một cột toàn chữ "Chọn…" thì phải
+  // mở từng dòng ra mới biết mình đã khai gì, tức cú rà bằng mắt — hành động
+  // mà quyết định 5 ở đầu file dựa hẳn vào — không còn thực hiện được.
+  const o = document.createElement('button');
+  o.type = 'button';
+  o.dataset.viec = 'o-chon';
   o.style.cssText =
-    'width:100%;padding:7px 6px;box-sizing:border-box;font-size:13px;' +
-    'font-family:inherit;border:1px solid #e6e0d8;border-radius:8px;' +
-    'background:#faf8f5;color:#2a2622';
-  napMuc(o, ctx.dsCay, '');
+    'display:block;width:100%;box-sizing:border-box;text-align:left;' +
+    'min-height:40px;padding:8px 10px;font-size:13px;font-family:inherit;' +
+    'line-height:1.4;border:1px solid #e6e0d8;border-radius:8px;' +
+    'background:#faf8f5;color:#2a2622;cursor:pointer;touch-action:manipulation';
+  o.addEventListener('click', () => moTamChon(p));
 
-  // Ô LỌC — xem ghi chú đầu hàm. Đặt TRƯỚC `<select>` trong luồng đọc, vì
-  // nó là việc làm trước: lọc rồi mới chọn.
-  let oLoc = null;
-  let demLoc = null;
+  const nhan = document.createElement('div');
+  nhan.dataset.viec = 'nhan-nguon';
+  nhan.style.cssText = 'font-size:11px;line-height:1.5;margin-top:3px;min-height:1px';
+  phai.append(o, nhan);
+
+  hang.append(trai, phai);
+  const h = { id: p.id, o, nhan, el: hang };
+  ctx.hang.push(h);
+  matNut(h);
+  return hang;
+}
+
+/**
+ * Chữ trên mặt nút của một dòng, dựng lại từ `ctx.chon` — nguồn chân lý duy
+ * nhất. Nút không giữ trạng thái riêng, nên không có đường nào để mặt nút và
+ * lời khai trôi lệch nhau.
+ *
+ * `data-chon` trên chính cái dòng là chỗ bài kiểm màn hình đọc lời khai. Trước
+ * b69 nó đọc `select.value`; giờ không còn `<select>` nào, mà lời khai thì vẫn
+ * phải nhìn thấy được từ ngoài DOM.
+ */
+function matNut(h) {
+  const v = ctx.chon.get(h.id) || '';
+  h.el.dataset.chon = v;
+  h.o.style.color = v === '' ? '#8a8078' : '#2a2622';
+  h.o.textContent = v === ''
+    ? '— chưa quyết —'
+    : (v === MOI ? 'Chưa có trong cây — thêm mới' : nhanTrongCay(v));
+  h.o.setAttribute('aria-label',
+    'Người trong cây ứng với ' + tenFile(h.id) + ': ' + h.o.textContent +
+    '. Bấm để chọn lại.');
+}
+
+/** Nhãn "tên · năm · mã" của một người trong cây. */
+function nhanTrongCay(id) {
+  const x = ctx.dsCay.find((y) => y.id === id);
+  return x ? x.nhan : String(id || '');
+}
+
+// ============================================================
+// b69 — TẤM CHỌN: ô tìm nằm SẴN trong danh sách
+// ============================================================
+
+/**
+ * Chưa gõ gì thì bày nhiều nhất ngần này người.
+ *
+ * 200 chọn theo cái đo được, không theo cảm giác: gia phả của dòng họ này 78
+ * người, gần như mọi gia phả dùng app này đều dưới 200 — nên với người dùng
+ * thật, phép cắt KHÔNG BAO GIỜ chạm tới và danh sách luôn đầy đủ. Nó chỉ là
+ * cái van cho cây nghìn người: dựng nghìn cái nút rồi dựng lại sau mỗi phím
+ * gõ thì ô tìm giật, mà ô tìm giật là hỏng đúng thứ tấm chọn này sinh ra để
+ * chữa. Cắt rồi thì phải NÓI RA đang cắt — xem dòng đếm bên dưới.
+ */
+const CAT_KHI_TRONG = 200;
+
+let lopChon = null;
+let ngheEsc = null;
+
+/**
+ * Mở tấm chọn cho một dòng.
+ *
+ * ⚠ Tấm này chồng lên `lopPhu` (z-index 31) chứ không thay nó: đóng tấm chọn
+ * là quay lại đúng bảng ghép đôi đang cuộn dở, không phải dựng lại bảng. Dựng
+ * lại là mất chỗ cuộn, mà mất chỗ cuộn giữa 29 dòng thì người dùng không tìm
+ * lại được dòng mình vừa khai.
+ */
+function moTamChon(p) {
+  dongTamChon();
+  if (!ctx) return;
+  const h = ctx.hang.find((x) => x.id === p.id);
+  if (!h) return;
+
+  lopChon = document.createElement('div');
+  lopChon.dataset.viec = 'tam-chon';
+  lopChon.style.cssText =
+    'position:fixed;inset:0;background:rgba(42,38,34,.45);z-index:33;' +
+    'display:flex;align-items:center;justify-content:center;' +
+    'padding:' + leLopPhu() + ';' +
+    'font-family:system-ui,sans-serif;color:#2a2622';
+
+  // Cột dọc có chiều cao chặn trên: ô tìm và dòng đếm đứng YÊN, chỉ danh sách
+  // cuộn bên trong. Để cả khối cùng cuộn thì gõ xong vài chữ, cuộn xuống xem
+  // kết quả là ô tìm trôi khỏi màn hình — đúng cái tật của bản b68.
+  const hop = document.createElement('div');
+  hop.id = 'giapha-tam-chon';
+  hop.style.cssText =
+    'background:#fffdf9;border-radius:14px;padding:14px;box-sizing:border-box;' +
+    'width:100%;max-width:' + rongHop(360, 560) + ';' +
+    'max-height:' + caoHop(88) + ';display:flex;flex-direction:column;' +
+    'box-shadow:0 8px 32px rgba(42,38,34,.28)';
+
+  const tieuDe = document.createElement('div');
+  tieuDe.textContent = 'Ai trong cây là ' + (fullName(p) || '(chưa có tên)') + '?';
+  tieuDe.style.cssText = 'flex:0 0 auto;font-size:17px;font-weight:600;line-height:1.35';
+  const phu = document.createElement('div');
+  phu.style.cssText = 'flex:0 0 auto;font-size:12px;color:#8a8078;margin-top:3px';
+  phu.textContent = 'dòng của file  ·  ' +
+    [doiSongNguoi(p), p.id].filter((x) => x !== '').join('  ·  ');
+  hop.append(tieuDe, phu);
+
+  let oTim = null;
   if (ctx.dsCay.length > NGUONG_O_LOC) {
-    oLoc = document.createElement('input');
-    oLoc.type = 'search';
+    oTim = document.createElement('input');
+    oTim.type = 'search';
+    oTim.dataset.viec = 'tim-trong-cay';
     // font-size 16px là bắt buộc: dưới mức ấy Safari trên iPhone tự phóng to
     // cả trang khi con trỏ nhảy vào ô. Cùng lý do với `person-list.js`.
-    oLoc.style.cssText =
-      'flex:1 1 auto;min-width:0;box-sizing:border-box;height:30px;padding:0 8px;' +
-      'font-size:16px;font-family:inherit;color:inherit;' +
-      'border:1px dashed #d8d0c6;border-radius:7px;background:#fff';
-    oLoc.placeholder = 'lọc: tên hoặc mã';
-    oLoc.setAttribute('aria-label',
-      'Lọc danh sách người trong cây cho dòng ' + (fullName(p) || p.id));
-    oLoc.autocomplete = 'off';
-
-    demLoc = document.createElement('div');
-    demLoc.dataset.viec = 'dem-loc';
-    demLoc.style.cssText = 'font-size:11px;color:#8a8078;margin-bottom:3px;min-height:1px';
-
-    oLoc.addEventListener('input', () => {
-      const con = locDs(ctx.dsCay, oLoc.value);
-      // ⚠ Giữ lời khai đang có, KỂ CẢ khi nó bị lọc ra ngoài. Không giữ thì
-      // gõ một chữ không khớp là `select.value` tụt về rỗng — lời khai của
-      // con người biến mất mà không ai báo, và đó đúng là loại lỗi màn hình
-      // này sợ nhất (xem quyết định 2 ở đầu file).
-      napMuc(o, con, ctx.chon.get(p.id) || '');
-      demLoc.textContent = oLoc.value.trim() === ''
-        ? ''
-        : (con.length === 0
-            ? 'Không ai khớp — thử gõ ít chữ hơn'
-            : 'còn ' + con.length + ' / ' + ctx.dsCay.length + ' người');
-    });
+    oTim.style.cssText =
+      'flex:0 0 auto;box-sizing:border-box;width:100%;height:38px;' +
+      'margin-top:10px;padding:0 10px;font-size:16px;font-family:inherit;' +
+      'color:inherit;border:1px solid #d8d0c6;border-radius:8px;background:#fff';
+    oTim.placeholder = 'Gõ tên hoặc mã để tìm…';
+    oTim.setAttribute('aria-label', 'Tìm người trong cây');
+    oTim.autocomplete = 'off';
+    hop.append(oTim);
   }
 
-  o.addEventListener('change', () => {
+  const dem = document.createElement('div');
+  dem.dataset.viec = 'dem-loc';
+  dem.style.cssText = 'flex:0 0 auto;font-size:11px;color:#8a8078;margin-top:6px';
+  hop.append(dem);
+
+  const day = document.createElement('div');
+  day.dataset.viec = 'day-chon';
+  // `overscroll-behavior:contain` — cuộn hết danh sách rồi mà ngón tay còn
+  // miết thì DỪNG, không đẩy tiếp cái bảng nằm dưới. Không có nó thì tìm xong
+  // đóng tấm chọn ra, bảng đã trôi đi đâu mất.
+  day.style.cssText =
+    'flex:1 1 auto;overflow:auto;overscroll-behavior:contain;margin-top:6px;' +
+    'display:flex;flex-direction:column;gap:6px;-webkit-overflow-scrolling:touch';
+  hop.append(day);
+
+  const chon = (giaTri) => {
     // Sửa MỘT dòng thì chỉ dòng ấy đổi chủ, phần app chọn còn nguyên — đó là
     // cả cách dùng chủ dự án chốt: *"rà lại một lượt, thấy sai thì tự chọn
     // lại"*. Quét sạch cả bảng mỗi lần sửa một dòng là bắt rà lại từ đầu, và
@@ -362,45 +476,116 @@ function veHang(p) {
     // dòng vừa bị sửa KHÔNG tự tính lại. Chúng vẫn nằm đó, vẫn mang nét đứt,
     // và con mắt người rà là thứ duy nhất bắt được. Muốn chắc thì bấm *Bỏ
     // hết, tự chọn lại từ đầu*.
-    datChon(p.id, o.value, 'tay');
+    datChon(p.id, giaTri, 'tay');
+    dongTamChon();
     tinhLai();
+  };
+
+  const veLai = () => {
+    day.textContent = '';
+    const dangChon = ctx.chon.get(p.id) || '';
+    const chu = oTim ? oTim.value : '';
+    const con = locDs(ctx.dsCay, chu);
+
+    day.append(veMucChon('', '— chưa quyết —', dangChon, chon));
+    day.append(veMucChon(MOI, 'Chưa có trong cây — thêm mới', dangChon, chon));
+
+    // ⚠ Người đang được khai LUÔN có mặt, kể cả khi chữ đang gõ lọc trượt họ.
+    // Không giữ thì gõ một chữ không khớp là lời khai của con người biến mất
+    // khỏi màn hình mà không ai báo — loại lỗi màn hình này sợ nhất (quyết
+    // định 2 ở đầu file).
+    const daBay = new Set();
+    if (dangChon && dangChon !== MOI && !con.some((x) => x.id === dangChon)) {
+      day.append(veMucChon(dangChon, nhanTrongCay(dangChon), dangChon, chon));
+      daBay.add(dangChon);
+    }
+
+    const cat = chu.trim() === '' ? CAT_KHI_TRONG : con.length;
+    let n = 0;
+    for (const x of con) {
+      if (daBay.has(x.id)) continue;
+      if (n >= cat) break;
+      day.append(veMucChon(x.id, x.nhan, dangChon, chon));
+      n++;
+    }
+
+    dem.textContent = chu.trim() !== ''
+      ? (con.length === 0
+          ? 'Không ai khớp — thử gõ ít chữ hơn'
+          : 'còn ' + con.length + ' / ' + ctx.dsCay.length + ' người')
+      : (con.length > cat
+          ? 'Đang hiện ' + cat + ' người đầu trong ' + con.length +
+            '. Gõ tên hoặc mã vào ô trên để tìm đúng người bạn cần.'
+          : con.length + ' người trong cây');
+  };
+
+  if (oTim) {
+    oTim.addEventListener('input', veLai);
+    // Lọc còn đúng một người thì Enter chọn luôn người ấy. Bàn phím điện thoại
+    // nào cũng có phím ấy, và nó cắt được cú bấm cuối — cú bấm khó nhất, vì
+    // lúc ấy bàn phím đang che nửa dưới danh sách.
+    oTim.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const con = locDs(ctx.dsCay, oTim.value);
+      if (con.length === 1) chon(con[0].id);
+    });
+  }
+  veLai();
+
+  const huy = nut('Huỷ — giữ nguyên lời khai cũ', false, () => dongTamChon());
+  huy.dataset.viec = 'huy-tam-chon';
+  huy.style.cssText += ';flex:0 0 auto;margin-top:10px';
+  hop.append(huy);
+
+  lopChon.addEventListener('click', (e) => {
+    if (e.target === lopChon) dongTamChon();
   });
+  ngheEsc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); dongTamChon(); } };
+  document.addEventListener('keydown', ngheEsc);
 
-  const nhan = document.createElement('div');
-  nhan.dataset.viec = 'nhan-nguon';
-  nhan.style.cssText = 'font-size:11px;line-height:1.5;margin-top:3px;min-height:1px';
-  if (oLoc) { hangNhan.append(oLoc); phai.append(demLoc); }
-  phai.append(o, nhan);
-
-  hang.append(trai, phai);
-  ctx.hang.push({ id: p.id, o, nhan, el: hang });
-  return hang;
-}
-
-function oMuc(giaTri, chu_) {
-  const o = document.createElement('option');
-  o.value = giaTri;
-  o.textContent = chu_;
-  return o;
+  lopChon.append(hop);
+  document.body.append(lopChon);
+  if (oTim) oTim.focus();
 }
 
 /**
- * Đổ danh sách vào một `<select>`, và ĐẶT LẠI lựa chọn đang có.
+ * Một dòng trong tấm chọn.
  *
- * `dangChon` là mã người dùng đã khai. Nếu người ấy không nằm trong `ds` —
- * chuyện bình thường khi đang lọc — thì vẫn phải chèn một mục cho họ, nếu
- * không thì `select.value` rơi về rỗng và lời khai mất không ai hay.
+ * Dòng đang được khai mang dấu ✓ và viền xanh đậm — thấy được **bằng đuôi
+ * mắt**, vì mở tấm chọn ra thì việc đầu tiên người ta hỏi là *"mình đang khai
+ * ai"*.
+ *
+ * ⚠ Nhưng lối *"— chưa quyết —"* thì KHÔNG BAO GIỜ mang dấu ấy, dù nó đúng là
+ * trạng thái hiện thời của dòng. Thấy trên `gd-4.png` bản đầu: xanh lá ở màn
+ * hình này có đúng một nghĩa — *bạn khai* — nên một dấu ✓ xanh trên chữ "chưa
+ * quyết" đọc ra thành "xong rồi", tức nói ngược hẳn quyết định 2 ở đầu file.
+ * Chưa quyết thì không dòng nào sáng cả, và cái không-sáng ấy chính là câu
+ * trả lời đúng.
  */
-function napMuc(o, ds, dangChon) {
-  o.textContent = '';
-  o.append(oMuc('', '— chưa quyết —'), oMuc(MOI, 'Chưa có trong cây — thêm mới'));
-  const co = new Set();
-  for (const x of ds) { o.append(oMuc(x.id, x.nhan)); co.add(x.id); }
-  if (dangChon && dangChon !== MOI && !co.has(dangChon)) {
-    const x = ctx.dsCay.find((y) => y.id === dangChon);
-    o.append(oMuc(dangChon, (x ? x.nhan : dangChon) + '   ← đang chọn'));
-  }
-  o.value = dangChon || '';
+function veMucChon(giaTri, chu_, dangChon, chon) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.dataset.muc = giaTri;
+  const dang = giaTri !== '' && giaTri === dangChon;
+  b.style.cssText =
+    'display:block;width:100%;box-sizing:border-box;text-align:left;flex:0 0 auto;' +
+    'min-height:42px;padding:10px 12px;font-size:14px;font-family:inherit;' +
+    'line-height:1.4;border-radius:9px;cursor:pointer;touch-action:manipulation;' +
+    (dang
+      ? 'border:2px solid #2a6a4a;background:#f2f8f4;color:#2a2622;font-weight:600'
+      : 'border:1px solid #e6e0d8;background:#fff;color:#2a2622');
+  b.textContent = (dang ? '✓  ' : '') + chu_;
+  if (dang) b.setAttribute('aria-current', 'true');
+  b.addEventListener('click', () => chon(giaTri));
+  return b;
+}
+
+function dongTamChon() {
+  if (ngheEsc) { document.removeEventListener('keydown', ngheEsc); ngheEsc = null; }
+  if (!lopChon) return;
+  lopChon.remove();
+  lopChon = null;
 }
 
 /** Lọc danh sách người của cây theo tên hoặc mã, không phân biệt dấu. */
@@ -443,7 +628,7 @@ function datChon(id, giaTri, nguon) {
   else ctx.nguon.set(id, nguon);
 
   const h = ctx.hang.find((x) => x.id === id);
-  if (h && h.o.value !== giaTri) h.o.value = giaTri;
+  if (h) matNut(h);
 }
 
 // ============================================================
@@ -570,7 +755,7 @@ function xoaDeXuat() {
     ctx.chon.set(id, '');
     ctx.nguon.delete(id);
     const h = ctx.hang.find((x) => x.id === id);
-    if (h) h.o.value = '';
+    if (h) matNut(h);
     co = true;
   }
   if (ctx.duongDi) ctx.duongDi.clear();
@@ -720,6 +905,7 @@ function veDangHang(h) {
   h.el.style.paddingLeft = laLan ? '8px' : '';
   h.el.style.background = laLan ? '#fdfaf2' : '';
   h.o.style.borderStyle = laLan ? 'dashed' : 'solid';
+  h.o.style.borderColor = laLan ? '#b8a888' : '#e6e0d8';
 
   if (trong) { h.nhan.textContent = ''; return; }
   if (laLan) {
