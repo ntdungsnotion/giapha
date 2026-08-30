@@ -3,7 +3,7 @@
 // Vai trò  : Xuất gia phả ra GEDCOM 5.5.1, và ĐỌC file .ged thành bản xem trước
 // Lớp      : domains — HÀM THUẦN, không chạm DOM, không gọi services
 // Phụ thuộc: utils/date, utils/text, utils/id, utils/graph, config, domains/union
-// Phiên bản: 1.11.0 · Cập nhật: 29/08/2026 23:20
+// Phiên bản: 1.12.0 · Cập nhật: 30/08/2026 17:20
 // ============================================================
 //
 // XUẤT: GEDCOM 5.5.1. Cũ hơn 7.0 nhưng gần như mọi phần mềm gia phả đọc được.
@@ -126,6 +126,12 @@ const TIEN_TO_NGAY = {
 // Mã quan hệ hợp lệ, DẪN XUẤT từ bảng của `config` đúng như `union.js` làm.
 // Gõ lại năm cái mã ở đây là dựng bảng mã thứ ba trong cùng một dự án.
 const QUAN_HE_NHAP = QUAN_HE_CON_NHAN.map((x) => x.ma);
+
+// Tiền tố đánh dấu một mã CÒN ĐỨNG NGOÀI CÂY — bản ghi của file mà cây chưa
+// có người tương ứng. Mã cây luôn là `P0001` · `U0001` · `M0001` · `S0001`,
+// nên chuỗi có dấu hai chấm không bao giờ đụng phải mã cây. Đây là thứ giữ
+// cho hai không gian mã khỏi lẫn vào nhau — xem `detectDuplicates`.
+const NGOAI_CAY = 'file:';
 
 // ============================================================
 // 1. XUẤT
@@ -755,10 +761,17 @@ export function detectDuplicates(tree, imported, tuyChon) {
 
   // Tên người dùng để KỂ RA một mã con — lấy được từ cả hai phía, vì một đứa
   // con mới trong file thì cây chưa biết nó là ai.
+  //
+  // ⚠ Hai phía nằm ở HAI KHÔNG GIAN MÃ KHÁC NHAU, và hai không gian ấy dùng
+  // chung một khuôn chữ (`P0003` có ở cả hai bên, chỉ hai con người). Nên mã
+  // của phía file phải mang tiền tố `NGOAI_CAY`, kể cả khi tra tên. Bản trước
+  // điền tên phía file bằng chính mã trần, và chỉ điền *"nếu cây chưa có mã
+  // ấy"* — tức tên người trong file LUÔN bị tên người trong cây che mất ở
+  // đúng những ca va chạm. Xem b67.
   const tenTheoMa = new Map();
   for (const p of mang(tree.persons)) if (p && chu(p.id)) tenTheoMa.set(p.id, fullName(p));
   for (const p of imported.persons) {
-    if (p && chu(p.id) && !tenTheoMa.has(p.id)) tenTheoMa.set(p.id, fullName(p));
+    if (p && chu(p.id)) tenTheoMa.set(NGOAI_CAY + p.id, fullName(p));
   }
 
   // Mã do CHÍNH `parseGedcom` cấp lúc nhập, không phải mã của file. Danh sách
@@ -941,11 +954,24 @@ export function detectDuplicates(tree, imported, tuyChon) {
 
   // Bản đồ NGƯỜI của chính lần chạy này — dựng xong ngay khi vòng người khép
   // lại, và vòng gia đình bên dưới cần nó để khỏi kể ra mâu thuẫn giả.
+  //
+  // ⚠ DỊCH KHÔNG ĐƯỢC THÌ KHÔNG ĐƯỢC GIỮ NGUYÊN MÃ. Bản trước trả về chính
+  // mã file (`|| id`), và đó là lỗi chặn chủ dự án đo 30/08/2026: file do
+  // `parseGedcom` cấp mã `P0001…`, cây cũng đánh mã `P0001…`, nên mã của một
+  // người CHƯA có trong cây rơi thẳng vào mã một người ĐANG có. Hậu quả đo
+  // được trên `My Family Tree.ged`: đứa con mới `P0003` (Lê Văn Trung) bị
+  // `dongCon` nhận nhầm là `P0003` của cây (Lê Thị Bích) — nên nó KHÔNG sinh
+  // dòng *"thêm con"*, mà sinh một MÂU THUẪN GIẢ về quan hệ. Không có dòng
+  // bổ sung thì đường ghi không nối ai vào cặp cũ: bốn người vào được cây
+  // nhưng treo lơ lửng, và sơ đồ quanh người trung tâm không thấy một ai.
+  //
+  // Mã chưa dịch được phải nằm NGOÀI không gian mã của cây, để mọi phép so
+  // bên dưới kết luận đúng một điều: *"người này cây chưa có"*.
   const banDoNguoi = new Map();
   for (const ca of caTrung) {
     if (ca.kieu === 'nguoi') banDoNguoi.set(ca.idTrongFile, ca.id);
   }
-  const doiSang = (id) => banDoNguoi.get(id) || id;
+  const doiSang = (id) => banDoNguoi.get(id) || (NGOAI_CAY + chu(id));
 
   // Chốt chặn QUAN HỆ. Đặt ở đây vì đây là chỗ SỚM NHẤT bản đồ người đã đủ,
   // và vẫn còn SỚM HƠN mọi thứ dựng ra dữ liệu để ghi. Đặt nó ở màn hình thì
@@ -1127,8 +1153,10 @@ function caCap(id, cu, moi, tenTheoMa, doiSang) {
   dongBanDoi(boSung, mauThuan, cu, moi, tenTheoMa, doiSang);
   dongCon(boSung, mauThuan, cu, moi, tenTheoMa, doiSang);
 
+  // Phía cây tra tên thẳng bằng mã cây; phía file phải dịch trước — mã trần
+  // của file tra vào bảng tên là ra tên người khác (xem `moTaMa`).
   const tenDangCo = keBanDoi(cu, tenTheoMa);
-  const tenTrongFile = keBanDoi(moi, tenTheoMa);
+  const tenTrongFile = keBanDoi(moi, tenTheoMa, doiSang);
   return {
     kieu: 'giadinh',
     id,
@@ -1265,9 +1293,18 @@ function dongCon(boSung, mauThuan, cu, moi, tenTheoMa, doiSang) {
   }
 }
 
-/** Mã người kèm tên, để một dòng chỉ đúng vào một bản ghi. */
+/**
+ * Mã người kèm tên, để một dòng chỉ đúng vào một bản ghi.
+ *
+ * ⚠ Người CHƯA có trong cây thì kể tên mà KHÔNG kèm mã: mã họ đang mang là
+ * mã của file, và mã ấy trùng khuôn với mã cây. In ra là mời người đọc tra
+ * nhầm sang một người khác đang có thật.
+ */
 function moTaMa(id, tenTheoMa) {
   const ten = chu(tenTheoMa.get(id));
+  if (chu(id).startsWith(NGOAI_CAY)) {
+    return ten === '' ? 'một người trong file' : ten + ' (trong file)';
+  }
   return ten === '' ? id : ten + ' (' + id + ')';
 }
 
@@ -1275,8 +1312,8 @@ function banDoiCua(u) {
   return mang(u && u.partners).map((x) => chu(x)).filter((x) => x !== '');
 }
 
-function keBanDoi(u, tenTheoMa) {
-  const ds = banDoiCua(u);
+function keBanDoi(u, tenTheoMa, doiSang) {
+  const ds = banDoiCua(u).map(doiSang || ((id) => id));
   return ds.length === 0 ? '' : ds.map((id) => moTaMa(id, tenTheoMa)).join(' — ');
 }
 
