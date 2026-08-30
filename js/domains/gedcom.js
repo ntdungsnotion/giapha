@@ -3,7 +3,7 @@
 // Vai trò  : Xuất gia phả ra GEDCOM 5.5.1, và ĐỌC file .ged thành bản xem trước
 // Lớp      : domains — HÀM THUẦN, không chạm DOM, không gọi services
 // Phụ thuộc: utils/date, utils/text, utils/id, utils/graph, config, domains/union
-// Phiên bản: 1.12.0 · Cập nhật: 30/08/2026 17:20
+// Phiên bản: 1.13.0 · Cập nhật: 30/08/2026 19:10
 // ============================================================
 //
 // XUẤT: GEDCOM 5.5.1. Cũ hơn 7.0 nhưng gần như mọi phần mềm gia phả đọc được.
@@ -2630,6 +2630,30 @@ function docNguoi(r, gom) {
         gom.famc.push({ personId: p.id, capXref: troToi(n), relation: ma });
         break;
       }
+      case 'ADOP': {
+        // SỰ KIỆN nhận nuôi của 5.5.1. App không có sự kiện riêng cho nó,
+        // nhưng có đúng thứ nó chở: quan hệ `adopted` giữa người này và gia
+        // đình kia — cùng một điều mà `FAMC` + `PEDI adopted` nói. My Family
+        // Tree ghi CẢ HAI lối cho cùng một sự việc, nên bỏ lối này là bản xem
+        // trước doạ *"sẽ MẤT 4 dòng ADOP"* trong khi không mất gì.
+        //
+        // ⚠ Chỉ đọc phần có chỗ chứa. `ADOP` mà không kèm `FAMC` thì không
+        // biết nhận nuôi vào nhà nào — để nguyên cho `quetTheLa` nhặt.
+        const cFamc = conThe(n, 'FAMC');
+        if (!cFamc) break;
+        n.dung = true;
+        cFamc.dung = true;
+        gom.famc.push({
+          personId: p.id, capXref: troToi(cFamc), relation: 'adopted',
+        });
+        // `3 ADOP BOTH` — cả hai vợ chồng cùng nhận nuôi. App gán quan hệ cho
+        // cả CẶP chứ không cho từng người, nên `BOTH` chính là điều app làm.
+        // `HUSB`/`WIFE` thì app KHÔNG có chỗ chứa: để nguyên, đừng đánh dấu
+        // đã đọc một thứ mình không đọc.
+        const cAi = conThe(cFamc, 'ADOP');
+        if (cAi && giaTriChu(cAi).toUpperCase() === 'BOTH') cAi.dung = true;
+        break;
+      }
       default: break;      // để `quetTheLa` nhặt
     }
   }
@@ -2786,9 +2810,34 @@ function docCap(r, gom) {
         if (!tho.uid) tho.uid = chuanUid(giaTriChu(n));
         break;
       }
-      case 'MARR': n.dung = true; tho.marriage = docSuKien(n); break;
+      case 'MARR': {
+        n.dung = true;
+        tho.marriage = docSuKien(n);
+        // `2 TYPE marriage` không nói thêm gì ngoài chính chữ `MARR` — đánh
+        // dấu đã đọc để bản xem trước thôi kể nó là thứ MẤT. Giá trị KHÁC
+        // (`religious`, `civil`, `common law`…) thì app không có chỗ chứa
+        // thật, nên để nguyên cho `quetTheLa` nhặt.
+        const cType = conThe(n, 'TYPE');
+        if (cType && giaTriChu(cType).toLowerCase() === 'marriage') cType.dung = true;
+        break;
+      }
       case 'DIV': n.dung = true; coLyHon = true; break;
       case '_TRANGTHAI': n.dung = true; tho.status = giaTriChu(n); break;
+      case '_MSTAT': {
+        // Thẻ riêng của My Family Tree (Chronoplex) và vài phần mềm khác.
+        // App chỉ có ĐÚNG HAI ô — `married` và `divorced` — nên chỉ nhận hai
+        // giá trị dịch thẳng được sang chúng. Thứ như `never married` thì
+        // app không có chỗ đậu: KHÔNG nhận, và bản xem trước vẫn phải kể nó
+        // ra là thứ mất. Đoán bừa vào một trong hai ô là bịa ra một sự thật
+        // file không hề nói.
+        const v = giaTriChu(n).toLowerCase().trim();
+        if (v === 'current') { n.dung = true; if (tho.status === '') tho.status = 'married'; }
+        else if (v === 'former' || v === 'divorced') {
+          n.dung = true;
+          if (tho.status === '') tho.status = 'divorced';
+        }
+        break;
+      }
       case '_RANK': {
         n.dung = true;
         const s = Number(giaTriChu(n));
@@ -2857,7 +2906,16 @@ function noiCapVaNguoi(thoCap, bang, coNguoi, gom) {
   for (const f of gom.famc) {
     const uid = doi(f.capXref);
     if (!uid || !theoMa.has(uid)) { hutTro++; continue; }
-    quanHe.set(uid + '|' + f.personId, f.relation);
+    // ⚠ Một người có thể có HAI dòng trỏ về cùng một gia đình: `FAMC` thường
+    // và khối `ADOP.FAMC`. Chúng nói cùng một việc, nhưng một trong hai có
+    // thể bỏ trống quan hệ. Đặt đè vô điều kiện thì dòng trống đến sau XOÁ
+    // MẤT chữ `adopted` của dòng trước — và đứa con nuôi lặng lẽ thành con
+    // đẻ. Chữ thắng chỗ trống; hai chữ khác nhau thì dòng ĐẦU giữ chỗ, vì
+    // không có căn cứ nào để dòng sau đúng hơn.
+    const khoa = uid + '|' + f.personId;
+    if (chu(f.relation) === '' && quanHe.has(khoa)) continue;
+    if (quanHe.has(khoa) && chu(quanHe.get(khoa)) !== '') continue;
+    quanHe.set(khoa, f.relation);
   }
 
   const unions = [];

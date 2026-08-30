@@ -4,7 +4,7 @@
 //            cửa duy nhất khai điểm neo cho chế độ NHẬP BỔ SUNG
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/gedcom, utils/text, config
-// Phiên bản: 1.5.0 · Cập nhật: 30/08/2026 10:20
+// Phiên bản: 1.7.0 · Cập nhật: 30/08/2026 19:10
 // ============================================================
 //
 // Ý lấy từ phần mềm bản đồ, chủ dự án nêu 29/08/2026: chọn điểm A trên bản đồ
@@ -87,11 +87,20 @@
 import { state } from '../state.js';
 import { detectDuplicates, goiYCapTheoNguoi, lanTheoQuanHe }
   from '../domains/gedcom.js';
-import { fullName, doiSongNguoi } from '../utils/text.js';
+import { fullName, doiSongNguoi, removeDiacritics } from '../utils/text.js';
 import { rongHop, caoHop, leLopPhu, RONG_NUT_TOI_DA } from '../config.js';
 
 /** Giá trị ô bên phải khi người dùng khai "bản ghi này chưa có trong cây". */
 const MOI = '#moi';
+
+/**
+ * Cây đông hơn ngần này người thì mỗi dòng mới có ô lọc.
+ *
+ * 12 chọn theo cái đo được, không theo cảm giác: một `<select>` mở ra trên
+ * điện thoại bày vừa khoảng 8–10 dòng trong một màn. Dưới ngưỡng ấy người
+ * dùng thấy hết danh sách mà không phải cuộn, nên ô lọc chỉ tổ choán chỗ.
+ */
+const NGUONG_O_LOC = 12;
 
 /**
  * Ba nguồn của một ô bên phải (b64).
@@ -146,6 +155,11 @@ export function openGhepDoi(imported, khiTron) {
     oDeXuat: null,
     oKetQua: null,
     nutTron: null,
+    // Danh sách người của cây, dựng ĐÚNG MỘT LẦN cho cả bảng. Trước b68 mỗi
+    // dòng tự gọi `nguoiTrongCay()`, tức quét cả cây và bỏ dấu lại từ đầu
+    // đúng bằng số dòng của file — một file 200 dòng nhập vào cây 1000 người
+    // là 200 lần quét, và người dùng ngồi nhìn màn hình trắng.
+    dsCay: nguoiTrongCay(),
   };
   for (const p of imported.persons) if (p && p.id) ctx.chon.set(p.id, '');
 
@@ -245,10 +259,20 @@ export function closeGhepDoi() {
  * không phép thử ngược nào bắt được. Nên vạch ngăn giữa hai dòng đậm hơn
  * khoảng cách trong lòng một dòng.
  *
- * Ô bên phải là `<select>` chứ không phải một ô tìm kiếm tự dựng: trên điện
+ * Ô bên phải là `<select>` chứ không phải một hộp chọn tự dựng: trên điện
  * thoại `<select>` mở ra bộ chọn của chính hệ điều hành — cuộn được bằng
- * ngón tay, gõ chữ nhảy tới chữ cái ấy, và không cần một dòng mã nào của ta
- * để làm cho đúng.
+ * ngón tay và không cần một dòng mã nào của ta để làm cho đúng.
+ *
+ * ⚠ Nhưng ghi chú cũ còn viết *"gõ chữ nhảy tới chữ cái ấy"*, và ĐIỀU ẤY SAI
+ * trên điện thoại: bộ chọn của Android không có bàn phím. Chủ dự án đo thật
+ * 30/08/2026 — *"kéo 70 người để tìm người neo là cực hình"*. Nên từ b68 mỗi
+ * dòng có thêm một Ô LỌC đứng ngay trên `<select>`, gõ tên hoặc mã thì danh
+ * sách rút lại. Giữ `<select>` chứ không thay hẳn: nó vẫn là thứ mở ra bộ
+ * chọn của hệ điều hành, và mọi bài kiểm màn hình đang đọc `select.value`.
+ *
+ * Ô lọc chỉ hiện khi cây đông hơn `NGUONG_O_LOC` người. Dưới mức ấy cuộn còn
+ * nhanh hơn gõ, và một ô lọc trống giữa danh sách tám người trông như app
+ * hỏng — cùng lý lẽ với *"Thùng rác không có ô tìm"* ở `person-list.js`.
  */
 function veHang(p) {
   const hang = document.createElement('div');
@@ -270,18 +294,64 @@ function veHang(p) {
   const phai = document.createElement('div');
   phai.style.cssText = 'flex:1 1 170px;min-width:0';
 
+  // Nhãn cột và ô lọc đứng CÙNG một hàng, không xếp chồng. Hai lý do, cả hai
+  // nhìn thấy được ở `kiem-thu/gd-0.png`: xếp chồng thì mỗi dòng cao thêm hẳn
+  // một tầng, mà quan trọng hơn — một ô chữ rộng đúng bằng ô chọn, nằm ngay
+  // trên ô chọn, thì đọc lướt qua là tưởng NÓ mới là ô chọn. Đọc nhầm là lỗi
+  // đắt nhất màn hình này đẻ ra được.
+  const hangNhan = document.createElement('div');
+  hangNhan.style.cssText =
+    'display:flex;gap:6px;align-items:center;margin-bottom:2px';
   const nhanCot = document.createElement('div');
   nhanCot.textContent = 'trong cây';
-  nhanCot.style.cssText = 'font-size:11px;color:#8a8078;margin-bottom:2px';
-  phai.append(nhanCot);
+  nhanCot.style.cssText = 'font-size:11px;color:#8a8078;flex:0 0 auto';
+  hangNhan.append(nhanCot);
+  phai.append(hangNhan);
 
   const o = document.createElement('select');
   o.style.cssText =
     'width:100%;padding:7px 6px;box-sizing:border-box;font-size:13px;' +
     'font-family:inherit;border:1px solid #e6e0d8;border-radius:8px;' +
     'background:#faf8f5;color:#2a2622';
-  o.append(oMuc('', '— chưa quyết —'), oMuc(MOI, 'Chưa có trong cây — thêm mới'));
-  for (const x of nguoiTrongCay()) o.append(oMuc(x.id, x.nhan));
+  napMuc(o, ctx.dsCay, '');
+
+  // Ô LỌC — xem ghi chú đầu hàm. Đặt TRƯỚC `<select>` trong luồng đọc, vì
+  // nó là việc làm trước: lọc rồi mới chọn.
+  let oLoc = null;
+  let demLoc = null;
+  if (ctx.dsCay.length > NGUONG_O_LOC) {
+    oLoc = document.createElement('input');
+    oLoc.type = 'search';
+    // font-size 16px là bắt buộc: dưới mức ấy Safari trên iPhone tự phóng to
+    // cả trang khi con trỏ nhảy vào ô. Cùng lý do với `person-list.js`.
+    oLoc.style.cssText =
+      'flex:1 1 auto;min-width:0;box-sizing:border-box;height:30px;padding:0 8px;' +
+      'font-size:16px;font-family:inherit;color:inherit;' +
+      'border:1px dashed #d8d0c6;border-radius:7px;background:#fff';
+    oLoc.placeholder = 'lọc: tên hoặc mã';
+    oLoc.setAttribute('aria-label',
+      'Lọc danh sách người trong cây cho dòng ' + (fullName(p) || p.id));
+    oLoc.autocomplete = 'off';
+
+    demLoc = document.createElement('div');
+    demLoc.dataset.viec = 'dem-loc';
+    demLoc.style.cssText = 'font-size:11px;color:#8a8078;margin-bottom:3px;min-height:1px';
+
+    oLoc.addEventListener('input', () => {
+      const con = locDs(ctx.dsCay, oLoc.value);
+      // ⚠ Giữ lời khai đang có, KỂ CẢ khi nó bị lọc ra ngoài. Không giữ thì
+      // gõ một chữ không khớp là `select.value` tụt về rỗng — lời khai của
+      // con người biến mất mà không ai báo, và đó đúng là loại lỗi màn hình
+      // này sợ nhất (xem quyết định 2 ở đầu file).
+      napMuc(o, con, ctx.chon.get(p.id) || '');
+      demLoc.textContent = oLoc.value.trim() === ''
+        ? ''
+        : (con.length === 0
+            ? 'Không ai khớp — thử gõ ít chữ hơn'
+            : 'còn ' + con.length + ' / ' + ctx.dsCay.length + ' người');
+    });
+  }
+
   o.addEventListener('change', () => {
     // Sửa MỘT dòng thì chỉ dòng ấy đổi chủ, phần app chọn còn nguyên — đó là
     // cả cách dùng chủ dự án chốt: *"rà lại một lượt, thấy sai thì tự chọn
@@ -299,6 +369,7 @@ function veHang(p) {
   const nhan = document.createElement('div');
   nhan.dataset.viec = 'nhan-nguon';
   nhan.style.cssText = 'font-size:11px;line-height:1.5;margin-top:3px;min-height:1px';
+  if (oLoc) { hangNhan.append(oLoc); phai.append(demLoc); }
   phai.append(o, nhan);
 
   hang.append(trai, phai);
@@ -311,6 +382,32 @@ function oMuc(giaTri, chu_) {
   o.value = giaTri;
   o.textContent = chu_;
   return o;
+}
+
+/**
+ * Đổ danh sách vào một `<select>`, và ĐẶT LẠI lựa chọn đang có.
+ *
+ * `dangChon` là mã người dùng đã khai. Nếu người ấy không nằm trong `ds` —
+ * chuyện bình thường khi đang lọc — thì vẫn phải chèn một mục cho họ, nếu
+ * không thì `select.value` rơi về rỗng và lời khai mất không ai hay.
+ */
+function napMuc(o, ds, dangChon) {
+  o.textContent = '';
+  o.append(oMuc('', '— chưa quyết —'), oMuc(MOI, 'Chưa có trong cây — thêm mới'));
+  const co = new Set();
+  for (const x of ds) { o.append(oMuc(x.id, x.nhan)); co.add(x.id); }
+  if (dangChon && dangChon !== MOI && !co.has(dangChon)) {
+    const x = ctx.dsCay.find((y) => y.id === dangChon);
+    o.append(oMuc(dangChon, (x ? x.nhan : dangChon) + '   ← đang chọn'));
+  }
+  o.value = dangChon || '';
+}
+
+/** Lọc danh sách người của cây theo tên hoặc mã, không phân biệt dấu. */
+function locDs(ds, tuKhoa) {
+  const kim = removeDiacritics(String(tuKhoa || '')).trim();
+  if (kim === '') return ds;
+  return ds.filter((x) => x.tim.indexOf(kim) !== -1);
 }
 
 /**
@@ -331,6 +428,9 @@ function nguoiTrongCay() {
       id: p.id,
       ten,
       nhan: ten + (nam ? '  ·  ' + nam : '') + '  ·  ' + p.id,
+      // Chuỗi để lọc, bỏ dấu SẴN. Bỏ dấu là việc đắt, mà ô lọc gọi lại nó
+      // sau mỗi phím gõ — làm sẵn một lần ở đây thì gõ mới không giật.
+      tim: removeDiacritics(ten + ' ' + p.id),
     });
   }
   ds.sort((a, b) => a.ten.localeCompare(b.ten, 'vi') || a.id.localeCompare(b.id));
@@ -684,9 +784,16 @@ const LY_DO_CHAN = {
   cayRong:
     'Gia phả đang mở chưa có ai, nên không có người nào để khai điểm neo. ' +
     'Đường đúng của ca này là nút “Tạo gia phả mới và ghi vào đó” ở màn Nhập GEDCOM.',
+  // ⚠ Câu này phải kể luôn ĐƯỜNG RA của ca "file toàn người mới". Chủ dự án
+  // chốt 30/08/2026: file không có ai đã ở trong cây thì bổ sung là sai cửa —
+  // cửa đúng là tạo một gia phả MỚI, và cửa ấy đứng ngay bước trước. Trước
+  // b68 câu này chỉ bảo *"hãy chọn một người"*, tức để người dùng đứng trước
+  // một việc không làm được mà không nói cho họ biết đường nào đi tiếp.
   chuaKhaiDiemNeo:
     'Chưa khai điểm neo nào. Chọn ở cột phải đúng một người mà bạn chắc chắn ' +
-    'là cùng một con người với dòng bên trái.',
+    'là cùng một con người với dòng bên trái. Nếu file này KHÔNG có ai đã ' +
+    'nằm trong gia phả — một nhánh hoàn toàn mới — thì bổ sung là sai cửa: ' +
+    'hãy đóng bảng này và dùng nút “Tạo gia phả mới và ghi vào đó”.',
   neoSai:
     'Có dòng khai chưa dùng được. Sai một dòng thì chặn cả lần nhập — khai ' +
     'bốn dòng mà chỉ ba dòng được dùng là điều bạn cần biết TRƯỚC khi ghi.',
