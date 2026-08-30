@@ -1,18 +1,19 @@
 // ============================================================
 // giapha · js/pages/import-export.js
-// Vai trò  : Hai màn hình — XUẤT GEDCOM, và NHẬP GEDCOM (đọc + ghi thật)
+// Vai trò  : Hai màn hình — XUẤT GEDCOM, và NHẬP GEDCOM/Excel (đọc + ghi thật)
 // Lớp      : pages — được phép gọi mọi lớp dưới
-// Phụ thuộc: state, pages/form-ghep-doi, domains/gedcom, services/{gas,repo},
+// Phụ thuộc: state, pages/form-ghep-doi, domains/{gedcom,excel}, services/{gas,repo},
 //            utils/{date,text}, config
-// Phiên bản: 1.6.0 · Cập nhật: 30/08/2026 10:20
+// Phiên bản: 1.7.0 · Cập nhật: 31/08/2026 08:00
 // ============================================================
 //
 // File này giữ HAI màn hình, và chúng là hai chiều của cùng một cửa:
 //
 // - `openXuatGedcom` — biến gia phả đang mở thành một file `.ged` nằm trong
 //   máy người dùng. Xong từ b55, chủ dự án đã bấm thử trên app thật.
-// - `openNhapGedcom` — đọc một file `.ged`, kể ra đọc được gì, rồi GHI vào một
-//   gia phả MỚI dựng trên Drive. Nửa sau xong 29/08/2026.
+// - `openNhapGedcom` — đọc một file `.ged` HOẶC một file Excel một bảng
+//   (`.xlsx`/`.xlsb`, `domains/excel.js` từ 31/08/2026), kể ra đọc được gì,
+//   rồi GHI vào một gia phả MỚI dựng trên Drive.
 //
 // ⚠ **Hai màn hình này nay KHÔNG còn cân nhau.** Màn Xuất chỉ đọc: nó không
 // gọi máy chủ một lần nào, cây đã nằm sẵn trong `state.tree`. Màn Nhập thì
@@ -58,6 +59,7 @@
 import { state } from '../state.js';
 import { exportGedcom, tenFileGedcom, tomTatXuat, parseGedcom, mergeImported }
   from '../domains/gedcom.js';
+import { parseExcel } from '../domains/excel.js';
 import { openGhepDoi, closeGhepDoi } from './form-ghep-doi.js';
 import { chonGiaPha } from '../services/gas.js';
 import { taoGiaPhaMoi, khoiTao, luuCay } from '../services/repo.js';
@@ -447,13 +449,14 @@ export function openNhapGedcom() {
     '-webkit-overflow-scrolling:touch';
 
   const tieuDe = document.createElement('div');
-  tieuDe.textContent = 'Nhập GEDCOM';
+  tieuDe.textContent = 'Nhập GEDCOM / Excel';
   tieuDe.style.cssText = 'font-size:19px;font-weight:600';
   hop.append(tieuDe);
 
   const moDau = document.createElement('div');
   moDau.textContent =
-    'Chọn một file .ged để xem trước, rồi lưu thành một gia phả mới.';
+    'Chọn một file .ged, hoặc một file Excel một bảng (.xlsx/.xlsb), để xem ' +
+    'trước rồi lưu thành một gia phả mới.';
   moDau.style.cssText =
     'font-size:13px;line-height:1.55;color:#8a8078;margin-top:8px';
   hop.append(moDau);
@@ -462,12 +465,12 @@ export function openNhapGedcom() {
   const nhanFile = document.createElement('label');
   nhanFile.style.cssText =
     'display:block;margin-top:16px;font-size:14px;font-weight:600';
-  nhanFile.textContent = 'Chọn file .ged';
+  nhanFile.textContent = 'Chọn file .ged hoặc file Excel';
   hop.append(nhanFile);
 
   const oFile = document.createElement('input');
   oFile.type = 'file';
-  oFile.accept = '.ged,.GED,text/plain';
+  oFile.accept = '.ged,.GED,.xlsx,.XLSX,.xlsb,.XLSB,text/plain';
   oFile.id = 'giapha-o-chon-ged';
   oFile.style.cssText =
     'display:block;width:100%;margin-top:6px;padding:9px;box-sizing:border-box;' +
@@ -574,20 +577,31 @@ function veDanChu() {
  * `.ged` của phần mềm cũ thì hay là ANSI hoặc UTF-16 — `FileReader` cho ta
  * chỗ để nói ra điều đó bằng một câu người đọc hiểu được, thay vì một cây
  * chữ vuông không ai giải thích.
+ *
+ * File Excel (`.xlsx`/`.xlsb`) là nhị phân — đọc bằng `readAsArrayBuffer`,
+ * KHÔNG đọc bằng `readAsText`, và `parseExcel` là hàm BẤT ĐỒNG BỘ (nó nạp
+ * thư viện đọc Excel qua mạng) nên nhánh này không dùng chung `xemTruoc`.
  */
 function docFile(f) {
   if (!hopXemTruoc) return;
   hopXemTruoc.innerHTML = '';
   hopXemTruoc.append(veNhanKhoi('Đang đọc'));
 
+  const laExcel = /\.(xlsx|xlsb)$/i.test(f.name || '');
   const doc = new FileReader();
   doc.onerror = () => {
     hopXemTruoc.innerHTML = '';
-    hopXemTruoc.append(veLoiNhan('Không đọc được file này. Thử cách dán chữ ' +
-                                 'bên trên.', true));
+    hopXemTruoc.append(veLoiNhan('Không đọc được file này. ' +
+      (laExcel ? '' : 'Thử cách dán chữ bên trên.'), true));
   };
-  doc.onload = () => xemTruoc(String(doc.result || ''), f.name);
-  doc.readAsText(f, 'utf-8');
+
+  if (laExcel) {
+    doc.onload = () => xemTruocExcel(doc.result, f.name);
+    doc.readAsArrayBuffer(f);
+  } else {
+    doc.onload = () => xemTruoc(String(doc.result || ''), f.name);
+    doc.readAsText(f, 'utf-8');
+  }
 }
 
 function xemTruoc(chuoi, tenNguon) {
@@ -608,6 +622,36 @@ function xemTruoc(chuoi, tenNguon) {
     return;
   }
 
+  hienThiXemTruoc(kq, tenNguon);
+}
+
+async function xemTruocExcel(arrayBuffer, tenNguon) {
+  if (!hopXemTruoc) return;
+  hopXemTruoc.innerHTML = '';
+  hopXemTruoc.append(veNhanKhoi('Đang đọc'));
+
+  let kq;
+  try {
+    kq = await parseExcel(arrayBuffer);
+  } catch (e) {
+    if (!hopXemTruoc) return;
+    hopXemTruoc.innerHTML = '';
+    hopXemTruoc.append(veLoiNhan(
+      'Không đọc được file: ' + (e && e.message ? e.message : String(e)), true));
+    return;
+  }
+  if (!hopXemTruoc) return; // màn hình đã đóng trong lúc chờ mạng
+  hopXemTruoc.innerHTML = '';
+
+  if (kq.persons.length === 0 && kq.canhBao.some((c) => c.muc === 'nang')) {
+    hopXemTruoc.append(veLoiNhan(kq.canhBao[0].chu, true));
+    return;
+  }
+
+  hienThiXemTruoc(kq, tenNguon);
+}
+
+function hienThiXemTruoc(kq, tenNguon) {
   hopXemTruoc.append(veNhanKhoi('Đọc được gì từ ' + tenNguon));
 
   // --- Cây nào, phần mềm nào xuất ra ------------------------------------

@@ -4,7 +4,7 @@
 //            đường sang Chọn gia phả · Sao lưu & khôi phục · Xuất/Nhập GEDCOM
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, services/gas, utils/text
-// Phiên bản: 1.16.0 · Cập nhật: 29/08/2026 09:44
+// Phiên bản: 1.16.1 · Cập nhật: 31/08/2026 08:00
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
@@ -450,7 +450,7 @@ function veKhoiNhap(vao) {
   khoi.style.cssText = 'margin-top:20px';
   khoi.append(veNhanKhoi('Nhập dữ liệu'));
 
-  const b = nut('Nhập từ file GEDCOM', false, true,
+  const b = nut('Nhập từ file GEDCOM hoặc Excel', false, true,
                 () => xuLyNgoai.onMoNhapGedcom());
   b.dataset.viec = 'nhap-gedcom';
   b.style.marginTop = '4px';
