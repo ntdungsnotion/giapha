@@ -4,7 +4,7 @@
 //            cao theo khổ giấy + DPI · in ra PDF qua hộp thoại in
 // Lớp      : pages — được gọi bởi: tree-view (có `svgEl`) · settings (nút + link)
 // Phụ thuộc: domains/gedcom.js (boDauChoTenFile — tái dùng luật đặt tên file)
-// Phiên bản: 0.3.0 · Cập nhật: 31/08/2026 23:10
+// Phiên bản: 0.4.0 · Cập nhật: 01/09/2026 07:40
 // ============================================================
 //
 // VIỆC 12 của kế hoạch. Nguồn gốc: mã nháp Antigravity
@@ -28,10 +28,40 @@
 // A4 ngang, không cho tràn sang nhiều trang. Cây càng lớn thì chữ càng nhỏ,
 // nhưng không ai bị cắt đôi người giữa hai trang giấy.
 //
-// `tinhKichThuocInVua()` tính sẵn đúng số pixel cần co, rồi ÉP bằng CSS có
-// `!important` — không đặt cược vào `width:100%` để trình duyệt tự co, vì
-// một sơ đồ CAO hơn RỘNG (nhiều đời, ít người mỗi đời) co theo bề ngang vẫn
-// có thể tràn quá chiều cao một trang.
+// ⚠ **CÁCH THI HÀNH BAN ĐẦU ĐÃ SAI VÀ ĐÃ SỬA 01/09/2026** — xem khối "SỰ CỐ
+// novaPDF" ngay dưới. Bản đầu tính sẵn số pixel rồi ÉP vào `<svg>`; nay để
+// `width/height:100%` và cho `preserveAspectRatio` của SVG tự co vừa trang.
+//
+// --- SỰ CỐ novaPDF, 31/08/2026 — hai lỗi làm bản xuất KHÔNG DÙNG ĐƯỢC ------
+//
+// Chủ dự án xuất thử trên app thật rồi báo *"ảnh xuất ra chất lượng quá kém,
+// dùng không được"*, kèm ba file ở `tai-lieu/anh/`. Soi ra HAI lỗi riêng biệt,
+// cả hai đều do mã này, và cả hai đều là **một con số ĐOÁN chưa từng đo**:
+//
+// **Lỗi 1 — nút "Chụp ảnh sơ đồ" bóp ảnh xuống 13%.** `XuatAnh2.png` ra
+// 4096×304 cho gia phả 681 người: cả cây chỉ còn một hàng chấm màu. Thủ phạm
+// là kẹp `CANH_TOI_DA = 4096` chép từ mã nháp. Xem `tinhTyLePng()`.
+//
+// **Lỗi 2 — in qua MÁY IN PDF ẢO ra khổ Letter, sơ đồ bé xíu giữa trang.**
+// `XuatAnh3.pdf` do **novaPDF** sinh: `MediaBox` = 612×792pt = Letter, KHÔNG
+// phải khổ app đặt; nét vẽ chỉ còn 0,24pt. Nguyên nhân là một điều tôi đã
+// **đo đúng nhưng suy rộng sai**:
+//
+//   · `do-khong-lon.mjs` đo `Page.printToPDF` — tức **"Lưu thành PDF" của
+//     chính Chrome** — và `@page size` chạy tới 8×12m. ĐÚNG, nhưng chỉ đúng
+//     cho đường đó.
+//   · Khi đích đến là một **TRÌNH ĐIỀU KHIỂN máy in** (novaPDF, Microsoft
+//     Print to PDF, máy in giấy thật), khổ giấy do **trình điều khiển** quyết
+//     định; `@page size` bị bỏ qua. Mà mã lại ép `<svg>` bằng pixel tính theo
+//     khổ MONG MUỐN — nên khi khổ thật khác đi, hình không co theo.
+//
+//   `do-in-vua-trang.mjs` đo lại đúng ca ấy (giả lập khổ giấy áp từ ngoài):
+//   ép pixel cứng → hình **tràn 359% ngang / 154% dọc** trên khổ Letter, rồi
+//   bị thu nhỏ thành chấm; `width/height:100%` → **99%/100%**, co vừa đúng.
+//
+// **Nếp rút ra:** một phép đo chỉ nói về ĐÚNG con đường nó đã đi. `@page size`
+// hoạt động ≠ "mọi máy in đều nghe `@page size`". Muốn chắc thì phải đo cả
+// con đường mà NGƯỜI DÙNG thật sự đi.
 //
 // --- Mở rộng CÙNG NGÀY, sau khi chủ dự án đối chiếu MapInfo/MicroStation ---
 //
@@ -110,13 +140,21 @@
 import { boDauChoTenFile } from '../domains/gedcom.js';
 
 const NEN_SO_DO   = '#faf8f5';  // khớp VE.nenTrang ở domains/render.js
-const CANH_TOI_DA = 4096;       // nhiều trình duyệt di động từ chối canvas to hơn
 const TY_LE_PNG   = 2;          // ảnh nét gấp đôi màn hình thường (Retina)
 
+/**
+ * Ngân sách DIỆN TÍCH cho nút "Chụp ảnh sơ đồ" — không phải trần kỹ thuật
+ * (trần thật là `TRAN_DIEN_TICH_PX`, lớn gấp đôi), mà là mức giữ cho file
+ * PNG và thời gian chờ còn chịu được. Cây lớn thì hạ tỷ lệ xuống cho vừa
+ * ngân sách này — **nhưng không bao giờ xuống dưới 1:1**, xem `tinhTyLePng`.
+ */
+const DIEN_TICH_PNG_NHANH = 120e6;
+
 // Khổ A4 ngang, trừ lề 10mm mỗi cạnh — cùng con số Antigravity đã chọn.
-const A4_NGANG_MM   = { w: 297, h: 210 };
 const LE_TRANG_MM   = 10;
-const PX_MOI_MM     = 96 / 25.4;   // 1mm ở 96dpi (CSS px chuẩn của trình duyệt)
+// ⚠ `A4_NGANG_MM` và `PX_MOI_MM` đã bỏ cùng `tinhKichThuocInVua()` (01/09/2026):
+// từ khi in bằng `width/height:100%`, mã KHÔNG cần biết khổ giấy bao nhiêu mm
+// hay một mm là bao nhiêu pixel nữa — trang giấy tự nói, `<svg>` tự co vừa.
 const MM_MOI_INCH   = 25.4;
 
 /**
@@ -161,16 +199,51 @@ const ID_KHUNG_ANH_IN = 'giapha-khung-anh-in';
 export async function xuatAnhPNG(svgEl, tree) {
   const { vbW, vbH } = docCoSoDoBatBuoc(svgEl);
 
-  let tyLe = TY_LE_PNG;
-  const canhDaiGoc = Math.max(vbW, vbH);
-  if (canhDaiGoc * tyLe > CANH_TOI_DA) tyLe = CANH_TOI_DA / canhDaiGoc;
+  const tyLe = tinhTyLePng(vbW, vbH);
+  const w = Math.max(1, Math.round(vbW * tyLe));
+  const h = Math.max(1, Math.round(vbH * tyLe));
 
-  const blob = await dungBlobPngTuSvg(
-    svgEl,
-    Math.max(1, Math.round(vbW * tyLe)),
-    Math.max(1, Math.round(vbH * tyLe)),
-  );
-  return { blob, tenFile: tenFileAnh(tree, 'png') };
+  const blob = await dungBlobPngTuSvg(svgEl, w, h);
+  return { blob, tenFile: tenFileAnh(tree, 'png'), w, h, tyLe };
+}
+
+/**
+ * Tỷ lệ phóng cho nút "Chụp ảnh sơ đồ". Hàm THUẦN — bài kiểm gọi thẳng.
+ *
+ * ⚠ **SỬA LỖI 31/08/2026 — đây là chỗ đã làm hỏng một bản xuất thật.** Bản
+ * cũ kẹp cạnh dài ở 4096px (con số chép từ mã nháp Antigravity, lý do ghi là
+ * *"nhiều trình duyệt di động từ chối canvas to hơn"* — một con số ĐOÁN, chưa
+ * bao giờ đo). Với gia phả 681 người, sơ đồ rộng khoảng 30.000px, cái kẹp ấy
+ * ép tỷ lệ xuống **0,13** — tức ảnh xuất ra NHỎ HƠN chính màn hình bảy lần
+ * rưỡi. Chữ 11px thành chưa tới 1,5px: `tai-lieu/anh/XuatAnh2.png` ra
+ * 4096×304, cả cây gia phả chỉ còn là một hàng chấm màu.
+ *
+ * Ba luật của bản mới, theo đúng thứ tự ưu tiên:
+ *
+ *   1. **KHÔNG BAO GIỜ nhỏ hơn 1:1.** Ảnh xuất ra mà nhỏ hơn thứ đang thấy
+ *      trên màn hình thì không dùng được vào việc gì — thà file nặng.
+ *   2. Muốn 2× cho nét, nhưng chịu hạ dần nếu vượt **ngân sách diện tích**
+ *      `DIEN_TICH_PNG_NHANH` (giữ cho file và thời gian chờ còn chịu được).
+ *   3. Trần KỸ THUẬT đo được (`TRAN_CANH_PX`, `TRAN_DIEN_TICH_PX`) là thứ
+ *      DUY NHẤT được phép ép xuống dưới 1:1 — vượt nó thì trình duyệt trả về
+ *      ảnh rỗng, thà nhỏ còn hơn không có gì. Ca này hiếm và nơi gọi phải
+ *      NÓI RA cỡ ảnh để người dùng biết, xem `settings.js`.
+ */
+export function tinhTyLePng(vbW, vbH) {
+  const dienTichGoc = vbW * vbH;
+  const canhDaiGoc = Math.max(vbW, vbH);
+
+  // (2) hạ từ 2× xuống cho vừa ngân sách, nhưng (1) không xuống dưới 1:1.
+  let tyLe = TY_LE_PNG;
+  if (dienTichGoc * tyLe * tyLe > DIEN_TICH_PNG_NHANH) {
+    tyLe = Math.sqrt(DIEN_TICH_PNG_NHANH / dienTichGoc);
+  }
+  tyLe = Math.max(1, tyLe);
+
+  // (3) trần kỹ thuật — chỉ chỗ này mới được kéo xuống dưới 1:1.
+  tyLe = Math.min(tyLe, TRAN_CANH_PX / canhDaiGoc,
+                  Math.sqrt(TRAN_DIEN_TICH_PX / dienTichGoc));
+  return tyLe;
 }
 
 // ============================================================
@@ -338,9 +411,14 @@ export async function inAnhRaster(nguonAnh, rongMm, caoMm) {
       'width: auto !important; height: auto !important;' +
       'overflow: visible !important; margin: 0 !important; padding: 0 !important;' +
     '}' +
+    // ⚠ `width/height: 100%` + `object-fit: contain`, KHÔNG phải số mm cứng —
+    // xem khối "SỰ CỐ novaPDF" ở đầu file. Ép mm cứng thì khi trình điều
+    // khiển máy in đưa khổ giấy khác, ảnh tràn ra ngoài trang rồi bị thu nhỏ
+    // thành một chấm. `contain` giữ đúng tỷ lệ, không bóp méo.
     '#' + ID_KHUNG_ANH_IN + ' img {' +
       'display: block !important;' +
-      'width: ' + soMm(rongMm) + ' !important; height: ' + soMm(caoMm) + ' !important;' +
+      'width: 100% !important; height: 100% !important;' +
+      'object-fit: contain !important;' +
       'page-break-inside: avoid;' +
     '}' +
     '@page { size: ' + soMm(rongMm) + ' ' + soMm(caoMm) + '; margin: 0; }' +
@@ -383,24 +461,12 @@ export function laManHinhMayTinh() {
 // IN PDF (window.print)
 // ============================================================
 
-/**
- * Tính cỡ pixel để sơ đồ co vừa đúng MỘT trang A4 ngang (quyết định
- * 31/08/2026 — xem ghi chú đầu file). Xuất riêng ra hàm thuần để bài kiểm
- * gọi thẳng, không cần dựng DOM.
- *
- * @param {number} vbW  — bề ngang viewBox gốc, đơn vị px
- * @param {number} vbH  — bề cao viewBox gốc, đơn vị px
- * @returns {{w: number, h: number}}  — cỡ đích, đơn vị px, đã làm tròn, tối thiểu 1
- */
-export function tinhKichThuocInVua(vbW, vbH) {
-  const usableW = (A4_NGANG_MM.w - 2 * LE_TRANG_MM) * PX_MOI_MM;
-  const usableH = (A4_NGANG_MM.h - 2 * LE_TRANG_MM) * PX_MOI_MM;
-  const tyLe = Math.min(usableW / vbW, usableH / vbH);
-  return {
-    w: Math.max(1, Math.round(vbW * tyLe)),
-    h: Math.max(1, Math.round(vbH * tyLe)),
-  };
-}
+// ⚠ **`tinhKichThuocInVua()` ĐÃ XOÁ 01/09/2026.** Nó tính sẵn số pixel rồi ép
+// vào `<svg>` khi in. Cả tiền đề ấy SAI, và phép đo `kiem-thu/do-in-vua-trang.mjs`
+// đã bác: ép pixel cứng thì khổ giấy thật khác đi là hình TRÀN RA NGOÀI trang
+// (đo được 359% ngang trên khổ Letter) rồi bị máy in thu nhỏ thành một chấm.
+// Đừng dựng lại nó — cách đúng là để `<svg>` `width/height:100%` rồi cho
+// `preserveAspectRatio` của chính nó lo việc co vừa.
 
 /**
  * Mở hộp thoại in của trình duyệt, ẩn mọi thứ trừ sơ đồ.
@@ -415,15 +481,18 @@ export function tinhKichThuocInVua(vbW, vbH) {
  *   (plotter) hoạt động: khổ RỘNG cố định theo cuộn giấy, khổ DÀI cắt theo
  *   nội dung — chủ dự án đối chiếu MapInfo/MicroStation, 31/08/2026.
  *
- *   ⚠ **Đã ĐO trước khi xây, không đoán** (`kiem-thu/do-khong-lon.mjs`):
- *   `Page.printToPDF` của Chrome — đúng cỗ máy đứng sau nút "Lưu thành PDF"
- *   trong hộp thoại in — nhận `@page size` tự đặt AN TOÀN tới ít nhất
- *   8000×12000mm (8×12 mét), không cắt xén, không lặng lẽ trả về khổ mặc
- *   định. ⚠ Nhưng `chrome.exe --headless --print-to-pdf` (dòng lệnh trần,
- *   không qua CDP) thì NGƯỢC LẠI — bỏ qua `@page size` hoàn toàn, luôn ra
- *   Letter 612×792pt — nếu sau này viết thêm phép đo tự động cho khổ lớn,
- *   ĐỪNG dùng đường dòng lệnh trần, phải qua CDP `Page.printToPDF` như file
- *   đo đã làm.
+ *   ⚠ **`@page size` CHỈ ĐƯỢC NGHE Ở MỘT ĐƯỜNG.** Đo bằng
+ *   `kiem-thu/do-khong-lon.mjs`: đường **"Lưu thành PDF" của chính Chrome**
+ *   (`Page.printToPDF`) nhận khổ tự đặt tới ít nhất 8×12 mét, chuẩn xác.
+ *   Nhưng một **TRÌNH ĐIỀU KHIỂN máy in** (novaPDF, Microsoft Print to PDF,
+ *   máy in giấy) thì lấy khổ giấy từ CHÍNH NÓ và bỏ qua `@page size` — sự cố
+ *   31/08/2026, xem khối "SỰ CỐ novaPDF" ở đầu file. Vì vậy `@page size` ở
+ *   đây chỉ là LỜI ĐỀ NGHỊ; thứ bảo đảm bản in luôn dùng được là
+ *   `width/height:100%` để `<svg>` tự co vừa khổ giấy THẬT, bất kể khổ nào.
+ *
+ *   Nói với người dùng: muốn ra ĐÚNG khổ đã gõ thì chọn **"Lưu thành PDF"**
+ *   trong hộp thoại in; chọn máy in PDF ảo thì phải đặt khổ giấy tuỳ chỉnh
+ *   trong phần cài đặt của chính máy in ấy (`settings.js` có ghi câu này).
  *
  * ⚠ **Không clone SVG như `xuatAnhPNG`.** In dùng thẳng `svgEl` đang gắn
  * trong trang: CSS `@media print` chỉ có tác dụng lên phần tử THẬT đang hiển
@@ -449,18 +518,15 @@ export function inSoDo(svgEl, idKhungIn, rongKhoLonMm) {
   if (!(vbW > 0) || !(vbH > 0)) return;
 
   const khoLon = rongKhoLonMm > 0;
-  let w, h, khoGiayCss, leTrangMm;
+  let khoGiayCss, leTrangMm;
 
   if (khoLon) {
     const caoKhoLonMm = rongKhoLonMm * (vbH / vbW);   // khoá tỷ lệ, không hỏi thêm số
-    w = Math.max(1, Math.round(rongKhoLonMm * PX_MOI_MM));
-    h = Math.max(1, Math.round(caoKhoLonMm * PX_MOI_MM));
     // Số thập phân đủ để mm không tròn mất phần lẻ trên khổ nhiều mét.
     khoGiayCss = rongKhoLonMm.toFixed(1) + 'mm ' + caoKhoLonMm.toFixed(1) + 'mm';
     // Khổ lớn KHÔNG chừa lề — bản đi tiệm, tiệm tự cắt theo khổ đặt.
     leTrangMm = 0;
   } else {
-    ({ w, h } = tinhKichThuocInVua(vbW, vbH));
     khoGiayCss = 'landscape';
     leTrangMm = LE_TRANG_MM;
   }
@@ -493,12 +559,14 @@ export function inSoDo(svgEl, idKhungIn, rongKhoLonMm) {
     '#' + idKhungIn + ', #' + idKhungIn + ' * { visibility: visible !important; }' +
     '#' + idKhungIn + ' {' +
       'position: absolute !important; inset: 0 !important;' +
+      'width: auto !important; height: auto !important;' +
       'overflow: visible !important; padding: 0 !important;' +
-      'display: flex !important; align-items: flex-start !important;' +
-      'justify-content: center !important;' +
+      // KHÔNG dùng flex nữa: `<svg>` đã tự căn giữa bằng
+      // `preserveAspectRatio` mặc định (`xMidYMid meet`) của chính nó.
+      'display: block !important;' +
     '}' +
     '#' + idKhungIn + ' svg {' +
-      'width: ' + w + 'px !important; height: ' + h + 'px !important;' +
+      'width: 100% !important; height: 100% !important;' +
       'page-break-inside: avoid;' +
     '}' +
     '@page { size: ' + khoGiayCss + '; margin: ' + leTrangMm + 'mm; }' +

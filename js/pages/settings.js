@@ -4,7 +4,7 @@
 //            đường sang Chọn gia phả · Sao lưu & khôi phục · Xuất/Nhập GEDCOM
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, services/gas, utils/text, pages/export-image
-// Phiên bản: 1.19.0 · Cập nhật: 31/08/2026 23:10
+// Phiên bản: 1.20.0 · Cập nhật: 01/09/2026 07:40
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
@@ -479,9 +479,24 @@ function veKhoiXuatAnh(khoi) {
       ketQua.textContent = 'Đang tạo ảnh...';
       ketQua.style.cssText = 'font-size:13px;color:#8a8078;margin-top:8px';
       try {
-        const { blob, tenFile } = await xuLyNgoai.onXuatAnhPng();
+        const anh = await xuLyNgoai.onXuatAnhPng();
         ketQua.textContent = '';
-        ketQua.append(veLinkTai(blob, tenFile, 'Tải ảnh PNG về máy'));
+
+        // ⚠ NÓI RA cỡ ảnh, kể cả khi đẹp. Bản trước im lặng, nên hôm
+        // 31/08/2026 một bản 4096×304 (cả cây thành hàng chấm) đi thẳng về
+        // máy chủ dự án mà app không hé một chữ nào là nó vừa bóp ảnh lại.
+        const doDuoc = document.createElement('div');
+        doDuoc.dataset.viec = 'co-anh-png';
+        doDuoc.textContent = 'Ảnh ' + anh.w + '×' + anh.h + ' điểm ảnh'
+          + (anh.tyLe < 1
+             ? ' — ⚠ NHỎ HƠN sơ đồ trên màn hình (sơ đồ quá lớn so với mức '
+               + 'trình duyệt dựng nổi). Muốn nét hơn thì dùng "Ảnh độ phân '
+               + 'giải cao" bên dưới, hoặc thu bớt số đời đang hiện.'
+             : '.');
+        doDuoc.style.cssText = 'font-size:12px;line-height:1.5;color:#8a8078;margin-top:8px';
+        ketQua.append(doDuoc);
+
+        ketQua.append(veLinkTai(anh.blob, anh.tenFile, 'Tải ảnh PNG về máy'));
       } catch (e) {
         ketQua.textContent = 'Không tạo được ảnh: ' + (e && e.message ? e.message : String(e));
       } finally {
@@ -557,11 +572,18 @@ function veKhoiInKhoLon(khoi) {
   boc.append(hang);
 
   const giaiThich = document.createElement('div');
+  // ⚠ Câu này sửa 01/09/2026 sau sự cố novaPDF: bản cũ nói "chọn Lưu thành
+  // PDF HOẶC máy in PDF ảo" như thể hai đường ngang nhau. KHÔNG ngang nhau —
+  // chỉ "Lưu thành PDF" của Chrome mới nghe khổ giấy app đặt. Xem khối
+  // "SỰ CỐ novaPDF" ở đầu `export-image.js`.
   giaiThich.textContent =
-    'Bề dài tự tính theo đúng tỷ lệ sơ đồ, không bóp méo. Khi hộp thoại in ' +
-    'hiện ra, chọn "Lưu thành PDF" (hoặc máy in PDF ảo khổ giấy tuỳ chỉnh) ' +
-    'để có file đúng kích thước, mang ra tiệm in khổ lớn. Ảnh đại diện thật ' +
-    'có thể mờ ở khổ này — chữ và đường kẻ vẫn nét.';
+    'Bề dài tự tính theo đúng tỷ lệ sơ đồ, không bóp méo. ⚠ Trong hộp thoại ' +
+    'in phải chọn đúng "Lưu thành PDF" (Save as PDF) của trình duyệt thì mới ' +
+    'ra đúng khổ trên. Nếu chọn một máy in PDF khác (novaPDF, Microsoft Print ' +
+    'to PDF…) thì khổ giấy do chính máy in ấy quyết định — phải vào cài đặt ' +
+    'của nó đặt khổ tuỳ chỉnh trước, không thì sơ đồ sẽ co lại vừa khổ mặc ' +
+    'định (thường là A4/Letter). Ảnh đại diện thật có thể mờ ở khổ lớn — chữ ' +
+    'và đường kẻ vẫn nét.';
   giaiThich.style.cssText = 'font-size:11px;line-height:1.5;color:#8a8078;margin-top:6px';
   boc.append(giaiThich);
 
@@ -723,9 +745,12 @@ function veKhoiAnhDpi(khoi) {
 
       const nhacIn = document.createElement('div');
       nhacIn.textContent =
-        'Trong hộp thoại in, chọn máy in PDF (hoặc "Lưu thành PDF") rồi đặt ' +
-        'khổ giấy đúng bằng khổ trên. Nhớ bật "In hình nền / Background graphics" ' +
-        'nếu máy in bỏ mất nền.';
+        'Trong hộp thoại in, đặt khổ giấy đúng bằng khổ trên rồi hãy in — nếu ' +
+        'chọn máy in PDF ảo thì phải đặt khổ tuỳ chỉnh trong cài đặt của chính ' +
+        'máy in ấy, vì khổ app đặt không tới được nó. Ảnh vẫn tự co vừa khổ ' +
+        'giấy thật nên không bao giờ méo hay tràn, chỉ là nhỏ hơn ý muốn. Nhớ ' +
+        'bật "In hình nền / Background graphics" nếu máy in bỏ mất nền. Không ' +
+        'cần in thì cứ tải thẳng file ảnh ở nút trên, mang ra tiệm.';
       nhacIn.style.cssText = 'font-size:11px;line-height:1.5;color:#8a8078;margin-top:6px';
       ketQua.append(nhacIn);
     } catch (e) {
