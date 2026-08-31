@@ -1,0 +1,710 @@
+// ============================================================
+// giapha · js/pages/export-image.js
+// Vai trò  : Xuất sơ đồ ĐANG HIỂN THỊ thành ảnh PNG · ảnh raster độ phân giải
+//            cao theo khổ giấy + DPI · in ra PDF qua hộp thoại in
+// Lớp      : pages — được gọi bởi: tree-view (có `svgEl`) · settings (nút + link)
+// Phụ thuộc: domains/gedcom.js (boDauChoTenFile — tái dùng luật đặt tên file)
+// Phiên bản: 0.3.0 · Cập nhật: 31/08/2026 23:10
+// ============================================================
+//
+// VIỆC 12 của kế hoạch. Nguồn gốc: mã nháp Antigravity
+// (`tai-lieu/antigravity/export-image.js`, 29/08/2026) — đã RÀ LẠI VÀ VIẾT
+// LẠI, không chép nguyên. Khác nháp ở đúng phần khó nhất: cách IN.
+//
+// Cách làm — theo đúng thứ tự `KE-HOACH_V53` dặn, dừng ngay khi đủ dùng:
+//   PNG: clone <svg> → canvas → toBlob()   — thuần trình duyệt, 0 thư viện.
+//   PDF: window.print() + @media print      — trình duyệt tự có "Lưu PDF".
+//   Chưa cần jsPDF (và thêm thư viện là việc PHẢI HỎI — CLAUDE.md mục 9).
+//
+// ⚠ **Khác NGAY một điều với Xuất GEDCOM**: ảnh này chỉ chụp đúng PHẦN SƠ ĐỒ
+// ĐANG HIỆN trên màn hình (đã lọc theo phạm vi đời/huyết thống đang chọn),
+// KHÔNG phải toàn bộ gia phả. Chữ trên nút ở `settings.js` phải nói rõ điều
+// này — cùng bài học với cặp "Sao lưu" / "Xuất GEDCOM" ở đó.
+//
+// --- Quyết định 31/08/2026 (chủ dự án chọn, có HỎI trước — đúng câu
+// `KE-HOACH_V53` dặn "quyết định phải hỏi chứ không tự chọn") ---------------
+//
+// Khi in PDF mà sơ đồ lớn hơn một trang: LUÔN THU NHỎ để vừa đúng MỘT trang
+// A4 ngang, không cho tràn sang nhiều trang. Cây càng lớn thì chữ càng nhỏ,
+// nhưng không ai bị cắt đôi người giữa hai trang giấy.
+//
+// `tinhKichThuocInVua()` tính sẵn đúng số pixel cần co, rồi ÉP bằng CSS có
+// `!important` — không đặt cược vào `width:100%` để trình duyệt tự co, vì
+// một sơ đồ CAO hơn RỘNG (nhiều đời, ít người mỗi đời) co theo bề ngang vẫn
+// có thể tràn quá chiều cao một trang.
+//
+// --- Mở rộng CÙNG NGÀY, sau khi chủ dự án đối chiếu MapInfo/MicroStation ---
+//
+// Hai phần mềm ấy xuất được bản vẽ khổ NHIỀU MÉT (MapInfo: ghép nhiều tờ A0;
+// MicroStation: một khung ảnh độ phân giải rất cao, hoặc máy in PDF ảo khổ
+// giấy tự đặt). Hỏi *"app này làm được không"* dẫn tới một phép đo thật
+// trước khi trả lời (`kiem-thu/do-khong-lon.mjs`):
+//
+//   · `chrome.exe --headless --print-to-pdf` (dòng lệnh trần) BỎ QUA
+//     `@page size`, luôn ra Letter — tưởng nhầm là "trần" của Chrome.
+//   · Nhưng đi đúng đường `Page.printToPDF` qua CDP — CHÍNH LÀ cỗ máy đứng
+//     sau nút "Lưu thành PDF" trong hộp thoại in thật — thì `@page size`
+//     tự đặt chạy tới ÍT NHẤT 8000×12000mm (8×12 mét) mà không cắt xén.
+//
+// Kết luận: sơ đồ là SVG (vector), không phải bitmap, nên không có trần độ
+// phân giải như đường PNG — đường ĐÚNG cho khổ lớn là IN (PDF vector), không
+// phải CHỤP ẢNH (canvas). `inSoDo()` vì vậy nhận thêm một số TUỲ CHỌN — bề
+// ngang khổ giấy — xem JSDoc của hàm.
+//
+// ⚠ **Chưa xử lý ảnh Drive thật ở khổ lớn**: ảnh là raster cỡ nhỏ cố định
+// (`PHOTO.thumbSize` ~200px), phóng lên khổ nhiều mét thì mờ hẳn dù chữ và
+// đường kẻ vẫn nét — chưa có công tắc "bỏ ảnh khi in khổ lớn". Việc sau.
+//
+// --- ĐƯỜNG THỨ BA: ảnh RASTER theo khổ giấy + DPI (thêm 31/08/2026) --------
+//
+// Chủ dự án đối chiếu tiếp MicroStation: *"xuất bản vẽ thành ẢNH trong khung
+// khổ A0 nhưng đẩy độ phân giải lên 600, 900, 1200 DPI"*, và muốn một đường
+// xuất cho phép chọn **máy in PDF trên máy tính** + **khổ giấy máy in ấy cho
+// phép** + **độ phân giải 75–1200 DPI**, sơ đồ co vừa khổ.
+//
+// DPI chỉ có nghĩa với ẢNH RASTER. `inSoDo()` ở trên in thẳng SVG SỐNG — máy
+// in tự rasterize ở độ phân giải của chính nó, không có con số nào cho người
+// dùng chọn. Nên đây là một NHÁNH RIÊNG, không phải một tham số thêm của
+// `inSoDo()`: `xuatAnhDoPhanGiaiCao()` dựng ảnh raster đúng số pixel yêu cầu,
+// rồi `inAnhRaster()` đem chính tấm ảnh ấy đi in full khổ giấy.
+//
+// ⚠ **Trần canvas — ĐÃ ĐO, không đoán** (`kiem-thu/do-canvas-lon.mjs`, Chrome
+// thật, 31/08/2026): canvas dựng được tối đa **268.435.456 điểm ảnh
+// (= 16384×16384 chẵn, tức 2^28)** và **mỗi cạnh tối đa 65535**; quá một
+// trong hai là hỏng. Vài mốc thật đo được: A4@1200dpi ĐƯỢC (139 Mpx) ·
+// A2@600dpi ĐƯỢC (139 Mpx) · A0@300dpi ĐƯỢC (139,5 Mpx) · A0@600dpi HỎNG
+// (558 Mpx) · A1@600dpi HỎNG (279 Mpx) · A3@1200dpi HỎNG (278 Mpx).
+//
+// ⚠ **Và cách nó hỏng mới là điều đáng sợ**: trình duyệt KHÔNG ném lỗi. Canvas
+// vẫn nhận đúng `width`/`height`, `fillRect` vẫn chạy, chỉ có điều mọi điểm
+// ảnh đọc lại đều là `0,0,0,0` và `toBlob()` trả về `null`. Đúng loại lỗi im
+// lặng dự án này đã ăn đủ. Vì vậy `kiemTranCanvas()` phải CHẶN TRƯỚC bằng
+// đúng hai con số đo được, và ném một câu tiếng Việt nói rõ phải giảm gì —
+// chứ không để người dùng bấm rồi nhìn một ảnh đen thui hoặc không có gì.
+//
+// ⚠ Trần này là trần của MÃ BLINK nên không đổi theo card màn hình, nhưng máy
+// ít RAM vẫn có thể hỏng SỚM HƠN. `xuatAnhDoPhanGiaiCao()` vì thế còn kiểm
+// `toBlob()` trả null một lần nữa sau khi vẽ.
+//
+// --- Vì sao nút tải PNG KHÔNG tự bấm hộ (`a.click()`) ----------------------
+//
+// `pages/import-export.js` (Xuất GEDCOM, bước 55) đã cân nhắc đúng câu này
+// và chọn: dựng xong file thì HIỆN một link thật, người dùng tự bấm — không
+// tự kích hoạt tải bằng mã. Lý do ghi ở đó vẫn đúng ở đây, và còn thêm một lý
+// do riêng của PNG: `xuatAnhPNG()` là hàm `async` (đợi tải ảnh, đợi
+// `canvas.toBlob()`), nên lúc file xong thì cú bấm gốc của người dùng đã lùi
+// lại vài trăm mili-giây — nhiều trình duyệt coi một `a.click()` KHÔNG còn
+// nằm trong "cử chỉ người dùng" nữa và ÂM THẦM chặn tải, đúng loại lỗi im
+// lặng dự án này đã ăn đủ (xem b66: "báo thành công mà không có gì xảy ra").
+// Một link thật, người dùng tự bấm lần hai, luôn nằm trong cử chỉ của họ.
+//
+// ⚠ **CHƯA THỬ TRÊN APP THẬT** — đặc biệt phần chuyển ảnh Drive sang Data URI
+// (`thayAnhBangDataUri`) có thể vướng CORS: `fetch()` một ảnh riêng tư trên
+// `drive.google.com` từ trong iframe Apps Script chưa ai đo. Nếu fetch hỏng,
+// mã KHÔNG vỡ cả ảnh xuất ra — nó gỡ `href` của lớp ảnh thật, để lộ đúng lớp
+// bóng người mặc định nằm sẵn NGAY DƯỚI (`renderAnhTrongO` ở
+// `domains/render.js` đã vẽ hai lớp chồng nhau từ bước 28, không phải mã mới
+// viết thêm gì cho ca hỏng). Xem `NK-B72` để biết chỗ cần đo tiếp.
+// ============================================================
+
+import { boDauChoTenFile } from '../domains/gedcom.js';
+
+const NEN_SO_DO   = '#faf8f5';  // khớp VE.nenTrang ở domains/render.js
+const CANH_TOI_DA = 4096;       // nhiều trình duyệt di động từ chối canvas to hơn
+const TY_LE_PNG   = 2;          // ảnh nét gấp đôi màn hình thường (Retina)
+
+// Khổ A4 ngang, trừ lề 10mm mỗi cạnh — cùng con số Antigravity đã chọn.
+const A4_NGANG_MM   = { w: 297, h: 210 };
+const LE_TRANG_MM   = 10;
+const PX_MOI_MM     = 96 / 25.4;   // 1mm ở 96dpi (CSS px chuẩn của trình duyệt)
+const MM_MOI_INCH   = 25.4;
+
+/**
+ * Trần canvas — HAI con số, ĐO ĐƯỢC trong Chrome thật, không phải đoán
+ * (`kiem-thu/do-canvas-lon.mjs`, 31/08/2026 — xem ghi chú đầu file).
+ *
+ * Vượt trần thì trình duyệt KHÔNG báo lỗi: canvas vẫn nhận đúng cỡ, nhưng mọi
+ * điểm ảnh là `0,0,0,0` và `toBlob()` trả `null`. Nên hai số này phải được
+ * kiểm TRƯỚC khi dựng canvas, chứ không phải chờ trình duyệt kêu.
+ */
+const TRAN_DIEN_TICH_PX = 268435456;   // 16384×16384 chẵn (2^28) — đo được đúng mốc này
+const TRAN_CANH_PX      = 65535;       // 65536 hỏng, 65535 chạy — đo được
+
+/** Dải độ phân giải cho người dùng chọn (chủ dự án yêu cầu 75 → 1200). */
+export const DAI_DPI = [75, 150, 300, 600, 900, 1200];
+
+/** Hai con số trần, để `settings.js` viết đúng số vào chữ giải thích. */
+export const TRAN_CANVAS = { dienTich: TRAN_DIEN_TICH_PX, canh: TRAN_CANH_PX };
+
+// ⚠ **MỘT id thẻ CSS cho CẢ HAI đường in.** `inSoDo()` (in SVG sống) và
+// `inAnhRaster()` (in ảnh raster) không bao giờ được in cùng lúc, và cùng
+// dùng một id thì `donDauVetIn()` gỡ được vết của đường kia trước khi chèn
+// vết của mình. Hai id khác nhau là để lại HAI thẻ `@page` chồng lên nhau khi
+// người dùng bấm hai nút liền tay — đúng lỗi đã bắt được lúc viết
+// `kiem-thu/kiem-xuat-anh.mjs` cho hai chế độ của `inSoDo()`.
+const ID_CSS_IN      = 'giapha-css-in';
+const ID_KHUNG_ANH_IN = 'giapha-khung-anh-in';
+
+// ============================================================
+// XUẤT PNG
+// ============================================================
+
+/**
+ * Dựng ảnh PNG từ sơ đồ đang hiển thị. KHÔNG tự tải về — trả lại blob và tên
+ * file gợi ý, nơi gọi (`settings.js`) tự dựng link tải thật (xem ghi chú đầu
+ * file, "vì sao nút tải PNG không tự bấm hộ").
+ *
+ * @param {SVGSVGElement} svgEl
+ * @param {object} [tree]  — `state.tree`, chỉ để đặt tên file theo tên gia phả
+ * @returns {Promise<{blob: Blob, tenFile: string}>}
+ */
+export async function xuatAnhPNG(svgEl, tree) {
+  const { vbW, vbH } = docCoSoDoBatBuoc(svgEl);
+
+  let tyLe = TY_LE_PNG;
+  const canhDaiGoc = Math.max(vbW, vbH);
+  if (canhDaiGoc * tyLe > CANH_TOI_DA) tyLe = CANH_TOI_DA / canhDaiGoc;
+
+  const blob = await dungBlobPngTuSvg(
+    svgEl,
+    Math.max(1, Math.round(vbW * tyLe)),
+    Math.max(1, Math.round(vbH * tyLe)),
+  );
+  return { blob, tenFile: tenFileAnh(tree, 'png') };
+}
+
+// ============================================================
+// XUẤT ẢNH RASTER THEO KHỔ GIẤY + DPI (đường "MicroStation")
+// ============================================================
+
+/**
+ * Số điểm ảnh của một tấm ảnh khổ `rongCm` in ở `dpi`, bề cao KHOÁ theo đúng
+ * tỷ lệ sơ đồ. Hàm THUẦN — bài kiểm gọi thẳng, `settings.js` gọi để biết một
+ * lựa chọn có vượt trần không TRƯỚC khi cho bấm.
+ *
+ * ⚠ Chỉ hỏi MỘT số (bề ngang), y hệt `inSoDo()` khổ lớn: hỏi cả bề ngang lẫn
+ * bề cao là mời người dùng bóp méo mặt người và chữ khi hai số không đúng tỷ
+ * lệ sơ đồ đang có.
+ *
+ * @param {number} rongCm  bề ngang khổ giấy, cm
+ * @param {number} dpi     điểm ảnh trên mỗi inch
+ * @param {number} vbW     bề ngang viewBox sơ đồ
+ * @param {number} vbH     bề cao viewBox sơ đồ
+ * @returns {{w:number, h:number}} cỡ ảnh, điểm ảnh, tối thiểu 1
+ */
+export function tinhCoAnhTheoDpi(rongCm, dpi, vbW, vbH) {
+  const w = Math.max(1, Math.round((rongCm * 10) / MM_MOI_INCH * dpi));
+  const h = Math.max(1, Math.round(w * (vbH / vbW)));
+  return { w, h };
+}
+
+/**
+ * Ném lỗi TIẾNG VIỆT nói rõ phải giảm gì, nếu cỡ ảnh vượt một trong hai trần
+ * đo được. Chặn ở đây thay vì để trình duyệt tự xử, vì trình duyệt KHÔNG xử:
+ * nó dựng canvas rỗng và trả `toBlob() === null` mà không kêu một tiếng.
+ */
+export function kiemTranCanvas(w, h) {
+  const canhDai = Math.max(w, h);
+  if (canhDai > TRAN_CANH_PX) {
+    throw new Error(
+      'Ảnh cần cạnh ' + canhDai + ' điểm ảnh, vượt trần ' + TRAN_CANH_PX +
+      ' điểm ảnh mỗi cạnh của trình duyệt. Hãy giảm độ phân giải hoặc bề ngang khổ giấy.');
+  }
+  if (w * h > TRAN_DIEN_TICH_PX) {
+    const trieu = (n) => Math.round(n / 1e6);
+    throw new Error(
+      'Ảnh cần ' + trieu(w * h) + ' triệu điểm ảnh (' + w + '×' + h + '), vượt trần ' +
+      trieu(TRAN_DIEN_TICH_PX) + ' triệu của trình duyệt. ' +
+      'Hãy giảm độ phân giải hoặc bề ngang khổ giấy.');
+  }
+}
+
+/**
+ * Lọc `DAI_DPI` lấy những mức CÒN DỰNG ĐƯỢC với khổ giấy và tỷ lệ sơ đồ này.
+ *
+ * ⚠ Lọc bằng ĐÚNG công thức `tinhCoAnhTheoDpi` + `kiemTranCanvas` mà lúc bấm
+ * nút sẽ chạy, chứ không giải bất phương trình rồi làm tròn — làm tròn hai
+ * lần theo hai đường khác nhau là cách để UI cho chọn một mức mà mã thật lại
+ * từ chối, đúng thứ phải tránh.
+ *
+ * @returns {number[]} tập con của `DAI_DPI`, có thể RỖNG nếu khổ quá lớn
+ */
+export function dpiConDungDuoc(rongCm, vbW, vbH) {
+  if (!(rongCm > 0) || !(vbW > 0) || !(vbH > 0)) return [];
+  return DAI_DPI.filter((dpi) => {
+    const { w, h } = tinhCoAnhTheoDpi(rongCm, dpi, vbW, vbH);
+    try { kiemTranCanvas(w, h); return true; } catch (e) { return false; }
+  });
+}
+
+/**
+ * Dựng ảnh PNG raster đúng khổ giấy + độ phân giải yêu cầu. KHÔNG tự tải về —
+ * trả blob, nơi gọi dựng link bằng `veLinkTai()` (xem ghi chú đầu file).
+ *
+ * ⚠ Khác `xuatAnhPNG()` ở đúng một điều quan trọng: hàm kia có trần MỀM
+ * (`CANH_TOI_DA` 4096, tự co nhỏ lại cho vừa — đó là đường "chụp nhanh", đưa
+ * ra ảnh gì cũng hơn không có gì). Hàm này thì NGƯỢC LẠI: người dùng đã gõ
+ * đúng khổ giấy và đúng DPI họ cần, tự ý co nhỏ là trả về một tấm ảnh KHÔNG
+ * đúng thứ họ đặt mà không nói — nên vượt trần là NÉM LỖI, không co.
+ *
+ * @param {SVGSVGElement} svgEl
+ * @param {object} [tree]    chỉ để đặt tên file
+ * @param {number} rongCm    bề ngang khổ giấy, cm
+ * @param {number} dpi       điểm ảnh mỗi inch (75–1200)
+ * @returns {Promise<{blob: Blob, tenFile: string, w: number, h: number,
+ *                    rongMm: number, caoMm: number}>}
+ *   `rongMm`/`caoMm` để nơi gọi đem thẳng sang `inAnhRaster()` — bề cao là số
+ *   sơ đồ TỰ tính, người dùng không gõ nó nên phải trả ra đây.
+ */
+export async function xuatAnhDoPhanGiaiCao(svgEl, tree, rongCm, dpi) {
+  const { vbW, vbH } = docCoSoDoBatBuoc(svgEl);
+  if (!(rongCm > 0)) throw new Error('Chưa nhập bề ngang khổ giấy.');
+  if (!(dpi > 0)) throw new Error('Chưa chọn độ phân giải.');
+
+  const { w, h } = tinhCoAnhTheoDpi(rongCm, dpi, vbW, vbH);
+  kiemTranCanvas(w, h);
+
+  const blob = await dungBlobPngTuSvg(svgEl, w, h);
+  const rongMm = rongCm * 10;
+  return {
+    blob,
+    tenFile: tenFileAnh(tree, 'png', Math.round(rongCm) + 'cm-' + dpi + 'dpi'),
+    w,
+    h,
+    rongMm,
+    caoMm: rongMm * (vbH / vbW),
+  };
+}
+
+/**
+ * Mở hộp thoại in với ẢNH RASTER vừa dựng, chèn full khổ giấy.
+ *
+ * ⚠ Vì sao có hàm này thay vì thêm một tham số cho `inSoDo()`: hai hàm in HAI
+ * THỨ KHÁC HẲN NHAU. `inSoDo()` in `svgEl` SỐNG đang gắn trong trang (nên nó
+ * KHÔNG được clone — CSS `@media print` chỉ với tới phần tử thật). Hàm này in
+ * một tấm ảnh vừa dựng xong, chưa có mặt trong trang, nên nó phải TỰ gắn một
+ * khung tạm vào `<body>` rồi gỡ đi. Nhét cả hai vào một hàm thì mỗi nhánh
+ * `if` lại phủ nhận ghi chú của nhánh kia.
+ *
+ * Phần CSS cô lập vùng in thì DÙNG LẠI ĐÚNG khuôn của `inSoDo()` — ẩn hết
+ * trang bằng `visibility`, hiện lại đúng khung — không viết khác đi.
+ *
+ * ⚠ **Phải đợi `<img>` tải xong rồi mới `window.print()`.** Ảnh là blob nằm
+ * sẵn trong bộ nhớ nhưng trình duyệt vẫn cần một nhịp để giải mã; in khi ảnh
+ * chưa giải mã xong cho ra một trang TRẮNG — lại đúng loại lỗi im lặng. Đợi
+ * bằng `await` được, vì `window.print()` (khác `a.click()` để tải file) không
+ * đòi phải nằm trong cử chỉ người dùng.
+ *
+ * @param {string} nguonAnh  địa chỉ ảnh — object URL hoặc Data URI
+ * @param {number} rongMm    bề ngang khổ giấy, mm
+ * @param {number} caoMm     bề cao khổ giấy, mm (đã khoá theo tỷ lệ sơ đồ)
+ * @returns {Promise<void>}
+ */
+export async function inAnhRaster(nguonAnh, rongMm, caoMm) {
+  if (!nguonAnh || !(rongMm > 0) || !(caoMm > 0)) return;
+
+  donDauVetIn();
+
+  const khung = document.createElement('div');
+  khung.id = ID_KHUNG_ANH_IN;
+  // Trên MÀN HÌNH khung này phải vô hình và không chiếm chỗ; lúc IN thì CSS
+  // dưới đây kéo nó về `inset:0`. Dùng `position:fixed` + đẩy ra ngoài mép
+  // thay vì `display:none` — phần tử `display:none` không được in tới, kể cả
+  // khi CSS in bật `visibility` lại.
+  khung.style.cssText =
+    'position:fixed;left:-99999px;top:0;width:1px;height:1px;overflow:hidden';
+
+  const anh = document.createElement('img');
+  anh.alt = 'Sơ đồ gia phả';
+  khung.append(anh);
+  document.body.append(khung);
+
+  await new Promise((xong) => {
+    anh.onload = xong;
+    anh.onerror = xong;   // hỏng thì vẫn mở hộp thoại in, đừng treo im lặng
+    anh.src = nguonAnh;
+  });
+
+  const soMm = (n) => n.toFixed(1) + 'mm';
+  const cssIn = document.createElement('style');
+  cssIn.id = ID_CSS_IN;
+  cssIn.textContent =
+    '@media print {' +
+    'body * { visibility: hidden !important; }' +
+    '#' + ID_KHUNG_ANH_IN + ', #' + ID_KHUNG_ANH_IN + ' * { visibility: visible !important; }' +
+    '#' + ID_KHUNG_ANH_IN + ' {' +
+      'position: absolute !important; inset: 0 !important;' +
+      'left: 0 !important; top: 0 !important;' +
+      'width: auto !important; height: auto !important;' +
+      'overflow: visible !important; margin: 0 !important; padding: 0 !important;' +
+    '}' +
+    '#' + ID_KHUNG_ANH_IN + ' img {' +
+      'display: block !important;' +
+      'width: ' + soMm(rongMm) + ' !important; height: ' + soMm(caoMm) + ' !important;' +
+      'page-break-inside: avoid;' +
+    '}' +
+    '@page { size: ' + soMm(rongMm) + ' ' + soMm(caoMm) + '; margin: 0; }' +
+    '}';
+  document.head.append(cssIn);
+
+  window.print();
+
+  // Gỡ trễ, cùng lý do với `inSoDo()`: trên vài trình duyệt di động
+  // `window.print()` không đồng bộ, gỡ ngay là xoá CSS trước khi engine in
+  // kịp đọc. Gỡ luôn cả khung ảnh — để lại là rác treo trong `<body>`.
+  //
+  // ⚠ Gỡ đúng HAI phần tử mình vừa tạo, không gọi lại `donDauVetIn()` (gỡ
+  // theo id): người dùng bấm tiếp "In sơ đồ" trong vòng một giây thì lúc bộ
+  // đếm này chạy, thẻ mang id ấy đã là thẻ của LẦN SAU — gỡ theo id là gỡ
+  // nhầm CSS của bản in người ta đang chờ.
+  setTimeout(() => { cssIn.remove(); khung.remove(); }, 1000);
+}
+
+/**
+ * Có phải màn hình MÁY TÍNH (không phải điện thoại) hay không.
+ *
+ * ⚠ Dự án KHÔNG có sẵn cơ chế nhận biết điện thoại — `config.js` cố tình giải
+ * mọi việc bằng CSS co giãn thuần (`clamp`/`min`/`max`), "không một câu điều
+ * kiện nào trong JS". Nhưng khối "in độ phân giải cao" thì KHÔNG co giãn
+ * được: chủ dự án nói thẳng *"không áp dụng cho điện thoại"* — điện thoại
+ * không có máy in PDF ảo để chọn khổ giấy, và dựng nổi một canvas 139 triệu
+ * điểm ảnh trên điện thoại là chuyện khác hẳn trên máy để bàn. Nên phải có
+ * đúng MỘT câu điều kiện, và nó sống ở đây chứ không nhét vào `config.js`.
+ *
+ * Đo bằng CẠNH NGẮN chứ không phải `innerWidth`: một điện thoại NẰM NGANG
+ * rộng 740px (đúng khổ `config.js` đang tính tới) sẽ lọt qua mọi ngưỡng đặt
+ * theo bề ngang, mà nó vẫn là điện thoại.
+ */
+export function laManHinhMayTinh() {
+  return Math.min(window.innerWidth, window.innerHeight) >= 500;
+}
+
+// ============================================================
+// IN PDF (window.print)
+// ============================================================
+
+/**
+ * Tính cỡ pixel để sơ đồ co vừa đúng MỘT trang A4 ngang (quyết định
+ * 31/08/2026 — xem ghi chú đầu file). Xuất riêng ra hàm thuần để bài kiểm
+ * gọi thẳng, không cần dựng DOM.
+ *
+ * @param {number} vbW  — bề ngang viewBox gốc, đơn vị px
+ * @param {number} vbH  — bề cao viewBox gốc, đơn vị px
+ * @returns {{w: number, h: number}}  — cỡ đích, đơn vị px, đã làm tròn, tối thiểu 1
+ */
+export function tinhKichThuocInVua(vbW, vbH) {
+  const usableW = (A4_NGANG_MM.w - 2 * LE_TRANG_MM) * PX_MOI_MM;
+  const usableH = (A4_NGANG_MM.h - 2 * LE_TRANG_MM) * PX_MOI_MM;
+  const tyLe = Math.min(usableW / vbW, usableH / vbH);
+  return {
+    w: Math.max(1, Math.round(vbW * tyLe)),
+    h: Math.max(1, Math.round(vbH * tyLe)),
+  };
+}
+
+/**
+ * Mở hộp thoại in của trình duyệt, ẩn mọi thứ trừ sơ đồ.
+ *
+ * Hai chế độ, chọn bằng việc CÓ hay KHÔNG truyền `rongKhoLonMm`:
+ *
+ * - **Không truyền** (mặc định) — co vừa đúng MỘT trang A4 ngang.
+ * - **Có truyền** — IN KHỔ LỚN (áp phích, bản vẽ kỹ thuật). Chỉ hỏi MỘT số:
+ *   BỀ NGANG. Bề dài tự tính theo đúng tỷ lệ sơ đồ đang có, không hỏi thêm —
+ *   hỏi cả hai số mà không khoá tỷ lệ là mời người dùng BÓP MÉO sơ đồ (mặt
+ *   người, chữ méo hẳn khi khung khác tỷ lệ nội dung). Đúng cách máy in cuộn
+ *   (plotter) hoạt động: khổ RỘNG cố định theo cuộn giấy, khổ DÀI cắt theo
+ *   nội dung — chủ dự án đối chiếu MapInfo/MicroStation, 31/08/2026.
+ *
+ *   ⚠ **Đã ĐO trước khi xây, không đoán** (`kiem-thu/do-khong-lon.mjs`):
+ *   `Page.printToPDF` của Chrome — đúng cỗ máy đứng sau nút "Lưu thành PDF"
+ *   trong hộp thoại in — nhận `@page size` tự đặt AN TOÀN tới ít nhất
+ *   8000×12000mm (8×12 mét), không cắt xén, không lặng lẽ trả về khổ mặc
+ *   định. ⚠ Nhưng `chrome.exe --headless --print-to-pdf` (dòng lệnh trần,
+ *   không qua CDP) thì NGƯỢC LẠI — bỏ qua `@page size` hoàn toàn, luôn ra
+ *   Letter 612×792pt — nếu sau này viết thêm phép đo tự động cho khổ lớn,
+ *   ĐỪNG dùng đường dòng lệnh trần, phải qua CDP `Page.printToPDF` như file
+ *   đo đã làm.
+ *
+ * ⚠ **Không clone SVG như `xuatAnhPNG`.** In dùng thẳng `svgEl` đang gắn
+ * trong trang: CSS `@media print` chỉ có tác dụng lên phần tử THẬT đang hiển
+ * thị, một bản clone rời rạc ngoài DOM sẽ không được trình duyệt in tới.
+ *
+ * ⚠ Trên iOS Safari, `window.print()` trong iframe có thể không hoạt động.
+ * Chưa thử — nếu gặp, đường PNG là lối thoát dự phòng.
+ *
+ * @param {SVGSVGElement} svgEl
+ * @param {string} idKhungIn  — id của phần tử BỌC `svgEl` cần giữ lại khi in
+ *   (xem `tree-view.js`, hằng `ID_KHUNG_IN`) — truyền vào thay vì hằng cứng
+ *   ở đây, vì "biết DOM trông thế nào" là việc của `tree-view.js`, không phải
+ *   của file này.
+ * @param {number} [rongKhoLonMm]  — bề ngang khổ giấy MONG MUỐN, đơn vị mm.
+ *   Có giá trị (>0) thì bật chế độ khổ lớn; bỏ trống thì co vừa 1 trang A4.
+ */
+export function inSoDo(svgEl, idKhungIn, rongKhoLonMm) {
+  if (!svgEl || !idKhungIn) return;
+
+  const vb = svgEl.getAttribute('viewBox');
+  if (!vb) return;
+  const [, , vbW, vbH] = vb.split(/\s+/).map(Number);
+  if (!(vbW > 0) || !(vbH > 0)) return;
+
+  const khoLon = rongKhoLonMm > 0;
+  let w, h, khoGiayCss, leTrangMm;
+
+  if (khoLon) {
+    const caoKhoLonMm = rongKhoLonMm * (vbH / vbW);   // khoá tỷ lệ, không hỏi thêm số
+    w = Math.max(1, Math.round(rongKhoLonMm * PX_MOI_MM));
+    h = Math.max(1, Math.round(caoKhoLonMm * PX_MOI_MM));
+    // Số thập phân đủ để mm không tròn mất phần lẻ trên khổ nhiều mét.
+    khoGiayCss = rongKhoLonMm.toFixed(1) + 'mm ' + caoKhoLonMm.toFixed(1) + 'mm';
+    // Khổ lớn KHÔNG chừa lề — bản đi tiệm, tiệm tự cắt theo khổ đặt.
+    leTrangMm = 0;
+  } else {
+    ({ w, h } = tinhKichThuocInVua(vbW, vbH));
+    khoGiayCss = 'landscape';
+    leTrangMm = LE_TRANG_MM;
+  }
+
+  // Cách cô lập vùng in: ẩn HẾT trang (`visibility:hidden` trên mọi phần tử),
+  // rồi hiện lại đúng khung sơ đồ và mọi thứ bên trong nó. Chọn cách này thay
+  // vì liệt kê từng lớp DOM cần ẩn (cách mã nháp Antigravity làm,
+  // `#app div[style*="position:absolute"]`…) — liệt kê theo VỊ TRÍ trong cây
+  // DOM là thứ gãy ngay khi có ai đổi bố cục một màn hình khác, dù màn hình
+  // đó không liên quan gì tới việc in. `visibility` (khác `display`) không
+  // phá layout nên không cần lo phần tử ẩn làm lệch số đo của phần hiện.
+  //
+  // ⚠ Gỡ thẻ CŨ (nếu còn) trước khi chèn thẻ MỚI — bấm "In sơ đồ" rồi bấm
+  // ngay "In khổ lớn" (hai lần gọi liên tiếp, cách nhau chưa tới 1 giây) mà
+  // không gỡ trước thì `document.head` mang HAI thẻ `id="giapha-css-in"`
+  // cùng lúc, và bộ dọn trễ ở cuối hàm chỉ gỡ đúng thẻ CUỐI mình vừa tạo —
+  // thẻ đầu vẫn còn CSS của lần gọi trước, chồng lên bản in. Bắt được lỗi
+  // này khi viết `kiem-thu/kiem-xuat-anh.mjs`, không phải đoán trước.
+  //
+  // Từ 31/08/2026 dọn bằng `donDauVetIn()` để gỡ luôn khung ảnh của
+  // `inAnhRaster()` nếu nó còn sót — bấm "In ảnh" rồi bấm "In sơ đồ" mà khung
+  // ảnh còn nằm trong `<body>` thì bản in ra mang cả hai thứ.
+  donDauVetIn();
+
+  const cssIn = document.createElement('style');
+  cssIn.id = ID_CSS_IN;
+  cssIn.textContent =
+    '@media print {' +
+    'body * { visibility: hidden !important; }' +
+    '#' + idKhungIn + ', #' + idKhungIn + ' * { visibility: visible !important; }' +
+    '#' + idKhungIn + ' {' +
+      'position: absolute !important; inset: 0 !important;' +
+      'overflow: visible !important; padding: 0 !important;' +
+      'display: flex !important; align-items: flex-start !important;' +
+      'justify-content: center !important;' +
+    '}' +
+    '#' + idKhungIn + ' svg {' +
+      'width: ' + w + 'px !important; height: ' + h + 'px !important;' +
+      'page-break-inside: avoid;' +
+    '}' +
+    '@page { size: ' + khoGiayCss + '; margin: ' + leTrangMm + 'mm; }' +
+    '}';
+  document.head.append(cssIn);
+
+  window.print();
+
+  // `window.print()` đồng bộ trên hầu hết trình duyệt để bàn — tới đây hộp
+  // thoại đã đóng. Trên một số trình duyệt di động nó KHÔNG đồng bộ, nên gỡ
+  // trễ thay vì gỡ ngay — gỡ ngay có thể xoá mất CSS trước khi engine in kịp
+  // đọc, làm bản in ra không co theo trang nào cả.
+  setTimeout(() => cssIn.remove(), 1000);
+}
+
+// ============================================================
+// HÀM PHỤ TRỢ
+// ============================================================
+
+/** Gỡ mọi vết CSS/khung tạm mà hai đường in để lại, nếu còn sót. */
+function donDauVetIn() {
+  const cssCu = document.getElementById(ID_CSS_IN);
+  if (cssCu) cssCu.remove();
+  const khungCu = document.getElementById(ID_KHUNG_ANH_IN);
+  if (khungCu) khungCu.remove();
+}
+
+/**
+ * Đọc `viewBox` của sơ đồ, hoặc ném lỗi TIẾNG VIỆT nói đúng lý do.
+ *
+ * Tách riêng vì cả `xuatAnhPNG()` lẫn `xuatAnhDoPhanGiaiCao()` đều bắt đầu
+ * bằng đúng ba câu kiểm này, và chúng phải nói ra CÙNG một câu lỗi — hai câu
+ * khác nhau cho cùng một tình huống là thứ làm người dùng tưởng có hai lỗi.
+ */
+function docCoSoDoBatBuoc(svgEl) {
+  if (!svgEl) throw new Error('Chưa có sơ đồ để xuất.');
+  const co = docCoSoDo(svgEl);
+  if (!co) throw new Error('Sơ đồ chưa vẽ xong, thử lại sau.');
+  return co;
+}
+
+/**
+ * Cỡ `viewBox` của sơ đồ, hoặc `null` nếu chưa vẽ xong.
+ *
+ * Xuất ra ngoài để `tree-view.js` đưa cho `settings.js` biết TỶ LỆ sơ đồ đang
+ * hiện — màn hình Cài đặt cần nó để tự tính mức DPI nào còn dựng nổi, mà nó
+ * không được phép chạm vào `svgEl` (`svgEl` là của `tree-view.js`).
+ *
+ * @returns {{vbX:number, vbY:number, vbW:number, vbH:number}|null}
+ */
+export function docCoSoDo(svgEl) {
+  if (!svgEl) return null;
+  const vb = svgEl.getAttribute('viewBox');
+  if (!vb) return null;
+  const [vbX, vbY, vbW, vbH] = vb.split(/\s+/).map(Number);
+  if (!(vbW > 0) || !(vbH > 0)) return null;
+  return { vbX, vbY, vbW, vbH };
+}
+
+/**
+ * Nhân đôi sơ đồ, tô nền, đổi ảnh Drive sang Data URI rồi vẽ lên canvas đúng
+ * `w × h` điểm ảnh và trả về blob PNG.
+ *
+ * Ruột chung của CẢ HAI đường xuất ảnh — chúng chỉ khác nhau ở cách TÍNH ra
+ * `w`/`h`, còn mọi việc còn lại (nền, ảnh Drive, serialize, vẽ) giống hệt.
+ * Chép hai bản là để hai bản trôi dần khỏi nhau: sửa lỗi CORS ở bản này quên
+ * bản kia thì đường xuất khổ lớn lặng lẽ mất ảnh mà không ai biết.
+ */
+async function dungBlobPngTuSvg(svgEl, w, h) {
+  const { vbX, vbY, vbW, vbH } = docCoSoDoBatBuoc(svgEl);
+
+  const ban = svgEl.cloneNode(true);
+  ban.setAttribute('width', String(vbW));
+  ban.setAttribute('height', String(vbH));
+
+  // Sơ đồ trên màn hình nền TRONG SUỐT, dựa vào CSS của trang (`#faf8f5`).
+  // Canvas không có khái niệm "nền trang" — không tô thì PNG xuất ra nền đen.
+  const nenNS = 'http://www.w3.org/2000/svg';
+  const nen = document.createElementNS(nenNS, 'rect');
+  nen.setAttribute('x', String(vbX));
+  nen.setAttribute('y', String(vbY));
+  nen.setAttribute('width', String(vbW));
+  nen.setAttribute('height', String(vbH));
+  nen.setAttribute('fill', NEN_SO_DO);
+  ban.insertBefore(nen, ban.firstChild);
+
+  await thayAnhBangDataUri(ban);
+
+  const chuoiSvg = new XMLSerializer().serializeToString(ban);
+  const svgBlob = new Blob([chuoiSvg], { type: 'image/svg+xml;charset=utf-8' });
+  const duongSvg = URL.createObjectURL(svgBlob);
+
+  const khung = document.createElement('canvas');
+  khung.width = w;
+  khung.height = h;
+  const but = khung.getContext('2d');
+  but.fillStyle = NEN_SO_DO;
+  but.fillRect(0, 0, w, h);
+
+  try {
+    const anh = await napAnh(duongSvg);
+    but.drawImage(anh, 0, 0, w, h);
+  } finally {
+    URL.revokeObjectURL(duongSvg);
+  }
+
+  // ⚠ `toBlob()` trả `null` là ĐÚNG cách canvas quá to hỏng — không có
+  // exception nào cả. `kiemTranCanvas()` đã chặn trước theo trần ĐO ĐƯỢC,
+  // nhưng máy ít RAM vẫn hỏng sớm hơn trần ấy, nên câu này là lưới thứ hai.
+  return new Promise((resolve, reject) => {
+    khung.toBlob(
+      (b) => (b
+        ? resolve(b)
+        : reject(new Error('Trình duyệt không tạo được ảnh ' + w + '×' + h +
+                           ' điểm ảnh — máy có thể không đủ bộ nhớ. ' +
+                           'Hãy giảm độ phân giải hoặc bề ngang khổ giấy.'))),
+      'image/png',
+    );
+  });
+}
+
+/**
+ * Chuyển MỌI `<image>` có `href` trỏ ra ngoài (bắt đầu bằng "http") thành
+ * Data URI, để `canvas.drawImage()` không bị coi là "nhiễm bẩn" (tainted) và
+ * từ chối `toBlob()`. Ảnh mặc định (bóng người) đã là Data URI sẵn từ
+ * `utils/avatar.js` nên không rơi vào đây.
+ *
+ * ⚠ CORS CHƯA ĐO — xem cảnh báo đầu file. Tải hỏng thì GỠ `href`, không ném
+ * lỗi ra ngoài: một ảnh Drive không tải được không được phép làm hỏng cả lần
+ * xuất PNG.
+ */
+async function thayAnhBangDataUri(svgClone) {
+  const anhThat = Array.from(svgClone.querySelectorAll('image')).filter((el) => {
+    const href = el.getAttribute('href') || '';
+    return href.indexOf('http') === 0;
+  });
+
+  await Promise.all(anhThat.map(async (el) => {
+    const href = el.getAttribute('href');
+    try {
+      const res = await fetch(href);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const blob = await res.blob();
+      const dataUri = await new Promise((resolve, reject) => {
+        const doc = new FileReader();
+        doc.onloadend = () => resolve(doc.result);
+        doc.onerror = () => reject(new Error('Không đọc được ảnh.'));
+        doc.readAsDataURL(blob);
+      });
+      el.setAttribute('href', dataUri);
+    } catch (e) {
+      el.removeAttribute('href');
+    }
+  }));
+}
+
+/** Nạp ảnh từ một URL (kể cả blob:), trả về khi sẵn sàng vẽ lên canvas. */
+function napAnh(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Không dựng được ảnh từ sơ đồ.'));
+    img.src = src;
+  });
+}
+
+/**
+ * "Gia phả họ Nguyễn Trọng Bậc" + 'png' -> "gia-pha-ho-nguyen-trong-bac-so-do-20260831.png"
+ *
+ * `duoiTen` là phần ghép thêm TRƯỚC đuôi file, ví dụ "84cm-300dpi". Có nó thì
+ * ba lần xuất trong cùng một ngày ra ba tên file khác nhau — không có nó,
+ * trình duyệt tự thêm "(1)", "(2)" và người dùng không còn biết file nào là
+ * bản 300 DPI, file nào là bản 1200 DPI.
+ */
+function tenFileAnh(tree, duoi, duoiTen) {
+  const t = new Date();
+  const so = (n) => String(n).padStart(2, '0');
+  const ngay = t.getFullYear() + so(t.getMonth() + 1) + so(t.getDate());
+  const ten = tree && tree.tree && typeof tree.tree.name === 'string' ? tree.tree.name : '';
+  const goc = boDauChoTenFile(ten).slice(0, 60) || 'gia-pha';
+  return goc + '-so-do-' + ngay + (duoiTen ? '-' + duoiTen : '') + '.' + duoi;
+}
+
+/**
+ * Dựng một link tải thật (không tự bấm) cho một blob, đúng kiểu dáng nút của
+ * `settings.js`. Tách ra đây (thay vì viết lại trong `settings.js`) vì cả
+ * PNG lẫn mọi thứ xuất ra ở file này đều cần đúng một thao tác này.
+ *
+ * @param {Blob} blob
+ * @param {string} tenFile
+ * @param {string} chuNut
+ * @returns {HTMLAnchorElement}
+ */
+export function veLinkTai(blob, tenFile, chuNut) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = tenFile;
+  a.textContent = chuNut;
+  a.style.cssText =
+    'display:block;width:100%;min-height:42px;margin-top:8px;padding:11px 14px;' +
+    'box-sizing:border-box;text-align:center;text-decoration:none;font-size:14px;' +
+    'font-weight:600;border-radius:9px;background:#2a2622;color:#fffdf9;' +
+    'border:1px solid #2a2622;touch-action:manipulation';
+  // Thu hồi blob URL khi rời trang — không thu hồi ngay, link còn phải sống
+  // để người dùng bấm. Rò rỉ nhỏ, hết phiên là hết; đổi lấy sự chắc chắn link
+  // luôn bấm được cho tới khi người dùng rời màn hình Cài đặt.
+  return a;
+}

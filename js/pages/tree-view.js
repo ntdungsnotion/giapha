@@ -5,8 +5,8 @@
 // Phụ thuộc: state, domains/{bloodline,layout,render,union},
 //            utils/{text,glyph}, config,
 //            pages/{person-detail,person-edit,person-list,review,settings,
-//            backup,chon-gia-pha,import-export}
-// Phiên bản: 1.34.0 · Cập nhật: 29/08/2026 10:40
+//            backup,chon-gia-pha,import-export,export-image}
+// Phiên bản: 1.36.0 · Cập nhật: 31/08/2026 23:10
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -26,7 +26,7 @@
 // Bố cục nút, đối chiếu Quick Family Tree (chat 1.5 và 1.6):
 //   Trên trái  — cột 4 nút chọn số đời TỔ TIÊN + ô nhập tay số đời
 //   Dưới trái  — cột 4 nút chọn phạm vi HẬU DUỆ + ô nhập tay + công tắc dâu/rể
-//   Trên phải  — Cài đặt · Tìm người (bước 24) · Chụp ảnh sơ đồ (chưa làm)
+//   Trên phải  — Cài đặt (có xuất ảnh/PDF ở trong, việc 12) · Tìm người
 //   Dưới phải  — Thông tin · Phóng to · Thu nhỏ · Đưa người trung tâm về giữa
 //
 // Cả ba cụm nút neo vào `vungSoDo`, KHÔNG vào `khungCuon`: `donKhung()` dọn
@@ -83,8 +83,15 @@ import { openBackup, closeBackup } from './backup.js';
 import { openChonGiaPha, closeChonGiaPha } from './chon-gia-pha.js';
 import { openXuatGedcom, closeXuatGedcom, openNhapGedcom, closeNhapGedcom }
   from './import-export.js';
+import { xuatAnhPNG, inSoDo, xuatAnhDoPhanGiaiCao, docCoSoDo } from './export-image.js';
 import { veBieuTuongTron } from '../utils/glyph.js';
 import { rongHop, caoHop, leLopPhu } from '../config.js';
+
+// id của `khungCuon` — CSS `@media print` của `export-image.js` (`inSoDo`)
+// cần một mốc để ẩn hết trang rồi hiện lại đúng khung này. Đặt hằng ở đây,
+// không hằng cứng bên export-image.js: "DOM trông thế nào" là việc của file
+// này, export-image.js chỉ cần TÊN, không cần biết vì sao.
+const ID_KHUNG_IN = 'giapha-khung-in';
 
 let khungCuon = null;   // div cuộn được, bọc quanh SVG
 let vungSoDo  = null;   // bọc khungCuon + ba cụm nút nổi; mốc neo của các nút
@@ -130,6 +137,7 @@ export function mountTreeView(containerEl) {
     'background:#faf8f5;font-family:system-ui,sans-serif;color:#2a2622';
 
   khungCuon = document.createElement('div');
+  khungCuon.id = ID_KHUNG_IN;
   // box-sizing: border-box — `padding` căn giữa được đặt lại mỗi lần zoom, mà
   // với content-box thì padding cộng thêm vào bề rộng và làm khung tràn ra
   // khỏi màn hình.
@@ -793,7 +801,7 @@ function veHopNut() {
 }
 
 /**
- * Cụm nút góc TRÊN PHẢI: Cài đặt · Tìm người. Chụp ảnh sơ đồ để giai đoạn sau.
+ * Cụm nút góc TRÊN PHẢI: Cài đặt · Tìm người.
  *
  * Nút 🔍 là cửa vào THỨ HAI của cả gia phả, và là cửa duy nhất tới những người
  * sơ đồ không vẽ ra (bước 24). Nó neo vào `vungSoDo` như mọi nút khác, nên vẫn
@@ -823,6 +831,22 @@ function veHopNutTrenPhai() {
       // Việc 10. Cùng lối, cùng lý do lớp phủ.
       onMoXuatGedcom: () => { closeSettings(); openXuatGedcom(); },
       onMoNhapGedcom: () => { closeSettings(); openNhapGedcom(); },
+      // Việc 12. KHÔNG đóng Cài đặt trước — khác bốn callback trên, đây
+      // không mở lớp phủ thứ hai nào, kết quả (link tải PNG) hiện NGAY
+      // trong chính khối này (xem `settings.js`, `veKhoiXuat`).
+      onXuatAnhPng: () => xuatAnhPNG(svgEl, state.tree),
+      // `rongKhoLonMm` — có giá trị thì `settings.js` đang xin bản khổ LỚN
+      // (mm), không thì co vừa 1 trang A4. Xem JSDoc `inSoDo` ở export-image.js.
+      onInSoDo: (rongKhoLonMm) => inSoDo(svgEl, ID_KHUNG_IN, rongKhoLonMm),
+      // Đường thứ ba của việc 12 — ảnh RASTER đúng khổ giấy + DPI. Cùng lối
+      // với `onXuatAnhPng` (không đóng Cài đặt, kết quả hiện tại chỗ), chỉ
+      // khác ở chỗ nó nhận hai số người dùng vừa gõ.
+      onXuatAnhDpi: (rongCm, dpi) =>
+        xuatAnhDoPhanGiaiCao(svgEl, state.tree, rongCm, dpi),
+      // Chỉ ĐỌC tỷ lệ sơ đồ, không vẽ gì. `settings.js` cần nó để tự biết mức
+      // DPI nào vượt trần canvas mà mờ đi TRƯỚC khi người dùng bấm — nó không
+      // được chạm vào `svgEl`, `svgEl` là của file này.
+      onCoSoDo: () => docCoSoDo(svgEl),
     })),
     nutTron('🔍', 'Tìm người trong gia phả', () => moDanhSachNguoi()),
   );

@@ -3,7 +3,7 @@
 // Vai trò  : Xuất gia phả ra GEDCOM 5.5.1, và ĐỌC file .ged thành bản xem trước
 // Lớp      : domains — HÀM THUẦN, không chạm DOM, không gọi services
 // Phụ thuộc: utils/date, utils/text, utils/id, utils/graph, config, domains/union
-// Phiên bản: 1.13.0 · Cập nhật: 30/08/2026 19:10
+// Phiên bản: 1.13.1 · Cập nhật: 31/08/2026 16:30
 // ============================================================
 //
 // XUẤT: GEDCOM 5.5.1. Cũ hơn 7.0 nhưng gần như mọi phần mềm gia phả đọc được.
@@ -3717,8 +3717,12 @@ function chu(v) {
   return typeof v === 'string' ? v.trim() : '';
 }
 
-/** "Gia phả họ Nguyễn Trọng Bậc" -> "gia-pha-ho-nguyen-trong-bac" */
-function boDauChoTenFile(s) {
+/**
+ * "Gia phả họ Nguyễn Trọng Bậc" -> "gia-pha-ho-nguyen-trong-bac"
+ * Xuất ra ngoài vì `pages/export-image.js` (việc 12) tái dùng để đặt tên
+ * file ảnh — cùng luật đặt tên với file `.ged`, đừng viết lại lần hai.
+ */
+export function boDauChoTenFile(s) {
   return String(s)
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')

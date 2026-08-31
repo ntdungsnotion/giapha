@@ -3,8 +3,8 @@
 // Vai trò  : Màn hình Cài đặt — người trung tâm mặc định, tuỳ chọn hiển thị,
 //            đường sang Chọn gia phả · Sao lưu & khôi phục · Xuất/Nhập GEDCOM
 // Lớp      : pages — được phép gọi mọi lớp dưới
-// Phụ thuộc: state, services/gas, utils/text
-// Phiên bản: 1.16.1 · Cập nhật: 31/08/2026 08:00
+// Phụ thuộc: state, services/gas, utils/text, pages/export-image
+// Phiên bản: 1.19.0 · Cập nhật: 31/08/2026 23:10
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
@@ -56,6 +56,8 @@
 import { state, notify } from '../state.js';
 import { coMayChu, datNguoiTrungTamMacDinh, xoaNguoiTrungTamMacDinh } from '../services/gas.js';
 import { fullName, coGiaTri, doiSongNguoi } from '../utils/text.js';
+import { veLinkTai, inAnhRaster, dpiConDungDuoc, laManHinhMayTinh, DAI_DPI }
+  from './export-image.js';
 import { rongHop, caoHop, leLopPhu, RONG_NUT_TOI_DA } from '../config.js';
 
 let lopPhu = null;
@@ -76,21 +78,37 @@ let khoiMacDinh = null;
  * @param {{onDoiMacDinh?:function, onDoiHienThi?:function,
  *          onMoChonGiaPha?:function, onMoSaoLuu?:function,
  *          onMoXuatGedcom?:function, onDanhSachNguoi?:function,
- *          onDanhSachGiaDinh?:function}} [xuLy]
+ *          onDanhSachGiaDinh?:function, onXuatAnhPng?:function,
+ *          onInSoDo?:function, onXuatAnhDpi?:function,
+ *          onCoSoDo?:function}} [xuLy]
  *        chạy sau khi đặt hoặc bỏ mặc định thành công. Dùng callback thay vì
  *        `import` ngược `tree-view.js` — hai file cùng lớp `pages`, import
  *        vòng tròn thì một trong hai sẽ thấy hàm của file kia là `undefined`.
  *        `onDoiHienThi` chạy sau khi đổi một công tắc trong khối Hiển thị —
  *        nơi gọi phải VẼ LẠI sơ đồ, vì công tắc ngày giỗ đổi cả chiều cao ô.
  *        `onMoChonGiaPha` mở màn hình Chọn gia phả, `onMoSaoLuu` mở màn hình
- *        Sao lưu & khôi phục, `onMoXuatGedcom` mở màn hình Xuất GEDCOM, và
- *        hai `onDanhSach*` mở hai danh sách của khối Quản lý gia phả.
+ *        Sao lưu & khôi phục, `onMoXuatGedcom` mở màn hình Xuất GEDCOM, hai
+ *        `onDanhSach*` mở hai danh sách của khối Quản lý gia phả. `onXuatAnhPng`
+ *        (việc 12) trả về `Promise<{blob, tenFile}>` — dựng ảnh PNG của sơ đồ
+ *        đang hiện, KHÔNG tự tải về (xem `export-image.js`). `onInSoDo` mở
+ *        hộp thoại in của trình duyệt — gọi không tham số thì co vừa 1 trang
+ *        A4, gọi với một số (mm) thì bật chế độ khổ LỚN đúng bề ngang ấy,
+ *        bề dài tự tính theo tỷ lệ sơ đồ (khối "In khổ lớn" tự thêm khi có
+ *        callback này, không cần cấu hình riêng).
+ *
+ *        `onXuatAnhDpi(rongCm, dpi)` trả `Promise<{blob, tenFile, w, h,
+ *        rongMm, caoMm}>` — dựng ảnh RASTER đúng khổ giấy + độ phân giải yêu
+ *        cầu (đường thứ ba, xem `veKhoiAnhDpi`). `onCoSoDo()` trả
+ *        `{vbW, vbH}` (hoặc `null`) — TỶ LỆ sơ đồ đang hiện, chỉ để khối ấy
+ *        tự biết mức DPI nào vượt trần canvas mà mờ đi TRƯỚC khi người dùng
+ *        bấm. Thiếu `onCoSoDo` thì khối vẫn mọc, chỉ tính chặt hơn (coi sơ đồ
+ *        là hình vuông).
  *
  *        ⚠ **KHÔNG truyền một callback thì khối của nó KHÔNG MỌC RA**, và đó
  *        là cơ chế im lặng — màn hình vẫn mở bình thường, chỉ thiếu mất một
- *        khối. Bài kiểm và bộ chụp ảnh vì thế phải truyền ĐỦ cả bảy, kể cả
- *        khi chúng chỉ là hàm rỗng. Đã có lần thiếu bốn cái và `km-cai-dat.png`
- *        chụp một màn Cài đặt thiếu ba khối suốt nhiều bước mà không ai thấy
+ *        khối. Bài kiểm và bộ chụp ảnh vì thế phải truyền ĐỦ, kể cả khi chúng
+ *        chỉ là hàm rỗng. Đã có lần thiếu bốn cái và `km-cai-dat.png` chụp
+ *        một màn Cài đặt thiếu ba khối suốt nhiều bước mà không ai thấy
  *        (sửa 28/08/2026).
  */
 export function openSettings(xuLy = {}) {
@@ -408,20 +426,321 @@ function veKhoiSaoLuu(vao) {
 // xuất là việc CHỈ ĐỌC, nó không sửa một chữ nào trong gia phả.
 
 function veKhoiXuat(vao) {
-  if (!xuLyNgoai.onMoXuatGedcom) return null;
+  if (!xuLyNgoai.onMoXuatGedcom && !xuLyNgoai.onXuatAnhPng && !xuLyNgoai.onInSoDo
+      && !xuLyNgoai.onXuatAnhDpi) return null;
 
   const khoi = document.createElement('div');
   khoi.style.cssText = 'margin-top:20px';
   khoi.append(veNhanKhoi('Xuất dữ liệu'));
 
-  const b = nut('Xuất ra file GEDCOM (.ged)', false, true,
-                () => xuLyNgoai.onMoXuatGedcom());
-  b.dataset.viec = 'xuat-gedcom';
-  b.style.marginTop = '4px';
-  khoi.append(b);
+  if (xuLyNgoai.onMoXuatGedcom) {
+    const b = nut('Xuất ra file GEDCOM (.ged)', false, true,
+                  () => xuLyNgoai.onMoXuatGedcom());
+    b.dataset.viec = 'xuat-gedcom';
+    b.style.marginTop = '4px';
+    khoi.append(b);
+  }
+
+  veKhoiXuatAnh(khoi);
 
   vao.append(khoi);
   return khoi;
+}
+
+// ------------------------------------------------------------
+// Việc 12 — hai nút "xuất ảnh" bên trong khối Xuất dữ liệu
+// ------------------------------------------------------------
+//
+// Đứng CHUNG khối với GEDCOM (không phải một khối riêng): cả ba đều là
+// "mang gia phả ra khỏi app", đúng phân loại đã có. Nhưng chữ giải thích
+// phải nói ra điều làm chúng KHÁC nhau — GEDCOM xuất cả gia phả, ảnh chỉ
+// chụp đúng phần sơ đồ đang hiện trên màn hình — cùng bài học đã áp cho cặp
+// Sao lưu / Xuất GEDCOM ở trên.
+//
+// ⚠ Gate hai nút này theo `onXuatAnhPng`/`onInSoDo` RIÊNG với `onMoXuatGedcom`
+// — ba callback độc lập, thiếu một cái không kéo mất hai cái kia.
+function veKhoiXuatAnh(khoi) {
+  if (!xuLyNgoai.onXuatAnhPng && !xuLyNgoai.onInSoDo && !xuLyNgoai.onXuatAnhDpi) return;
+
+  const chu = document.createElement('div');
+  chu.textContent = 'Ảnh và PDF dưới đây chỉ chụp đúng PHẦN SƠ ĐỒ ĐANG HIỆN '
+                   + 'trên màn hình (theo đúng phạm vi đời đang chọn) — không '
+                   + 'phải toàn bộ gia phả như file GEDCOM ở trên.';
+  chu.style.cssText = 'font-size:12px;line-height:1.5;color:#8a8078;margin-top:10px';
+  khoi.append(chu);
+
+  if (xuLyNgoai.onXuatAnhPng) {
+    const ketQua = document.createElement('div');
+
+    const nutPng = nut('Chụp ảnh sơ đồ (.png)', false, true, async () => {
+      nutPng.disabled = true;
+      nutPng.style.opacity = '0.6';
+      nutPng.style.cursor = 'wait';
+      ketQua.textContent = 'Đang tạo ảnh...';
+      ketQua.style.cssText = 'font-size:13px;color:#8a8078;margin-top:8px';
+      try {
+        const { blob, tenFile } = await xuLyNgoai.onXuatAnhPng();
+        ketQua.textContent = '';
+        ketQua.append(veLinkTai(blob, tenFile, 'Tải ảnh PNG về máy'));
+      } catch (e) {
+        ketQua.textContent = 'Không tạo được ảnh: ' + (e && e.message ? e.message : String(e));
+      } finally {
+        nutPng.disabled = false;
+        nutPng.style.opacity = '1';
+        nutPng.style.cursor = 'pointer';
+      }
+    });
+    nutPng.dataset.viec = 'xuat-anh-png';
+    nutPng.style.marginTop = '8px';
+    khoi.append(nutPng, ketQua);
+  }
+
+  if (xuLyNgoai.onInSoDo) {
+    const nutIn = nut('In sơ đồ (lưu PDF từ hộp thoại in)', false, true,
+                       () => xuLyNgoai.onInSoDo());
+    nutIn.dataset.viec = 'in-so-do';
+    nutIn.style.marginTop = '8px';
+    khoi.append(nutIn);
+
+    veKhoiInKhoLon(khoi);
+  }
+
+  // Gate RIÊNG với `onInSoDo` — đường ảnh raster độ phân giải cao không dùng
+  // chung một callback nào với hai nút trên, thiếu cái này không kéo mất cái kia.
+  veKhoiAnhDpi(khoi);
+}
+
+/**
+ * In khổ LỚN — áp phích, bản vẽ kỹ thuật. Thêm 31/08/2026 sau khi chủ dự án
+ * đối chiếu MapInfo/MicroStation (đã ĐO trước khi xây, xem
+ * `kiem-thu/do-khong-lon.mjs` và ghi chú đầu `export-image.js`).
+ *
+ * ⚠ **Chỉ hỏi MỘT số — bề ngang.** Hỏi thêm bề cao rồi để người dùng tự gõ
+ * là mời họ BÓP MÉO sơ đồ nếu hai số không đúng tỷ lệ; `inSoDo()` tự tính bề
+ * cao theo đúng tỷ lệ sơ đồ đang có (như máy in cuộn: khổ rộng cố định theo
+ * cuộn giấy, khổ dài cắt theo nội dung).
+ */
+function veKhoiInKhoLon(khoi) {
+  const boc = document.createElement('div');
+  boc.style.cssText =
+    'margin-top:10px;padding:10px;border:1px solid #e6e0d8;border-radius:8px;' +
+    'background:#faf8f5';
+
+  const nhan = document.createElement('label');
+  nhan.textContent = 'In khổ LỚN (áp phích, bản vẽ) — bề ngang khổ giấy, cm:';
+  nhan.style.cssText = 'display:block;font-size:12px;color:#8a8078;margin-bottom:6px';
+  boc.append(nhan);
+
+  const hang = document.createElement('div');
+  hang.style.cssText = 'display:flex;gap:8px;align-items:stretch';
+
+  const oNhap = document.createElement('input');
+  oNhap.type = 'number';
+  oNhap.min = '10';
+  oNhap.max = '800';   // đã ĐO an toàn tới 800cm (8m) — xem do-khong-lon.mjs
+  oNhap.step = '1';
+  oNhap.value = '100';
+  oNhap.dataset.viec = 'rong-kho-lon-cm';
+  oNhap.style.cssText =
+    'width:80px;min-height:38px;padding:6px 8px;font-size:14px;font-family:inherit;' +
+    'border-radius:8px;border:1px solid #e6e0d8;box-sizing:border-box';
+
+  const nutInLon = nut('In khổ lớn (PDF)', false, true, () => {
+    const cm = Number(oNhap.value);
+    if (!(cm > 0)) { oNhap.focus(); return; }
+    xuLyNgoai.onInSoDo(cm * 10);   // cm -> mm
+  });
+  nutInLon.dataset.viec = 'in-kho-lon';
+  nutInLon.style.flex = '1';
+
+  hang.append(oNhap, nutInLon);
+  boc.append(hang);
+
+  const giaiThich = document.createElement('div');
+  giaiThich.textContent =
+    'Bề dài tự tính theo đúng tỷ lệ sơ đồ, không bóp méo. Khi hộp thoại in ' +
+    'hiện ra, chọn "Lưu thành PDF" (hoặc máy in PDF ảo khổ giấy tuỳ chỉnh) ' +
+    'để có file đúng kích thước, mang ra tiệm in khổ lớn. Ảnh đại diện thật ' +
+    'có thể mờ ở khổ này — chữ và đường kẻ vẫn nét.';
+  giaiThich.style.cssText = 'font-size:11px;line-height:1.5;color:#8a8078;margin-top:6px';
+  boc.append(giaiThich);
+
+  khoi.append(boc);
+}
+
+/**
+ * Ảnh RASTER độ phân giải cao — đường thứ ba, thêm 31/08/2026 theo đúng câu
+ * chủ dự án đặt ra: *"cho chọn máy in PDF trên máy tính + khổ giấy máy in ấy
+ * cho phép, độ phân giải 75–1200 DPI, sơ đồ co vừa khổ; không áp dụng cho
+ * điện thoại"*.
+ *
+ * Vì sao là một khối RIÊNG chứ không thêm ô DPI vào khối "In khổ lớn" ngay
+ * trên: hai khối in ra HAI THỨ khác hẳn nhau, và người dùng phải phân biệt
+ * được — đúng bài học của cặp "Sao lưu" / "Xuất GEDCOM".
+ *
+ *   · **In khổ lớn** in SVG sống → PDF **vector**: nét ở mọi cỡ phóng, file
+ *     nhẹ, chạy tới khổ 8 mét (đã đo), nhưng KHÔNG có DPI để chọn.
+ *   · **Khối này** dựng một tấm ảnh **raster** đúng số điểm ảnh yêu cầu — đó
+ *     là thứ mà máy in PDF ảo và tiệm in đòi khi họ nói "gửi file 600 DPI".
+ *
+ * ⚠ **Ô DPI mờ đi những mức KHÔNG dựng nổi, ngay khi đổi bề ngang khổ giấy.**
+ * Cho chọn hết rồi vỡ lúc bấm là đúng thứ phải tránh: trần canvas không phải
+ * con số tròn ai cũng đoán được (268 triệu điểm ảnh — A0 chỉ lên tới 300 DPI,
+ * A4 lên được tận 1200 DPI), và ở trên trần thì trình duyệt KHÔNG báo lỗi mà
+ * lặng lẽ trả về ảnh rỗng. Xem `kiem-thu/do-canvas-lon.mjs`.
+ *
+ * ⚠ **Chỉ vẽ trên MÁY TÍNH.** Trên điện thoại khối này không mọc ra — không
+ * có máy in PDF ảo để chọn khổ, và một canvas trăm triệu điểm ảnh trên điện
+ * thoại là chuyện khác hẳn trên máy để bàn.
+ */
+function veKhoiAnhDpi(khoi) {
+  if (!xuLyNgoai.onXuatAnhDpi) return;
+  if (!laManHinhMayTinh()) return;
+
+  const boc = document.createElement('div');
+  boc.dataset.viec = 'khoi-anh-dpi';
+  boc.style.cssText =
+    'margin-top:10px;padding:10px;border:1px solid #e6e0d8;border-radius:8px;' +
+    'background:#faf8f5';
+
+  const nhan = document.createElement('label');
+  nhan.textContent = 'Ảnh độ phân giải cao (gửi máy in PDF, tiệm in) — bề ngang khổ giấy, cm:';
+  nhan.style.cssText = 'display:block;font-size:12px;color:#8a8078;margin-bottom:6px';
+  boc.append(nhan);
+
+  const hang = document.createElement('div');
+  hang.style.cssText = 'display:flex;gap:8px;align-items:stretch;flex-wrap:wrap';
+
+  const oNhap = document.createElement('input');
+  oNhap.type = 'number';
+  oNhap.min = '5';
+  oNhap.max = '800';
+  oNhap.step = '1';
+  oNhap.value = '84';   // đúng bề ngang khổ A0 (841mm) — khổ tiệm in hay nhận nhất
+  oNhap.dataset.viec = 'rong-anh-dpi-cm';
+  oNhap.style.cssText =
+    'width:80px;min-height:38px;padding:6px 8px;font-size:14px;font-family:inherit;' +
+    'border-radius:8px;border:1px solid #e6e0d8;box-sizing:border-box';
+
+  const oDpi = document.createElement('select');
+  oDpi.dataset.viec = 'chon-dpi';
+  oDpi.style.cssText =
+    'flex:1;min-width:150px;min-height:38px;padding:6px 8px;font-size:14px;' +
+    'font-family:inherit;border-radius:8px;border:1px solid #e6e0d8;box-sizing:border-box';
+  for (const dpi of DAI_DPI) {
+    const o = document.createElement('option');
+    o.value = String(dpi);
+    o.textContent = dpi + ' DPI';
+    oDpi.append(o);
+  }
+  oDpi.value = '300';
+
+  hang.append(oNhap, oDpi);
+  boc.append(hang);
+
+  const canhBao = document.createElement('div');
+  canhBao.dataset.viec = 'canh-bao-dpi';
+  canhBao.style.cssText = 'font-size:11px;line-height:1.5;color:#8a8078;margin-top:6px';
+  boc.append(canhBao);
+
+  const ketQua = document.createElement('div');
+
+  /**
+   * Mờ những mức DPI vượt trần canvas với bề ngang đang gõ, và kéo lựa chọn
+   * hiện tại về mức cao nhất còn dùng được nếu nó vừa bị mờ.
+   *
+   * Tỷ lệ sơ đồ lấy qua callback `onCoSoDo` — màn hình này không được chạm
+   * vào `svgEl` (của `tree-view.js`). Không có callback thì coi sơ đồ VUÔNG
+   * (tỷ lệ 1:1): đó là giả thiết CHẶT NHẤT, thà mờ nhầm một mức còn dùng được
+   * hơn là cho chọn một mức sẽ vỡ.
+   */
+  function capNhatDpi() {
+    const co = xuLyNgoai.onCoSoDo ? xuLyNgoai.onCoSoDo() : null;
+    const vbW = co && co.vbW > 0 ? co.vbW : 1;
+    const vbH = co && co.vbH > 0 ? co.vbH : 1;
+    const cm = Number(oNhap.value);
+    const dungDuoc = dpiConDungDuoc(cm, vbW, vbH);
+
+    for (const o of oDpi.options) {
+      const duoc = dungDuoc.indexOf(Number(o.value)) !== -1;
+      o.disabled = !duoc;
+      o.textContent = o.value + ' DPI' + (duoc ? '' : ' — quá lớn, không dựng nổi');
+    }
+
+    if (!dungDuoc.length) {
+      oDpi.disabled = true;
+      canhBao.textContent =
+        'Khổ ' + (cm > 0 ? cm + 'cm' : 'này') + ' quá lớn: không mức nào trong ' +
+        '75–1200 DPI dựng nổi thành ảnh. Hãy giảm bề ngang, hoặc dùng "In khổ ' +
+        'lớn (PDF)" ở trên — đường ấy là PDF vector nên không có trần này.';
+      return;
+    }
+
+    oDpi.disabled = false;
+    if (dungDuoc.indexOf(Number(oDpi.value)) === -1) {
+      oDpi.value = String(dungDuoc[dungDuoc.length - 1]);
+    }
+    const caoNhat = dungDuoc[dungDuoc.length - 1];
+    canhBao.textContent = caoNhat < DAI_DPI[DAI_DPI.length - 1]
+      ? 'Ở bề ngang ' + cm + 'cm, trình duyệt chỉ dựng nổi tới ' + caoNhat +
+        ' DPI — các mức cao hơn đã mờ đi. Cần nét hơn nữa thì dùng "In khổ ' +
+        'lớn (PDF)" ở trên: PDF vector nét ở mọi cỡ phóng.'
+      : 'Bề dài tự tính theo đúng tỷ lệ sơ đồ, không bóp méo. Ảnh càng nhiều ' +
+        'DPI càng lâu và càng nặng — 300 DPI đã đủ cho hầu hết tiệm in.';
+  }
+
+  oNhap.addEventListener('input', capNhatDpi);
+  capNhatDpi();
+
+  const nutTao = nut('Tạo ảnh độ phân giải cao', false, true, async () => {
+    nutTao.disabled = true;
+    nutTao.style.opacity = '0.6';
+    nutTao.style.cursor = 'wait';
+    ketQua.textContent = 'Đang tạo ảnh...';
+    ketQua.style.cssText = 'font-size:13px;color:#8a8078;margin-top:8px';
+    try {
+      const anh = await xuLyNgoai.onXuatAnhDpi(Number(oNhap.value), Number(oDpi.value));
+      ketQua.textContent = '';
+
+      const doDuoc = document.createElement('div');
+      doDuoc.textContent = 'Đã tạo ảnh ' + anh.w + '×' + anh.h + ' điểm ảnh — khổ ' +
+                           Math.round(anh.rongMm / 10) + '×' + Math.round(anh.caoMm / 10) + 'cm.';
+      doDuoc.style.cssText = 'font-size:12px;color:#8a8078;margin-top:8px';
+      ketQua.append(doDuoc);
+
+      // ⚠ Dùng LẠI đúng object URL mà `veLinkTai()` vừa tạo (`a.href`) cho nút
+      // in, thay vì gọi `URL.createObjectURL(blob)` lần thứ hai: hai địa chỉ
+      // cho cùng một tấm ảnh nghĩa là hai bản nằm trong bộ nhớ, mà tấm ảnh này
+      // có thể nặng vài chục MB.
+      const link = veLinkTai(anh.blob, anh.tenFile, 'Tải ảnh về máy');
+      ketQua.append(link);
+
+      const nutIn = nut('Gửi tới máy in / Lưu PDF', false, true,
+                        () => inAnhRaster(link.href, anh.rongMm, anh.caoMm));
+      nutIn.dataset.viec = 'in-anh-dpi';
+      nutIn.style.marginTop = '8px';
+      ketQua.append(nutIn);
+
+      const nhacIn = document.createElement('div');
+      nhacIn.textContent =
+        'Trong hộp thoại in, chọn máy in PDF (hoặc "Lưu thành PDF") rồi đặt ' +
+        'khổ giấy đúng bằng khổ trên. Nhớ bật "In hình nền / Background graphics" ' +
+        'nếu máy in bỏ mất nền.';
+      nhacIn.style.cssText = 'font-size:11px;line-height:1.5;color:#8a8078;margin-top:6px';
+      ketQua.append(nhacIn);
+    } catch (e) {
+      ketQua.textContent = 'Không tạo được ảnh: ' + (e && e.message ? e.message : String(e));
+    } finally {
+      nutTao.disabled = false;
+      nutTao.style.opacity = '1';
+      nutTao.style.cursor = 'pointer';
+    }
+  });
+  nutTao.dataset.viec = 'tao-anh-dpi';
+  nutTao.style.marginTop = '8px';
+
+  boc.append(nutTao, ketQua);
+  khoi.append(boc);
 }
 
 // ============================================================
