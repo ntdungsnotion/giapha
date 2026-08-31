@@ -4,7 +4,7 @@
 //            cửa duy nhất khai điểm neo cho chế độ NHẬP BỔ SUNG
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/gedcom, utils/text, config
-// Phiên bản: 1.8.0 · Cập nhật: 30/08/2026 18:40
+// Phiên bản: 1.8.1 · Cập nhật: 31/08/2026 15:20
 // ============================================================
 //
 // Ý lấy từ phần mềm bản đồ, chủ dự án nêu 29/08/2026: chọn điểm A trên bản đồ
@@ -969,7 +969,8 @@ function hienDem() {
 const LY_DO_CHAN = {
   cayRong:
     'Gia phả đang mở chưa có ai, nên không có người nào để khai điểm neo. ' +
-    'Đường đúng của ca này là nút “Tạo gia phả mới và ghi vào đó” ở màn Nhập GEDCOM.',
+    'Đường đúng của ca này là nút “Tạo gia phả mới và ghi vào đó” ở màn ' +
+    'Nhập GEDCOM/Excel.',
   // ⚠ Câu này phải kể luôn ĐƯỜNG RA của ca "file toàn người mới". Chủ dự án
   // chốt 30/08/2026: file không có ai đã ở trong cây thì bổ sung là sai cửa —
   // cửa đúng là tạo một gia phả MỚI, và cửa ấy đứng ngay bước trước. Trước
