@@ -6,7 +6,7 @@
 //            utils/{text,glyph}, config,
 //            pages/{person-detail,person-edit,person-list,review,settings,
 //            backup,chon-gia-pha,import-export,export-image}
-// Phiên bản: 1.36.0 · Cập nhật: 31/08/2026 23:10
+// Phiên bản: 1.36.1 · Cập nhật: 01/09/2026 08:20
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -83,7 +83,8 @@ import { openBackup, closeBackup } from './backup.js';
 import { openChonGiaPha, closeChonGiaPha } from './chon-gia-pha.js';
 import { openXuatGedcom, closeXuatGedcom, openNhapGedcom, closeNhapGedcom }
   from './import-export.js';
-import { xuatAnhPNG, inSoDo, xuatAnhDoPhanGiaiCao, docCoSoDo } from './export-image.js';
+import { xuatAnhPNG, inSoDo, xuatAnhDoPhanGiaiCao, xuatPdfDoPhanGiaiCao, docCoSoDo }
+  from './export-image.js';
 import { veBieuTuongTron } from '../utils/glyph.js';
 import { rongHop, caoHop, leLopPhu } from '../config.js';
 
@@ -843,6 +844,11 @@ function veHopNutTrenPhai() {
       // khác ở chỗ nó nhận hai số người dùng vừa gõ.
       onXuatAnhDpi: (rongCm, dpi) =>
         xuatAnhDoPhanGiaiCao(svgEl, state.tree, rongCm, dpi),
+      // Cùng khổ, cùng DPI, nhưng ra thẳng file PDF — khổ giấy nằm trong
+      // chính file nên không hộp thoại in nào ghi đè được (sự cố novaPDF
+      // 01/09/2026, xem `export-image.js`).
+      onXuatPdfDpi: (rongCm, dpi) =>
+        xuatPdfDoPhanGiaiCao(svgEl, state.tree, rongCm, dpi),
       // Chỉ ĐỌC tỷ lệ sơ đồ, không vẽ gì. `settings.js` cần nó để tự biết mức
       // DPI nào vượt trần canvas mà mờ đi TRƯỚC khi người dùng bấm — nó không
       // được chạm vào `svgEl`, `svgEl` là của file này.

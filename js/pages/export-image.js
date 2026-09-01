@@ -4,7 +4,7 @@
 //            cao theo khổ giấy + DPI · in ra PDF qua hộp thoại in
 // Lớp      : pages — được gọi bởi: tree-view (có `svgEl`) · settings (nút + link)
 // Phụ thuộc: domains/gedcom.js (boDauChoTenFile — tái dùng luật đặt tên file)
-// Phiên bản: 0.4.0 · Cập nhật: 01/09/2026 07:40
+// Phiên bản: 0.5.0 · Cập nhật: 01/09/2026 08:20
 // ============================================================
 //
 // VIỆC 12 của kế hoạch. Nguồn gốc: mã nháp Antigravity
@@ -310,6 +310,125 @@ export function dpiConDungDuoc(rongCm, vbW, vbH) {
   });
 }
 
+// ============================================================
+// TỰ DỰNG FILE PDF — khổ giấy ghi thẳng vào file, không ai ghi đè
+// ============================================================
+//
+// ⚠ **Vì sao phải tự dựng, thay vì đi tiếp qua hộp thoại in** (chốt
+// 01/09/2026, sau khi chủ dự án thử lần hai và báo *"xuất pdf chưa đạt"*):
+//
+// Đo `tai-lieu/anh/xuatpdf-2.pdf` — bản novaPDF sinh ra SAU khi đã sửa CSS in:
+// khổ trang vẫn **Letter 216×279mm**, mực lấp đầy **90,5%×98,6%** trang, nét
+// mỏng nhất **0,085mm**. Tức hình KHÔNG hề bị đặt sai chỗ hay co nhầm — nó
+// lấp gần kín trang, đúng như CSS mới bắt nó làm. Thứ sai duy nhất là **khổ
+// giấy**: nhồi 400 người vào bề ngang 19,5cm thì chữ nhỏ hơn sợi tóc, và
+// không cách viết CSS nào chữa được điều đó.
+//
+// Mà khổ giấy ấy nằm ngoài tầm với của app: `@page size` chỉ có tác dụng với
+// "Lưu thành PDF" của chính Chrome; một trình điều khiển máy in (novaPDF,
+// Microsoft Print to PDF…) lấy khổ từ cài đặt của CHÍNH NÓ. Bảo người dùng
+// *"vào cài đặt máy in ảo đặt khổ tuỳ chỉnh trước đã"* là đẩy phần khó nhất
+// sang cho người không lập trình — đúng thứ `CLAUDE.md` mục 2 dặn đừng làm.
+//
+// Nên đường chắc chắn là: **app tự ghi lấy file PDF**. Khổ giấy nằm trong
+// `/MediaBox` của chính file, không hộp thoại nào, không trình điều khiển nào
+// chen vào được. Mở ra ở đâu cũng đúng 84×6,2cm nếu đã đặt 84cm.
+//
+// ⚠ **Không thêm thư viện nào** (`CLAUDE.md` mục 3): một PDF chứa ĐÚNG MỘT
+// tấm ảnh là loại file đơn giản nhất của định dạng ấy — năm đối tượng và một
+// bảng `xref`. Viết tay chưa tới trăm dòng, còn `jsPDF` từ CDN thì nặng 300KB
+// và phải hỏi chủ dự án trước.
+//
+// ⚠ **Ảnh nhúng là JPEG, không phải PNG.** PDF nhận thẳng luồng JPEG qua bộ
+// lọc `/DCTDecode` — chép nguyên byte, không phải giải nén rồi nén lại. PNG
+// thì PDF KHÔNG nhận, muốn nhúng phải đọc `getImageData()` ra byte thô: một
+// tấm 139 triệu điểm ảnh thành **417 MB** trong bộ nhớ, đủ giết cả thẻ trình
+// duyệt. Đây là đổi chác có chủ ý: mất một chút ở rìa chữ (JPEG chất lượng
+// 0,95), đổi lấy việc khổ lớn CHẠY ĐƯỢC THẬT thay vì hết bộ nhớ.
+
+/** 1 inch = 72 point trong PDF. Khổ giấy trong `/MediaBox` tính bằng point. */
+const PT_MOI_INCH = 72;
+
+/**
+ * Gói một tấm ảnh JPEG thành một file PDF một trang, khổ giấy ĐÚNG bằng số mm
+ * yêu cầu, ảnh phủ kín trang.
+ *
+ * Viết tay theo đúng cấu trúc PDF tối giản — xem khối ghi chú ngay trên về lý
+ * do không dùng thư viện. Bảng `xref` đòi **vị trí byte tuyệt đối** của từng
+ * đối tượng, nên phải dựng bằng mảng byte và đếm dọc đường; nối chuỗi rồi mới
+ * đổi sang byte là hỏng ngay khi có một chữ tiếng Việt lọt vào.
+ *
+ * @param {Uint8Array} jpeg   byte JPEG (baseline) của tấm ảnh
+ * @param {number} wPx        bề ngang ảnh, điểm ảnh
+ * @param {number} hPx        bề cao ảnh, điểm ảnh
+ * @param {number} rongMm     bề ngang KHỔ GIẤY, mm
+ * @param {number} caoMm      bề cao KHỔ GIẤY, mm
+ * @returns {Blob}            file PDF
+ */
+export function goiJpegThanhPdf(jpeg, wPx, hPx, rongMm, caoMm) {
+  const rongPt = rongMm / MM_MOI_INCH * PT_MOI_INCH;
+  const caoPt  = caoMm  / MM_MOI_INCH * PT_MOI_INCH;
+  const so = (n) => n.toFixed(4).replace(/\.?0+$/, '');
+
+  const phan = [];      // từng mảnh, chuỗi latin1 hoặc Uint8Array
+  let daiHienTai = 0;
+  const viTri = {};     // số hiệu đối tượng -> vị trí byte
+
+  const them = (x) => {
+    phan.push(x);
+    daiHienTai += typeof x === 'string' ? x.length : x.length;
+  };
+  const doiTuong = (soHieu, than) => {
+    viTri[soHieu] = daiHienTai;
+    them(soHieu + ' 0 obj\n' + than + '\nendobj\n');
+  };
+
+  them('%PDF-1.4\n');
+  // Dòng bốn byte cao — quy ước để phần mềm cũ nhận ra đây là file NHỊ PHÂN.
+  them(new Uint8Array([0x25, 0xE2, 0xE3, 0xCF, 0xD3, 0x0A]));
+
+  doiTuong(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  doiTuong(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+  doiTuong(3,
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + so(rongPt) + ' ' + so(caoPt) + ']' +
+    ' /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>');
+
+  // Ảnh. `/DCTDecode` = luồng JPEG nguyên xi.
+  viTri[4] = daiHienTai;
+  them('4 0 obj\n<< /Type /XObject /Subtype /Image /Width ' + wPx + ' /Height ' + hPx +
+       ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' +
+       jpeg.length + ' >>\nstream\n');
+  them(jpeg);
+  them('\nendstream\nendobj\n');
+
+  // Vẽ ảnh phủ kín trang: ma trận [rộng 0 0 cao 0 0] rồi `Do`.
+  const noiDung = 'q\n' + so(rongPt) + ' 0 0 ' + so(caoPt) + ' 0 0 cm\n/Im0 Do\nQ\n';
+  doiTuong(5, '<< /Length ' + noiDung.length + ' >>\nstream\n' + noiDung + 'endstream');
+
+  const viTriXref = daiHienTai;
+  let xref = 'xref\n0 6\n0000000000 65535 f \n';
+  for (let i = 1; i <= 5; i++) {
+    xref += String(viTri[i]).padStart(10, '0') + ' 00000 n \n';
+  }
+  them(xref);
+  them('trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n' + viTriXref + '\n%%EOF\n');
+
+  // Ghép: chuỗi đổi sang byte theo latin1 (mọi ký tự đều < 256 — đã cố ý
+  // không cho một chữ tiếng Việt nào vào phần cấu trúc).
+  const gom = new Uint8Array(daiHienTai);
+  let cho = 0;
+  for (const x of phan) {
+    if (typeof x === 'string') {
+      for (let i = 0; i < x.length; i++) gom[cho + i] = x.charCodeAt(i) & 0xff;
+      cho += x.length;
+    } else {
+      gom.set(x, cho);
+      cho += x.length;
+    }
+  }
+  return new Blob([gom], { type: 'application/pdf' });
+}
+
 /**
  * Dựng ảnh PNG raster đúng khổ giấy + độ phân giải yêu cầu. KHÔNG tự tải về —
  * trả blob, nơi gọi dựng link bằng `veLinkTai()` (xem ghi chú đầu file).
@@ -346,6 +465,45 @@ export async function xuatAnhDoPhanGiaiCao(svgEl, tree, rongCm, dpi) {
     h,
     rongMm,
     caoMm: rongMm * (vbH / vbW),
+  };
+}
+
+/**
+ * Dựng thẳng một file **PDF** đúng khổ giấy + độ phân giải yêu cầu, KHÔNG đi
+ * qua hộp thoại in. Đây là đường DUY NHẤT bảo đảm được khổ giấy — xem khối
+ * "TỰ DỰNG FILE PDF" ở trên về vì sao hộp thoại in không bảo đảm nổi.
+ *
+ * Cùng một ruột với `xuatAnhDoPhanGiaiCao()` (cùng cách tính số điểm ảnh,
+ * cùng phép chặn trần canvas), chỉ khác hai chỗ: ảnh dựng ra ở dạng JPEG để
+ * nhúng thẳng được vào PDF, và kết quả gói lại bằng `goiJpegThanhPdf()`.
+ *
+ * @param {SVGSVGElement} svgEl
+ * @param {object} [tree]    chỉ để đặt tên file
+ * @param {number} rongCm    bề ngang khổ giấy, cm
+ * @param {number} dpi       điểm ảnh mỗi inch (75–1200)
+ * @returns {Promise<{blob: Blob, tenFile: string, w: number, h: number,
+ *                    rongMm: number, caoMm: number}>}
+ */
+export async function xuatPdfDoPhanGiaiCao(svgEl, tree, rongCm, dpi) {
+  const { vbW, vbH } = docCoSoDoBatBuoc(svgEl);
+  if (!(rongCm > 0)) throw new Error('Chưa nhập bề ngang khổ giấy.');
+  if (!(dpi > 0)) throw new Error('Chưa chọn độ phân giải.');
+
+  const { w, h } = tinhCoAnhTheoDpi(rongCm, dpi, vbW, vbH);
+  kiemTranCanvas(w, h);
+
+  const jpegBlob = await dungBlobPngTuSvg(svgEl, w, h, 'image/jpeg');
+  const jpeg = new Uint8Array(await jpegBlob.arrayBuffer());
+
+  const rongMm = rongCm * 10;
+  const caoMm = rongMm * (vbH / vbW);
+  return {
+    blob: goiJpegThanhPdf(jpeg, w, h, rongMm, caoMm),
+    tenFile: tenFileAnh(tree, 'pdf', Math.round(rongCm) + 'cm-' + dpi + 'dpi'),
+    w,
+    h,
+    rongMm,
+    caoMm,
   };
 }
 
@@ -635,7 +793,7 @@ export function docCoSoDo(svgEl) {
  * Chép hai bản là để hai bản trôi dần khỏi nhau: sửa lỗi CORS ở bản này quên
  * bản kia thì đường xuất khổ lớn lặng lẽ mất ảnh mà không ai biết.
  */
-async function dungBlobPngTuSvg(svgEl, w, h) {
+async function dungBlobPngTuSvg(svgEl, w, h, kieu) {
   const { vbX, vbY, vbW, vbH } = docCoSoDoBatBuoc(svgEl);
 
   const ban = svgEl.cloneNode(true);
@@ -683,7 +841,8 @@ async function dungBlobPngTuSvg(svgEl, w, h) {
         : reject(new Error('Trình duyệt không tạo được ảnh ' + w + '×' + h +
                            ' điểm ảnh — máy có thể không đủ bộ nhớ. ' +
                            'Hãy giảm độ phân giải hoặc bề ngang khổ giấy.'))),
-      'image/png',
+      kieu || 'image/png',
+      kieu === 'image/jpeg' ? 0.95 : undefined,
     );
   });
 }

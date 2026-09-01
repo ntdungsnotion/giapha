@@ -4,7 +4,7 @@
 //            đường sang Chọn gia phả · Sao lưu & khôi phục · Xuất/Nhập GEDCOM
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, services/gas, utils/text, pages/export-image
-// Phiên bản: 1.20.0 · Cập nhật: 01/09/2026 07:40
+// Phiên bản: 1.21.0 · Cập nhật: 01/09/2026 08:20
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
@@ -80,7 +80,7 @@ let khoiMacDinh = null;
  *          onMoXuatGedcom?:function, onDanhSachNguoi?:function,
  *          onDanhSachGiaDinh?:function, onXuatAnhPng?:function,
  *          onInSoDo?:function, onXuatAnhDpi?:function,
- *          onCoSoDo?:function}} [xuLy]
+ *          onXuatPdfDpi?:function, onCoSoDo?:function}} [xuLy]
  *        chạy sau khi đặt hoặc bỏ mặc định thành công. Dùng callback thay vì
  *        `import` ngược `tree-view.js` — hai file cùng lớp `pages`, import
  *        vòng tròn thì một trong hai sẽ thấy hàm của file kia là `undefined`.
@@ -98,7 +98,10 @@ let khoiMacDinh = null;
  *
  *        `onXuatAnhDpi(rongCm, dpi)` trả `Promise<{blob, tenFile, w, h,
  *        rongMm, caoMm}>` — dựng ảnh RASTER đúng khổ giấy + độ phân giải yêu
- *        cầu (đường thứ ba, xem `veKhoiAnhDpi`). `onCoSoDo()` trả
+ *        cầu (đường thứ ba, xem `veKhoiAnhDpi`). `onXuatPdfDpi(rongCm, dpi)`
+ *        cùng khuôn ấy nhưng trả về file PDF app TỰ DỰNG — khổ giấy nằm trong
+ *        chính file nên không hộp thoại in nào ghi đè được (sự cố novaPDF
+ *        01/09/2026). `onCoSoDo()` trả
  *        `{vbW, vbH}` (hoặc `null`) — TỶ LỆ sơ đồ đang hiện, chỉ để khối ấy
  *        tự biết mức DPI nào vượt trần canvas mà mờ đi TRƯỚC khi người dùng
  *        bấm. Thiếu `onCoSoDo` thì khối vẫn mọc, chỉ tính chặt hơn (coi sơ đồ
@@ -737,20 +740,20 @@ function veKhoiAnhDpi(khoi) {
       const link = veLinkTai(anh.blob, anh.tenFile, 'Tải ảnh về máy');
       ketQua.append(link);
 
-      const nutIn = nut('Gửi tới máy in / Lưu PDF', false, true,
+      const nutIn = nut('Gửi tới máy in', false, true,
                         () => inAnhRaster(link.href, anh.rongMm, anh.caoMm));
       nutIn.dataset.viec = 'in-anh-dpi';
       nutIn.style.marginTop = '8px';
       ketQua.append(nutIn);
 
       const nhacIn = document.createElement('div');
+      // ⚠ Câu này sửa 01/09/2026: nút "Gửi tới máy in" KHÔNG còn được quảng
+      // cáo là đường lấy PDF nữa. Đường lấy PDF đúng khổ là nút PDF riêng ở
+      // trên — nó tự dựng file, không ai ghi đè khổ giấy được.
       nhacIn.textContent =
-        'Trong hộp thoại in, đặt khổ giấy đúng bằng khổ trên rồi hãy in — nếu ' +
-        'chọn máy in PDF ảo thì phải đặt khổ tuỳ chỉnh trong cài đặt của chính ' +
-        'máy in ấy, vì khổ app đặt không tới được nó. Ảnh vẫn tự co vừa khổ ' +
-        'giấy thật nên không bao giờ méo hay tràn, chỉ là nhỏ hơn ý muốn. Nhớ ' +
-        'bật "In hình nền / Background graphics" nếu máy in bỏ mất nền. Không ' +
-        'cần in thì cứ tải thẳng file ảnh ở nút trên, mang ra tiệm.';
+        'Nút này mở hộp thoại in của máy — khổ giấy sẽ do chính máy in quyết ' +
+        'định, không phải khổ đã gõ ở trên. Muốn đúng khổ thì dùng nút "Tải ' +
+        'file PDF" bên trên.';
       nhacIn.style.cssText = 'font-size:11px;line-height:1.5;color:#8a8078;margin-top:6px';
       ketQua.append(nhacIn);
     } catch (e) {
@@ -763,6 +766,47 @@ function veKhoiAnhDpi(khoi) {
   });
   nutTao.dataset.viec = 'tao-anh-dpi';
   nutTao.style.marginTop = '8px';
+
+  // --- Nút PDF — đường DUY NHẤT bảo đảm đúng khổ giấy ----------------------
+  //
+  // ⚠ Đứng TRƯỚC nút ảnh và tô đậm (nút chính), vì đây mới là thứ chủ dự án
+  // cần khi mang ra tiệm in: khổ giấy nằm trong chính file PDF, không hộp
+  // thoại in nào, không máy in ảo nào ghi đè được. Sự cố 01/09/2026 (novaPDF
+  // ra khổ Letter) đẻ ra đúng cái nút này — xem `export-image.js`.
+  const nutPdf = xuLyNgoai.onXuatPdfDpi
+    ? nut('Tải file PDF đúng khổ', true, true, async () => {
+        nutPdf.disabled = true;
+        nutPdf.style.opacity = '0.6';
+        nutPdf.style.cursor = 'wait';
+        ketQua.textContent = 'Đang dựng file PDF...';
+        ketQua.style.cssText = 'font-size:13px;color:#8a8078;margin-top:8px';
+        try {
+          const pdf = await xuLyNgoai.onXuatPdfDpi(Number(oNhap.value), Number(oDpi.value));
+          ketQua.textContent = '';
+
+          const doDuoc = document.createElement('div');
+          doDuoc.dataset.viec = 'co-pdf-dpi';
+          doDuoc.textContent =
+            'PDF khổ ' + (pdf.rongMm / 10).toFixed(1) + '×' + (pdf.caoMm / 10).toFixed(1) +
+            'cm, ảnh bên trong ' + pdf.w + '×' + pdf.h + ' điểm ảnh. Khổ này nằm ' +
+            'trong chính file — mở ở đâu, in ở tiệm nào cũng đúng bằng đó.';
+          doDuoc.style.cssText = 'font-size:12px;line-height:1.5;color:#8a8078;margin-top:8px';
+          ketQua.append(doDuoc);
+          ketQua.append(veLinkTai(pdf.blob, pdf.tenFile, 'Tải file PDF về máy'));
+        } catch (e) {
+          ketQua.textContent = 'Không dựng được PDF: ' + (e && e.message ? e.message : String(e));
+        } finally {
+          nutPdf.disabled = false;
+          nutPdf.style.opacity = '1';
+          nutPdf.style.cursor = 'pointer';
+        }
+      })
+    : null;
+  if (nutPdf) {
+    nutPdf.dataset.viec = 'tao-pdf-dpi';
+    nutPdf.style.marginTop = '8px';
+    boc.append(nutPdf);
+  }
 
   boc.append(nutTao, ketQua);
   khoi.append(boc);
