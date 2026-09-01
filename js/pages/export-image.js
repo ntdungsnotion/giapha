@@ -3,7 +3,9 @@
 // Vai trò  : Xuất sơ đồ ĐANG HIỂN THỊ thành ảnh PNG · ảnh raster độ phân giải
 //            cao theo khổ giấy + DPI · in ra PDF qua hộp thoại in
 // Lớp      : pages — được gọi bởi: tree-view (có `svgEl`) · settings (nút + link)
-// Phụ thuộc: domains/gedcom.js (boDauChoTenFile — tái dùng luật đặt tên file)
+// Phụ thuộc: domains/gedcom.js (boDauChoTenFile — tái dùng luật đặt tên file),
+//            domains/render.js (VE.chuTen — cỡ chữ, để tính ngược khổ giấy),
+//            config.js (PHOTO — cỡ hai bản ảnh nhỏ/lớn)
 // Phiên bản: 0.8.0 · Cập nhật: 01/09/2026 11:40
 // ============================================================
 //
