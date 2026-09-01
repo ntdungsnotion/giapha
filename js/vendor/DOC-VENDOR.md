@@ -55,9 +55,23 @@ Bốn lý do đổi:
    Gói phát hành của SheetJS **không có file `NOTICE`**, nên không có gì thêm
    phải kèm.
 
-Cái giá phải trả: repo nặng thêm 1 MB. Chấp nhận được — GitHub Pages nén gzip
-khi gửi, và file chỉ được tải khi người dùng thật sự bấm nhập Excel
-(`import()` động, không nằm trong đường khởi động app).
+Cái giá phải trả: repo nặng thêm 1 MB. **Đã đo trên GitHub Pages thật ngay sau
+lần đẩy đầu tiên (01/09/2026)**, không phải phỏng đoán:
+
+```
+Content-Type   : text/javascript; charset=utf-8   ← trình duyệt import() được
+Content-Length : 1.008.308 byte
+Tải thật (gzip):   257.031 byte                   ← Pages tự nén, ~1/4
+```
+
+Kiểu MIME của đuôi `.mjs` là chỗ đáng ngờ nhất của cả lần đổi này — máy chủ nào
+trả `text/plain` là trình duyệt từ chối nạp module, và **hỏng ấy chỉ hiện ra
+trên Pages chứ không hiện khi chạy bằng Node**. Nên có một bài kiểm riêng cho
+nó: `kiem-thu/kiem-vendor-xlsx.mjs` chạy Chrome thật, nạp thư viện qua HTTP rồi
+đọc trọn một file Excel bé xíu.
+
+Và file chỉ được tải khi người dùng thật sự bấm nhập Excel (`import()` động,
+không nằm trong đường khởi động app).
 
 ## Vì sao là bản `xlsx.mjs` 1 MB, không phải bản nén 279 KB
 
