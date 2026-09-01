@@ -4,7 +4,7 @@
 //            đường sang Chọn gia phả · Sao lưu & khôi phục · Xuất/Nhập GEDCOM
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, services/gas, utils/text, pages/export-image
-// Phiên bản: 1.21.0 · Cập nhật: 01/09/2026 08:20
+// Phiên bản: 1.22.0 · Cập nhật: 01/09/2026 09:10
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
@@ -717,7 +717,13 @@ function veKhoiAnhDpi(khoi) {
   oNhap.addEventListener('input', capNhatDpi);
   capNhatDpi();
 
-  const nutTao = nut('Tạo ảnh độ phân giải cao', false, true, async () => {
+  // ⚠ NÚT CHÍNH (nền đậm) là nút ẢNH, không phải nút PDF — sửa 01/09/2026.
+  // Bản trước tôi cho nút PDF (thứ chưa ai xác nhận chạy được) lên làm nút
+  // chính và đẩy nút ảnh xuống dưới; chủ dự án thử xong báo *"mất chức năng
+  // xuất ảnh lớn cũ, cái tôi nói đã đạt"*. Nút ảnh vẫn còn trong mã, nhưng
+  // với người dùng thì thứ bị đẩy khỏi chỗ quen thuộc là thứ đã mất.
+  // **Nếp: thứ ĐÃ ĐƯỢC NGHIỆM THU giữ chỗ của nó; thứ mới đứng bên cạnh.**
+  const nutTao = nut('Tạo ảnh độ phân giải cao', true, true, async () => {
     nutTao.disabled = true;
     nutTao.style.opacity = '0.6';
     nutTao.style.cursor = 'wait';
@@ -774,7 +780,7 @@ function veKhoiAnhDpi(khoi) {
   // thoại in nào, không máy in ảo nào ghi đè được. Sự cố 01/09/2026 (novaPDF
   // ra khổ Letter) đẻ ra đúng cái nút này — xem `export-image.js`.
   const nutPdf = xuLyNgoai.onXuatPdfDpi
-    ? nut('Tải file PDF đúng khổ', true, true, async () => {
+    ? nut('Tải file PDF đúng khổ (cùng ảnh trên, gói vào PDF)', false, true, async () => {
         nutPdf.disabled = true;
         nutPdf.style.opacity = '0.6';
         nutPdf.style.cursor = 'wait';
@@ -802,13 +808,14 @@ function veKhoiAnhDpi(khoi) {
         }
       })
     : null;
+  // Thứ tự: ảnh TRƯỚC (đã nghiệm thu), PDF sau.
+  boc.append(nutTao);
   if (nutPdf) {
     nutPdf.dataset.viec = 'tao-pdf-dpi';
     nutPdf.style.marginTop = '8px';
     boc.append(nutPdf);
   }
-
-  boc.append(nutTao, ketQua);
+  boc.append(ketQua);
   khoi.append(boc);
 }
 

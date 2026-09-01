@@ -4,7 +4,7 @@
 //            cao theo khổ giấy + DPI · in ra PDF qua hộp thoại in
 // Lớp      : pages — được gọi bởi: tree-view (có `svgEl`) · settings (nút + link)
 // Phụ thuộc: domains/gedcom.js (boDauChoTenFile — tái dùng luật đặt tên file)
-// Phiên bản: 0.5.0 · Cập nhật: 01/09/2026 08:20
+// Phiên bản: 0.6.0 · Cập nhật: 01/09/2026 09:10
 // ============================================================
 //
 // VIỆC 12 của kế hoạch. Nguồn gốc: mã nháp Antigravity
@@ -811,7 +811,10 @@ async function dungBlobPngTuSvg(svgEl, w, h, kieu) {
   nen.setAttribute('fill', NEN_SO_DO);
   ban.insertBefore(nen, ban.firstChild);
 
-  await thayAnhBangDataUri(ban);
+  // Vòng ảnh vẽ 52 đơn vị viewBox (bán kính 26 — `PHOTO.banKinhTrenO`), nên ở
+  // bản xuất này nó chiếm `52 × tỷ lệ` điểm ảnh. Xin Drive đúng cỡ ấy.
+  const tyLeXuat = w / vbW;
+  await thayAnhBangDataUri(ban, Math.ceil(52 * tyLeXuat));
 
   const chuoiSvg = new XMLSerializer().serializeToString(ban);
   const svgBlob = new Blob([chuoiSvg], { type: 'image/svg+xml;charset=utf-8' });
@@ -857,14 +860,14 @@ async function dungBlobPngTuSvg(svgEl, w, h, kieu) {
  * lỗi ra ngoài: một ảnh Drive không tải được không được phép làm hỏng cả lần
  * xuất PNG.
  */
-async function thayAnhBangDataUri(svgClone) {
+async function thayAnhBangDataUri(svgClone, coAnhCanPx) {
   const anhThat = Array.from(svgClone.querySelectorAll('image')).filter((el) => {
     const href = el.getAttribute('href') || '';
     return href.indexOf('http') === 0;
   });
 
   await Promise.all(anhThat.map(async (el) => {
-    const href = el.getAttribute('href');
+    const href = xinBanToHon(el.getAttribute('href'), coAnhCanPx);
     try {
       const res = await fetch(href);
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -880,6 +883,35 @@ async function thayAnhBangDataUri(svgClone) {
       el.removeAttribute('href');
     }
   }));
+}
+
+/**
+ * Đổi đường dẫn ảnh Drive sang bản TO HƠN, vừa đủ cho lần xuất này.
+ *
+ * ⚠ **Đây là gốc của lời than "ảnh in ra mờ" (chủ dự án, 01/09/2026).** Sơ đồ
+ * trên màn hình xin Drive bản **200px** (`PHOTO.thumbSize`) — đúng cho một
+ * vòng ảnh 52px trên màn hình. Nhưng đường xuất lại **chép nguyên đường dẫn
+ * ấy**: in khổ 84cm thì vòng ảnh thành 2,3cm giấy, mà nguồn vẫn chỉ 200px —
+ * tức khoảng 220 DPI, nhìn là thấy mềm nhoè.
+ *
+ * Drive cắt ảnh theo tham số `sz=w<số>` ngay lúc phục vụ, nên chỉ cần XIN
+ * bản to hơn — không phải tải lại gì, không phải đổi dữ liệu, không phải
+ * upload lại.
+ *
+ * ⚠ **Trần thật là 800px** (`PHOTO.maxWidth`): app NÉN ảnh xuống 800px trước
+ * khi gửi lên Drive, nên bản gốc trên Drive cũng chỉ có bấy nhiêu. Xin 3000
+ * cũng chỉ nhận về 800. Muốn nét hơn nữa thì phải đổi chính con số nén ấy —
+ * việc riêng, phải hỏi chủ dự án vì nó đổi cả đường tải ảnh lên.
+ *
+ * @param {string} href       đường dẫn gốc (bản 200px của màn hình)
+ * @param {number} coAnhCanPx bề ngang ảnh cần, tính bằng điểm ảnh của bản xuất
+ */
+function xinBanToHon(href, coAnhCanPx) {
+  if (!href || !(coAnhCanPx > 0)) return href;
+  // Xin dư một nấc cho chắc, nhưng không quá bản gốc Drive đang giữ.
+  const xin = Math.min(1600, Math.max(200, Math.ceil(coAnhCanPx * 1.2)));
+  return href.replace(/([?&]sz=w)\d+/, '$1' + xin)
+             .replace(/(=w)\d+$/, '$1' + xin);       // dạng lh3: …=w200
 }
 
 /** Nạp ảnh từ một URL (kể cả blob:), trả về khi sẵn sàng vẽ lên canvas. */
