@@ -6,7 +6,7 @@
 //            mới" đã có (`mergeImported(tree, kq, {che:'moi'})`).
 // Lớp      : domains — được gọi bởi: pages · được phép gọi: utils, config
 // Phụ thuộc: utils/date · vendor/xlsx.mjs (SheetJS), đọc `.xlsb`/`.xlsx`
-// Phiên bản: 0.2.0 · Cập nhật: 01/09/2026 15:30
+// Phiên bản: 0.3.0 · Cập nhật: 01/09/2026 21:10
 // ============================================================
 //
 // ⚠ HÀM `parseExcel` KHÔNG THUẦN TUYỆT ĐỐI như `parseGedcom`: nó nạp một thư
@@ -158,12 +158,17 @@ export async function parseExcel(arrayBuffer) {
            'nào. Xem lại bằng tay sau khi nhập nếu cần.',
     });
   }
-  canhBao.push({
-    muc: 'nhe',
-    chu: 'Hai mươi cột "Đời 1..Đời 20" của file (tên dòng trưởng từng nhánh, ' +
-         'để hiển thị) KHÔNG được nhập — app tự tính lại quan hệ từ cha/mẹ/' +
-         'vợ chồng, không cần bảng ấy.',
-  });
+  // Chỉ nói khi file THẬT SỰ có mấy cột ấy. File mẫu do app phát ra không có
+  // chúng, mà một lời cảnh báo về cột không tồn tại thì người đọc phải đi tìm
+  // xem mình đã làm sai gì — mất lòng tin vào cả những cảnh báo thật.
+  if (header.some((c) => /^Đời \d+$/.test(String(c).trim()))) {
+    canhBao.push({
+      muc: 'nhe',
+      chu: 'Hai mươi cột "Đời 1..Đời 20" của file (tên dòng trưởng từng nhánh, ' +
+           'để hiển thị) KHÔNG được nhập — app tự tính lại quan hệ từ cha/mẹ/' +
+           'vợ chồng, không cần bảng ấy.',
+    });
+  }
 
   return {
     persons, unions, sources: [],
