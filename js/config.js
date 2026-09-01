@@ -3,7 +3,7 @@
 // Vai trò  : Hằng số hiển thị phía trình duyệt.
 // Lớp      : config — không gọi file nào khác
 // Phụ thuộc: (không)
-// Phiên bản: 0.16.0 · Cập nhật: 01/09/2026 (bước 80 — vòng ảnh 34, ô 92/103, khoảng sát chữ)
+// Phiên bản: 0.17.0 · Cập nhật: 02/09/2026 (bước 81 — vòng ảnh 37, ô 98/109, mức nét võng riêng)
 // ============================================================
 //
 // LƯU Ý: từ khi chuyển sang kiến trúc Apps Script, file này KHÔNG còn
@@ -33,9 +33,9 @@ export const PHOTO = {
   //   nhỏ 400px — chỗ hiện to nhất trên màn hình là 240px (thẻ người), và
   //     vòng thông tin 76px trên màn hình 3× cần 228px. 400 phủ hết còn dư.
   //     (Bản 200px cũ thực ra ĐANG THIẾU cho màn hình 3×.)
-  //   lớn 1600px — vòng ảnh 68 đơn vị (bước 80; trước đó 52), ở chữ cao 7mm là
-  //     62mm trên giấy: 300 DPI cần 731px, 600 DPI cần 1462px. 1600 vẫn phủ
-  //     hết, và đủ nét cho màn hình 4K khi bấm xem ảnh to.
+  //   lớn 1600px — vòng ảnh 74 đơn vị (bước 81; 52 trước bước 80), ở chữ cao
+  //     7mm là 67mm trên giấy: 300 DPI cần 795px, 600 DPI cần 1590px. 1600 vẫn
+  //     phủ hết — nhưng **chỉ còn dư 10px**, không còn chỗ cho một nấc nữa.
   //     ⚠ Con số 1600 này TÍNH TỪ `banKinhTrenO`. Nâng bán kính thêm một nấc
   //     nữa thì phải tính lại chỗ này, đừng để nó ngồi yên vì "vẫn chạy được".
   maxWidth:    400,   // nén BẢN NHỎ xuống chiều rộng này trước khi gửi lên
@@ -54,12 +54,13 @@ export const PHOTO = {
   // 14px, và lúc ấy vòng ảnh đọc ra thành hình vòng cung — xem `BONG` trong
   // `utils/image.js`.
   //
-  // ⚠ Vẽ 68px nhưng XIN Drive bản 200px (`thumbSize` ở trên): màn hình điện
+  // ⚠ Vẽ 74px nhưng XIN Drive bản 200px (`thumbSize` ở trên): màn hình điện
   // thoại có tỷ lệ pixel gấp 2–3, xin đúng 68 thì ảnh rỗ.
   //
-  // ⚠ Bước 80 làm con số ấy hụt 2%: màn hình 3× cần 68 × 3 = 204px. Giữ 200 —
-  // hụt 2% thì mắt không thấy, mà nâng `thumbSize` là nâng RAM cho MỌI ô của
-  // một sơ đồ 681 người. Nếu có ngày nâng bán kính nữa thì tính lại chỗ này.
+  // ⚠ Bước 80–81 làm con số ấy hụt 10%: màn hình 3× cần 74 × 3 = 222px. Giữ
+  // 200 — hụt 10% trên một khuôn mặt 74px thì mắt không thấy, mà nâng
+  // `thumbSize` là nâng RAM cho MỌI ô của một sơ đồ 681 người. Nâng bán kính
+  // thêm một nấc nữa thì PHẢI tính lại chỗ này, đừng để nó ngồi yên.
   //
   // ⚠ **26 → 34 ở bước 80 (01/09/2026, việc D).** Chủ dự án dựng một bản
   // Photoshop (`tai-lieu/anh/chinh sua ve so do.jpg`, trái = app thật, phải =
@@ -73,10 +74,15 @@ export const PHOTO = {
   // Vòng ảnh vẽ ra rộng `2R + 1,8` (nét vành 1,8). 53,8 × 1,30 = 69,7, trừ nét
   // vành còn `R = 34`.
   //
-  // ⚠ Lời chủ dự án — *"nới bán kính thêm khoảng 1/2 khoảng cách từ viền ảnh
-  // tới tâm nốt cụt số 2"* — cho ra 26 + 11 = **37**, tức hơn con số đo được
-  // 3px. Lấy 34 vì bức ảnh là thứ chủ dự án THẤY, còn câu nói là ước lượng
-  // bằng mắt của chính bức ảnh ấy. Chênh 3px này phải nói ra, đừng giấu.
+  // ⚠ **34 → 37 ngay trong ngày, sau khi chủ dự án XEM APP THẬT.** 34 là con số
+  // ĐO ra từ bức ảnh; lời chủ dự án — *"nới bán kính thêm khoảng 1/2 khoảng
+  // cách từ viền ảnh tới tâm nốt cụt số 2"* — cho 26 + 11 = **37**. Đưa cả hai
+  // ra, chủ dự án nhìn app thật rồi chốt **37**.
+  //
+  // ⚠ Bài học nhỏ mà đắt: **bức ảnh chỉnh tay là ƯỚC LƯỢNG, không phải bản vẽ
+  // kỹ thuật.** Đo nó thì được một con số chính xác **về bức ảnh**, mà bức ảnh
+  // ấy chỉ nói *"to cỡ này"*. Con số đo được là chỗ để BẮT ĐẦU, không phải chỗ
+  // để kết thúc — thứ kết thúc là mắt người nhìn app thật.
   //
   // ⚠ **Vòng ảnh chỉ NỞ XUỐNG.** `leTrenO` = 0 nên đỉnh vòng ảnh luôn dính mép
   // trên ô; tăng R là đẩy ĐÁY vòng ảnh xuống 16px, kéo theo bảng tên và hai
@@ -86,7 +92,7 @@ export const PHOTO = {
   //     layout.js  MUC_NET = leTrenO + banKinhTrenO   (mức nét vợ chồng)
   //     layout.js  LE_ANH  = nodeWidth/2 − banKinhTrenO
   //     render.js  dinhBang = 2 × R − VE.deLenAnh     (đỉnh bảng tên)
-  banKinhTrenO: 34,
+  banKinhTrenO: 37,
 
   // Cách từ mép trên ô xuống đỉnh vòng ảnh.
   //
@@ -125,16 +131,18 @@ export const LAYOUT = {
 
   // ⚠ Chiều cao khi KHÔNG hiện hàng ngày giỗ.
   //
-  // ⚠ **88 → 92 ở bước 80**, và con số ấy **tính ra chứ không đoán**. Từ nóc ô
+  // ⚠ **88 → 92 (bước 80) → 98 (bước 81)**, và con số ấy **tính ra chứ không
+  // đoán**. Nó bám chặt `PHOTO.banKinhTrenO`, đổi bán kính là phải tính lại.
+  // Từ nóc ô
   // xuống, mọi thứ nối đuôi nhau — đổi `banKinhTrenO` là cả chuỗi trôi theo:
   //
-  //     đáy vòng ảnh          2 × 34            = 68
-  //     đỉnh bảng tên         68 − deLenAnh 8   = 60
-  //     đáy bảng tên MỘT DÒNG 60 + (3×2 + 11)   = 77
-  //     chân chữ hàng năm     77 + buocDongPhu  = 88
-  //     mép dưới chữ hàng năm 88 + 9,5 × 0,25   ≈ 90,4   ← chỗ thấp nhất
+  //     đáy vòng ảnh          2 × 37            = 74
+  //     đỉnh bảng tên         74 − deLenAnh 8   = 66
+  //     đáy bảng tên MỘT DÒNG 66 + (3×2 + 11)   = 83
+  //     chân chữ hàng năm     83 + buocDongPhu  = 94
+  //     mép dưới chữ hàng năm 94 + 9,5 × 0,25   ≈ 96,4   ← chỗ thấp nhất
   //
-  // 92 chừa 1,6px. Đo tỷ lệ chân chữ 0,25 bằng `kiem-thu/do-cao-chu.mjs`, không
+  // 98 chừa 1,6px. Đo tỷ lệ chân chữ 0,25 bằng `kiem-thu/do-cao-chu.mjs`, không
   // chép từ sách.
   //
   // ⚠ **Con số này nay tính cho ô tên MỘT DÒNG, không còn cho ô hai dòng.** Đó
@@ -149,7 +157,7 @@ export const LAYOUT = {
   // (`kiem-thu/do-ten-dai.mjs`), sau khi nới bảng tên và nén chữ thì **0/557**
   // tên phải xuống hai dòng. Ca hai dòng vẫn còn, nhưng nay là ngoại lệ thật
   // sự — và ô ấy chấp nhận chữ tràn xuống khe, không bắt 680 ô kia trả giá.
-  nodeHeight:  92,
+  nodeHeight:  98,
 
   // Chiều cao khi công tắc "Ngày giỗ" đang BẬT: thêm đúng một hàng chữ.
   //
@@ -160,10 +168,11 @@ export const LAYOUT = {
   // ⚠ `layout.js` đọc lại hai con số này ở MỖI lần `computeLayout()`, không
   // chụp một lần lúc nạp như trước bước 28. Xem ghi chú `CAO` ở đó.
   //
-  // ⚠ **99 → 103 ở bước 80.** Luôn đúng bằng `nodeHeight + buocDongPhu` — thêm
-  // một hàng chữ, không hơn. Lệch hai con số này là hàng giỗ hoặc thò khỏi ô,
-  // hoặc để lại một khoảng trống không ai giải thích được.
-  nodeHeightNgayGio: 103,
+  // ⚠ **99 → 103 (bước 80) → 109 (bước 81).** Luôn đúng bằng
+  // `nodeHeight + buocDongPhu` — thêm một hàng chữ, không hơn. Lệch hai con số
+  // này là hàng giỗ hoặc thò khỏi ô, hoặc để lại một khoảng trống không ai
+  // giải thích được.
+  nodeHeightNgayGio: 109,
 
   hGap:        28,   // cách ngang giữa 2 người
 
@@ -216,9 +225,29 @@ export const LAYOUT = {
   // chênh đúng `vGap × 0,2`), còn bản Photoshop của chủ dự án chỉ có MỘT. Cho
   // hai công thức đọc chung một hằng số là hai đường nhập làm một.
   //
-  // 12 chọn thế nào: mép dưới chữ ở 90,4 mà ô cao 92, nên khoảng trắng mắt
+  // 12 chọn thế nào: mép dưới chữ ở 96,4 mà ô cao 98, nên khoảng trắng mắt
   // nhìn thấy là 1,6 + 12 ≈ 14px, thay cho 13,6 + 17 ≈ 31px trước đây.
+  // ✓ Chủ dự án đã bật *Ngày giỗ* xem app thật và nghiệm thu 14px: **ĐẠT**.
   khoangSatChu: 12,
+
+  // MỨC NÉT VỢ CHỒNG VÕNG — chỉ dùng cho cặp cùng hàng mà giữa hai người CÓ Ô
+  // NGƯỜI KHÁC CHẮN NGANG (hôn nhân đồng huyết, hai nhánh xa nhau).
+  //
+  // *Thêm ở bước 81, sau khi chủ dự án xem app thật:* *"đường nối hôn nhân
+  // đồng huyết cần dịch lên trên 1 chút để không đè đường ngang của con cái và
+  // cũng không đè hàng chữ ở trên."*
+  //
+  // ⚠ **Bước 80 cho nét này đọc chung `khoangSatChu` và ĐÓ LÀ SAI.** Gộp thì
+  // nó nằm ĐÚNG trên thanh ngang gom con, tức lại thành một đường kẻ hai
+  // nghĩa. Nó phải có mức RIÊNG, và mức ấy bị kẹp giữa hai thứ:
+  //
+  //     mép dưới hàng chữ   ≈ CAO − 1,6   (96,4 khi CAO = 98)
+  //     NÉT VÕNG            = CAO + 5     ← ở đây
+  //     thanh ngang gom con = CAO + 12
+  //
+  // Cách chữ 6,6px, cách thanh ngang 7px. Khe chỉ có 13,6px nên đây gần như là
+  // chỗ duy nhất đặt được — hạ `khoangSatChu` nữa thì phải hạ cả con số này.
+  khoangNetVong: 5,
 
   // Nét của bộ cha mẹ THỨ HAI chạy cao hơn nét của bộ đặt chỗ bấy nhiêu pixel.
   //

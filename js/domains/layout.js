@@ -3,7 +3,7 @@
 // Vai trò  : Tính TOẠ ĐỘ các ô người, đường nối và nốt cụt. Không vẽ gì cả.
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: config (LAYOUT, PHOTO)
-// Phiên bản: 1.10.0 · Cập nhật: 01/09/2026 (bước 80 — ảnh to, khoảng sát chữ, bảng tên nới)
+// Phiên bản: 1.11.0 · Cập nhật: 02/09/2026 (bước 81 — hôn nhân trong họ đứng liền nhau, nét võng mức riêng)
 // ============================================================
 //
 // Tách khỏi render.js có chủ ý: chỉnh giao diện (màu, phông, bo góc) không
@@ -181,6 +181,7 @@ export function computeLayout(index, focusPersonId, visibleSet, scope, stubPoint
   if (ct.dsNguoi.length === 0) return rong;
 
   ganMucDoi(ct);
+  hapThuCapTrongHo(ct);            // PHẢI sau ganMucDoi — nó cần biết đời
   const viTriX = datMoiKhoi(ct);
   keoKhoiVeGanBanDoi(ct, viTriX);
   canChumConVaoGiua(ct, viTriX);
@@ -282,6 +283,10 @@ function dungNguCanh(index, visibleSet) {
     unionLamCon:   new Map(),    // personId -> [unionId] làm con, chỉ union hiển thị
     unionSoHuu:    new Map(),    // personId -> unionId ĐẶT CHỖ cho người này
     hapThuBoi:     new Map(),    // personId -> { unionId, neoId }
+    roiChoCha:     new Set(),    // người CÓ cha mẹ hiển thị mà vẫn bị hấp thụ
+                                  // vào dải bạn đời (hôn nhân trong họ, b81):
+                                  // cha mẹ ruột thôi ĐẶT CHỖ, nhưng vẫn là cha
+                                  // mẹ ruột — nét nối giữ nguyên loại
     dai:           new Map(),    // neoId -> mô tả dải (xem layDai)
     muc:           new Map(),
     toTien:        new Map(),    // personId -> Set tổ tiên hiển thị (đệm, xem toTienDong)
@@ -382,6 +387,8 @@ function dungNguCanh(index, visibleSet) {
     }
   }
 
+  // ⚠ Ca "CẢ HAI vợ chồng đều tự đứng được" KHÔNG xử ở đây — nó cần biết ĐỜI,
+  // mà đời thì `ganMucDoi()` chạy sau. Xem `hapThuCapTrongHo()`.
   return ct;
 }
 
@@ -633,6 +640,65 @@ function canNhanh(ct, mucVao) {
   return muc;
 }
 
+/**
+ * HÔN NHÂN TRONG HỌ — kéo cặp về đứng LIỀN NHAU. Thêm ở bước 81.
+ *
+ * ⚠ **Ca này trước bước 81 không ai được hấp thụ, và đó là lỗi chủ dự án chỉ
+ * ra khi xem app thật:** *"bản chất Trọng Dũng và Hương Lan là 1 cặp, tại sao
+ * cứ bị lỗi hoài vậy?"* Luật B cho *"người có cha mẹ hiển thị thì tự đứng"*,
+ * nên khi CẢ HAI vợ chồng đều có cha mẹ trên hình thì không ai nhường ai —
+ * mỗi người đứng dưới cha mẹ mình, và cặp bị tách ra hai đầu sơ đồ.
+ *
+ * Đo trên ba cây (`kiem-thu/do-cap-roi-nhau.mjs`): ca này hiếm — 4 cặp trong
+ * cây hợp nhất 73 người, **2 cặp trong cả cây Nguyễn Phúc 681 người**. Nhưng
+ * hễ gặp thì sai rất lộ, vì nó tách đúng cái cặp mà mắt người tìm đầu tiên.
+ *
+ * ⚠ **CÁI GIÁ, và nó KHÔNG tránh được:** một người chỉ đứng được MỘT chỗ. Kéo
+ * bà về cạnh chồng thì **nét từ cha mẹ RUỘT của bà thành nét đi xa**. Không có
+ * cách bố trí nào giữ ngắn cả ba mối nối cùng lúc — gia phả là ĐỒ THỊ, và hôn
+ * nhân trong họ chính là chỗ đồ thị lộ ra là không phải cây.
+ *
+ * ⚠ **BA RÀO CHẮN. Bỏ bớt một là hỏng một luật khác, cả ba đều có ca kiểm:**
+ *
+ *   1. **CÙNG ĐỜI.** Lệch đời thì để nguyên — `QUY-TAC-VE §9` LUẬT LỆCH HÀNG.
+ *      Ca kiểm: `U0023`, ông "11" (`P0044`, đời 4) cưới bà "29" (`P0053`, đời
+ *      5). Bản đầu của bước 81 bỏ quên rào này và **kéo bà lên ngang hàng
+ *      ông** — bốn bất biến của `chay.mjs` đỏ ngay. Thứ bậc đời trong gia phả
+ *      Việt là thông tin thật, không phải chi tiết trình bày.
+ *      ⚠ Vì rào này mà hàm phải chạy SAU `ganMucDoi()`, chứ không gộp được
+ *      vào Luật B trong `dungNguCanh()`: lúc ấy chưa ai biết đời.
+ *   2. **NGƯỜI BỊ KÉO chỉ có ĐÚNG MỘT union hiển thị.** Người nhiều bạn đời là
+ *      NGƯỜI GIỮ DẢI của chính họ (§3); kéo họ sang dải người khác thì những
+ *      union kia mất neo và chùm con của chúng rơi vào lưới an toàn của
+ *      `datMoiKhoi()`, tức đứng lạc chỗ.
+ *   3. **ĐÚNG HAI người trong union.** Ba người trở lên thì "ai nhường ai"
+ *      không còn một câu trả lời; để nguyên cách cũ.
+ *
+ * Ai giữ dải: người có NHIỀU bạn đời hơn (cùng lý lẽ với Luật B), hoà thì lấy
+ * người đứng trước trong `partners` — thứ tự ấy đến từ `partnerOrder`, tức thứ
+ * người dùng hoán được bằng tay.
+ */
+function hapThuCapTrongHo(ct) {
+  for (const uid of [...ct.unionHT.keys()].sort()) {
+    const u = ct.unionHT.get(uid);
+    if (u.partners.length !== 2) continue;                       // rào 3
+
+    const [a, b] = u.partners;
+    if (!ct.unionSoHuu.has(a) || !ct.unionSoHuu.has(b)) continue;  // không phải ca này
+    if (ct.hapThuBoi.has(a) || ct.hapThuBoi.has(b)) continue;      // đã yên chỗ
+    if (ct.muc.get(a) !== ct.muc.get(b)) continue;                 // rào 1
+
+    const soA = (ct.unionLamVo.get(a) || []).length;
+    const soB = (ct.unionLamVo.get(b) || []).length;
+    const neo = soB > soA ? b : a;
+    const kia = neo === a ? b : a;
+    if ((ct.unionLamVo.get(kia) || []).length !== 1) continue;     // rào 2
+
+    ct.roiChoCha.add(kia);        // cha mẹ ruột thôi ĐẶT CHỖ, vẫn là cha mẹ ruột
+    ct.hapThuBoi.set(kia, { unionId: uid, neoId: neo });
+  }
+}
+
 // ============================================================
 // 3 · DẢI — một người cùng mọi bạn đời được hấp thụ, trên MỘT hàng
 // ============================================================
@@ -761,6 +827,11 @@ function datCum(ct, neoId) {
     const khoi = [];
     for (const c of ct.unionHT.get(uid).children) {
       if (ct.unionSoHuu.get(c.personId) !== uid) continue;   // bộ cha mẹ kia đặt chỗ
+      // Hôn nhân trong họ (b81): người này đã theo bạn đời sang dải bên kia,
+      // cha mẹ ruột không còn đặt chỗ cho họ nữa. Không lọc ở đây thì họ bị
+      // đặt HAI lần, và lần nào thắng là tuỳ thứ tự đệ quy — tức bố cục đổi
+      // theo mã người, một loại lỗi không ai lần ra được.
+      if (ct.roiChoCha.has(c.personId)) continue;
       const k = datCum(ct, c.personId);
       if (k) khoi.push(k);
     }
@@ -1338,20 +1409,31 @@ function themNetVoChong(ct, links, uid, aId, bId) {
  * chỗ ấy lệch nhau đúng một lần là sinh ra đoạn kẻ treo lơ lửng giữa sơ đồ —
  * lỗi thật của chat 1.7, chủ dự án nhìn ảnh mới thấy.
  *
- * ⚠ **Từ bước 80 nó TRÙNG `busY`, và đó là chủ ý, không phải sơ ý.** Trước đó
- * nét võng ở `CAO + vGap × 0,3` còn thanh ngang gom con ở `CAO + vGap/2` —
- * chênh nhau `vGap × 0,2` ≈ 7px, và trên màn hình thật ra **hai đường kẻ ngang
- * song song sát nhau**, đúng thứ chủ dự án khoanh trong ảnh `loi ke ngang
- * trong dung - huong lan khi chon con lam trung tam.jpg` (đo được 9px trên
- * ảnh). Bản Photoshop của chủ dự án chỉ có MỘT đường. Cho cả hai đọc chung
- * `LAYOUT.khoangSatChu` là hai đường nhập làm một.
+ * ⚠ **BA con số trong hai ngày, và cả ba đều do chủ dự án nhìn app thật.**
  *
- * Hệ quả trong `dungDuongNoi()`: điểm treo và `busY` bằng nhau, nên đoạn kẻ
- * đầu tiên của nét treo con dài 0px. Vô hại — SVG vẽ đường gấp khúc, một đoạn
- * dài 0 không sinh ra nét nào.
+ *     tới b80   `CAO + vGap × 0,3` = CAO + 10,2, còn thanh ngang ở CAO + 17
+ *               → HAI đường kẻ song song cách nhau 7px, chủ dự án gọi là
+ *                 bóng đôi (ảnh `loi ke ngang trong dung - huong lan…jpg`)
+ *     b80       gộp làm một: `CAO + khoangSatChu`
+ *               → **hỏng kiểu khác**: nét vợ chồng biến mất vào đúng thanh
+ *                 ngang gom con, cặp đọc ra thành hai nét dọc rời rạc.
+ *                 *"thiếu nét kẻ từ Trọng Dũng sang Hương Lan"*
+ *     b81       mức RIÊNG `CAO + khoangNetVong` = CAO + 5
+ *               → nằm lọt giữa hàng chữ (CAO − 1,6) và thanh ngang (CAO + 12)
+ *
+ * ⚠ Bài học đứng sau ba con số ấy: **gộp hai đường kẻ vì chúng "gần nhau quá"
+ * là chữa triệu chứng.** Hai đường ấy mang hai nghĩa khác nhau — một là *"hai
+ * người này là vợ chồng"*, một là *"đây là các con của họ"* — nên chúng phải ở
+ * hai mức, chỉ là mức phải chọn cho đúng. Cái sai ban đầu không phải khoảng
+ * cách, mà là **cả hai đều quá xa hàng chữ** vì `nodeHeight` thừa chỗ.
+ *
+ * ⚠ Từ b81, nét này chỉ còn dùng cho cặp mà **một người đã bị hấp thụ vào dải
+ * ở nơi khác** — điển hình là người có hai đời chồng/vợ. Ca *"cả hai đều có
+ * cha mẹ hiển thị"* nay không rơi vào đây nữa: Luật B kéo một người về đứng
+ * cạnh bạn đời. Xem `dungNguCanh()`.
  */
 function mucVong(a, b) {
-  return Math.max(a.y, b.y) + CAO + LAYOUT.khoangSatChu;
+  return Math.max(a.y, b.y) + CAO + LAYOUT.khoangNetVong;
 }
 
 // ============================================================
