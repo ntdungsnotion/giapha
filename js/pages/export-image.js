@@ -4,7 +4,7 @@
 //            cao theo khổ giấy + DPI · in ra PDF qua hộp thoại in
 // Lớp      : pages — được gọi bởi: tree-view (có `svgEl`) · settings (nút + link)
 // Phụ thuộc: domains/gedcom.js (boDauChoTenFile — tái dùng luật đặt tên file)
-// Phiên bản: 0.7.0 · Cập nhật: 01/09/2026 10:30
+// Phiên bản: 0.8.0 · Cập nhật: 01/09/2026 11:40
 // ============================================================
 //
 // VIỆC 12 của kế hoạch. Nguồn gốc: mã nháp Antigravity
@@ -139,6 +139,7 @@
 
 import { boDauChoTenFile } from '../domains/gedcom.js';
 import { VE } from '../domains/render.js';
+import { PHOTO } from '../config.js';
 
 // ============================================================
 // XUẤT THEO CHIỀU CAO CHỮ — lối MicroStation (chốt 01/09/2026)
@@ -273,7 +274,8 @@ export async function xuatAnhPNG(svgEl, tree) {
   const w = Math.max(1, Math.round(vbW * tyLe));
   const h = Math.max(1, Math.round(vbH * tyLe));
 
-  const blob = await dungBlobPngTuSvg(svgEl, w, h);
+  const blob = await dungBlobPngTuSvg(svgEl, w, h, null,
+                                      { banDoLon: banDoAnhLon(tree) });
   return { blob, tenFile: tenFileAnh(tree, 'png'), w, h, tyLe };
 }
 
@@ -569,7 +571,8 @@ export async function xuatAnhDoPhanGiaiCao(svgEl, tree, rongCm, dpi) {
   const { w, h } = tinhCoAnhTheoDpi(rongCm, dpi, vbW, vbH);
   kiemTranCanvas(w, h);
 
-  const blob = await dungBlobPngTuSvg(svgEl, w, h);
+  const blob = await dungBlobPngTuSvg(svgEl, w, h, null,
+                                      { banDoLon: banDoAnhLon(tree) });
   const rongMm = rongCm * 10;
   return {
     blob,
@@ -605,7 +608,8 @@ export async function xuatPdfDoPhanGiaiCao(svgEl, tree, rongCm, dpi) {
   const { w, h } = tinhCoAnhTheoDpi(rongCm, dpi, vbW, vbH);
   kiemTranCanvas(w, h);
 
-  const jpegBlob = await dungBlobPngTuSvg(svgEl, w, h, 'image/jpeg');
+  const jpegBlob = await dungBlobPngTuSvg(svgEl, w, h, 'image/jpeg',
+                                          { banDoLon: banDoAnhLon(tree) });
   const jpeg = new Uint8Array(await jpegBlob.arrayBuffer());
 
   const rongMm = rongCm * 10;
@@ -677,18 +681,24 @@ export async function xuatPdfNhieuTrang(svgEl, tree, tuyChon) {
   const toRongDonVi = xem.trangRongMm / xem.mmMoiDonVi;
   const toCaoDonVi  = xem.trangCaoMm  / xem.mmMoiDonVi;
 
-  // Vòng ảnh 52 đơn vị (bán kính 26) → xin Drive bản vừa đủ cho tờ này.
+  // Vòng ảnh 52 đơn vị (bán kính 26) → xin kho bản vừa đủ cho tờ này.
   const coAnhCanPx = Math.ceil(52 * (xem.wPx / toRongDonVi));
+  // Dựng MỘT LẦN cho cả mấy chục tờ, không dựng lại mỗi tờ.
+  const banDoLon = banDoAnhLon(tree);
 
   const trang = [];
   for (let h = 0; h < xem.hang; h++) {
     for (let c = 0; c < xem.cot; c++) {
       const blob = await dungBlobPngTuSvg(svgEl, xem.wPx, xem.hPx, 'image/jpeg', {
-        vbX: co.vbX + c * toRongDonVi,
-        vbY: co.vbY + h * toCaoDonVi,
-        vbW: toRongDonVi,
-        vbH: toCaoDonVi,
-      }, coAnhCanPx);
+        vungCat: {
+          vbX: co.vbX + c * toRongDonVi,
+          vbY: co.vbY + h * toCaoDonVi,
+          vbW: toRongDonVi,
+          vbH: toCaoDonVi,
+        },
+        coAnhCanPx,
+        banDoLon,
+      });
       trang.push(new Uint8Array(await blob.arrayBuffer()));
       if (typeof onTien === 'function') onTien(trang.length, xem.tong);
     }
@@ -990,7 +1000,8 @@ export function docCoSoDo(svgEl) {
  * Chép hai bản là để hai bản trôi dần khỏi nhau: sửa lỗi CORS ở bản này quên
  * bản kia thì đường xuất khổ lớn lặng lẽ mất ảnh mà không ai biết.
  */
-async function dungBlobPngTuSvg(svgEl, w, h, kieu, vungCat, coAnhCanPxNgoai) {
+async function dungBlobPngTuSvg(svgEl, w, h, kieu, tuyChon) {
+  const { vungCat, coAnhCanPx: coAnhCanPxNgoai, banDoLon } = tuyChon || {};
   const coGoc = docCoSoDoBatBuoc(svgEl);
   // `vungCat` — một Ô LƯỚI của lối xuất nhiều trang: vẽ đúng khúc ấy của sơ
   // đồ thay vì cả sơ đồ. Không truyền thì vẽ trọn, y như cũ.
@@ -1014,7 +1025,7 @@ async function dungBlobPngTuSvg(svgEl, w, h, kieu, vungCat, coAnhCanPxNgoai) {
 
   // Vòng ảnh vẽ 52 đơn vị viewBox (bán kính 26 — `PHOTO.banKinhTrenO`), nên ở
   // bản xuất này nó chiếm `52 × tỷ lệ` điểm ảnh. Xin Drive đúng cỡ ấy.
-  await thayAnhBangDataUri(ban, coAnhCanPxNgoai || Math.ceil(52 * (w / vbW)));
+  await thayAnhBangDataUri(ban, coAnhCanPxNgoai || Math.ceil(52 * (w / vbW)), banDoLon);
 
   const chuoiSvg = new XMLSerializer().serializeToString(ban);
   const svgBlob = new Blob([chuoiSvg], { type: 'image/svg+xml;charset=utf-8' });
@@ -1060,14 +1071,14 @@ async function dungBlobPngTuSvg(svgEl, w, h, kieu, vungCat, coAnhCanPxNgoai) {
  * lỗi ra ngoài: một ảnh Drive không tải được không được phép làm hỏng cả lần
  * xuất PNG.
  */
-async function thayAnhBangDataUri(svgClone, coAnhCanPx) {
+async function thayAnhBangDataUri(svgClone, coAnhCanPx, banDoLon) {
   const anhThat = Array.from(svgClone.querySelectorAll('image')).filter((el) => {
     const href = el.getAttribute('href') || '';
     return href.indexOf('http') === 0;
   });
 
   await Promise.all(anhThat.map(async (el) => {
-    const href = xinBanToHon(el.getAttribute('href'), coAnhCanPx);
+    const href = xinBanToHon(el.getAttribute('href'), coAnhCanPx, banDoLon);
     try {
       const res = await fetch(href);
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -1106,12 +1117,48 @@ async function thayAnhBangDataUri(svgClone, coAnhCanPx) {
  * @param {string} href       đường dẫn gốc (bản 200px của màn hình)
  * @param {number} coAnhCanPx bề ngang ảnh cần, tính bằng điểm ảnh của bản xuất
  */
-function xinBanToHon(href, coAnhCanPx) {
-  if (!href || !(coAnhCanPx > 0)) return href;
-  // Xin dư một nấc cho chắc, nhưng không quá bản gốc Drive đang giữ.
-  const xin = Math.min(1600, Math.max(200, Math.ceil(coAnhCanPx * 1.2)));
-  return href.replace(/([?&]sz=w)\d+/, '$1' + xin)
-             .replace(/(=w)\d+$/, '$1' + xin);       // dạng lh3: …=w200
+function xinBanToHon(href, coAnhCanPx, banDoLon) {
+  if (!href) return href;
+
+  // ⚠ **ĐỔI HẲN SANG BẢN LỚN nếu tấm ấy có** (01/09/2026). Từ nay mỗi ảnh lưu
+  // HAI file trên kho: bản nhỏ 400px cho màn hình, bản lớn 1600px để in (xem
+  // `PHOTO` ở `config.js`). Sơ đồ trên màn hình trỏ vào bản NHỎ — đúng cho màn
+  // hình, nhưng in ra thì nhoè. Nên lúc xuất phải thay chính MÃ FILE trong
+  // đường dẫn, không phải chỉ xin cỡ to hơn của bản nhỏ.
+  //
+  // Bản đồ nhỏ→lớn dựng từ `tree.media`, xem `banDoAnhLon()`. Ảnh tải lên
+  // trước ngày có bản lớn thì không có trong bản đồ — giữ nguyên bản nhỏ.
+  let ra = href;
+  if (banDoLon) {
+    const m = href.match(/[?&]id=([^&]+)/) || href.match(/\/d\/([^=/?]+)/);
+    const lon = m && banDoLon.get(decodeURIComponent(m[1]));
+    if (lon) ra = ra.replace(m[1], encodeURIComponent(lon));
+  }
+
+  if (!(coAnhCanPx > 0)) return ra;
+  // Xin dư một nấc cho chắc, nhưng không quá bản lớn đang giữ.
+  const xin = Math.min(PHOTO.maxWidthLon, Math.max(200, Math.ceil(coAnhCanPx * 1.2)));
+  return ra.replace(/([?&]sz=w)\d+/, '$1' + xin)
+           .replace(/(=w)\d+$/, '$1' + xin);       // dạng lh3: …=w200
+}
+
+/**
+ * Bản đồ `mã ảnh nhỏ → mã ảnh lớn`, dựng từ kho ảnh của cây.
+ *
+ * Tách ra đây thay vì thêm một trường `photoFileIdLon` vào từng NGƯỜI: mã bản
+ * lớn đã nằm sẵn trong bản ghi ảnh (`tree.media`), chép thêm một bản thứ hai
+ * vào `persons` là dựng ra hai nguồn sự thật cho cùng một điều, rồi tới ngày
+ * chúng lệch nhau thì không ai biết tin bản nào.
+ */
+function banDoAnhLon(tree) {
+  const bang = new Map();
+  const ds = tree && Array.isArray(tree.media) ? tree.media : [];
+  for (const m of ds) {
+    if (m && !m.deleted && m.driveFileId && m.driveFileIdLon) {
+      bang.set(String(m.driveFileId), String(m.driveFileIdLon));
+    }
+  }
+  return bang;
 }
 
 /** Nạp ảnh từ một URL (kể cả blob:), trả về khi sẵn sàng vẽ lên canvas. */

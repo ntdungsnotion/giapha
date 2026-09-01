@@ -5,7 +5,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: pages/person-edit.js (nền dùng chung), state, domains/{media,render},
 //            services/{repo,gas}, utils/{date,image,avatar,id}, config
-// Phiên bản: 1.0.1 · Cập nhật: 29/08/2026 16:20
+// Phiên bản: 1.1.0 · Cập nhật: 01/09/2026 11:40
 // ============================================================
 //
 // Tách khỏi `person-edit.js` ngày 27/08/2026 (bước 48, đợt 5 của
@@ -27,7 +27,7 @@ import { taiAnh } from '../services/gas.js';
 import { stampNow } from '../utils/date.js';
 import { compressImage, driveThumbUrl, dataUri } from '../utils/image.js';
 import { anhMacDinhUri } from '../utils/avatar.js';
-import { RONG_NUT_TOI_DA } from '../config.js';
+import { RONG_NUT_TOI_DA, PHOTO } from '../config.js';
 
 // KHO ẢNH (việc 5, nửa A). Cùng lối với `tenPhu` và `quanHe` bên form hồ sơ:
 // giữ RIÊNG một bản làm việc, không đọc ngược từ DOM và không đụng `state.tree`
@@ -486,8 +486,9 @@ async function chonVaTaiAnh(file, nguoi) {
   veLaiKhoiAnh(nguoi);
 
   try {
+    const goc = stampNow().replace(/[^0-9]/g, '');
     const nen = await compressImage(file);
-    const ten = 'anh_' + anhCuaAi + '_' + stampNow().replace(/[^0-9]/g, '') + '.jpg';
+    const ten = 'anh_' + anhCuaAi + '_' + goc + '.jpg';
     const kq  = await taiAnh(nen.base64, ten);
 
     if (!kq || !kq.ok) {
@@ -495,11 +496,30 @@ async function chonVaTaiAnh(file, nguoi) {
         'Máy chủ không nhận ảnh mà không nói rõ vì sao.');
     }
 
+    // --- BẢN LỚN, chỉ để in và để xem ảnh to (01/09/2026) -----------------
+    //
+    // ⚠ **Hỏng bản lớn thì KHÔNG được làm hỏng cả lần tải.** Bản nhỏ đã lên
+    // Drive rồi; ném lỗi ở đây là vứt luôn thứ đã thành công và bắt người
+    // dùng làm lại từ đầu. Thiếu bản lớn thì app vẫn chạy đủ mọi màn hình,
+    // chỉ là in ra kém nét hơn — nên ghi nhận rồi đi tiếp, và NÓI RA.
+    let fileIdLon = '';
+    let loiLon = '';
+    try {
+      const nenLon = await compressImage(file, {
+        maxWidth: PHOTO.maxWidthLon, jpegQuality: PHOTO.jpegQualityLon,
+      });
+      const kqLon = await taiAnh(nenLon.base64, 'anh_' + anhCuaAi + '_' + goc + '_lon.jpg');
+      if (kqLon && kqLon.ok) fileIdLon = kqLon.fileId;
+      else loiLon = (kqLon && kqLon.loi) || 'máy chủ không nhận';
+    } catch (e) {
+      loiLon = e && e.message ? e.message : String(e);
+    }
+
     demAnhMoi += 1;
     const khoa = 'moi-' + demAnhMoi;
     khoAnh.unshift({
-      khoa, mediaId: '', driveFileId: kq.fileId, caption: '',
-      xemTruoc: nen.base64, laMoi: true, laLe: false, boDi: false,
+      khoa, mediaId: '', driveFileId: kq.fileId, driveFileIdLon: fileIdLon,
+      caption: '', xemTruoc: nen.base64, laMoi: true, laLe: false, boDi: false,
     });
     // Quyết định 2: tấm vừa thêm luôn thành đại diện — nhưng chỉ khi chủ thể
     // có ảnh đại diện. Ảnh cưới của một cặp thì thêm là thêm, hết.
@@ -511,6 +531,13 @@ async function chonVaTaiAnh(file, nguoi) {
     // Dọn lời nhắn cũ, KHÔNG gọi `hienNhan('')` — hàm ấy dựng ra một cái hộp
     // xám rỗng, trông như app vừa định nói gì đó rồi thôi.
     if (N.khoiKetQua) N.khoiKetQua.innerHTML = '';
+    // ⚠ Thiếu bản lớn thì PHẢI nói ra. Im lặng thì tới ngày in mới lộ, mà lúc
+    // ấy không ai còn nhớ tấm nào tải lên hôm nào để tải lại.
+    if (loiLon) {
+      hienNhan('Đã tải ảnh lên, nhưng KHÔNG tải được bản lớn dùng để in (' +
+               loiLon + '). Ảnh vẫn hiện đủ trên màn hình; in khổ lớn sẽ kém ' +
+               'nét. Gỡ tấm này rồi tải lại nếu cần in.', true);
+    }
   } catch (e) {
     anhDangTai = false;
     veLaiKhoiAnh(nguoi);
@@ -548,7 +575,8 @@ export function apThayDoiAnh(cay, subjectId, ghiNhan) {
   // 1. THÊM
   for (const a of khoAnh) {
     if (!a.laMoi || a.boDi) continue;
-    const kq = attachMedia(tree, personId, a.driveFileId, a.caption, ghiNhan);
+    const kq = attachMedia(tree, personId, a.driveFileId, a.caption, ghiNhan,
+                           a.driveFileIdLon);
     if (!kq) continue;
     tree = kq.tree;
     themVao.push(kq.media);

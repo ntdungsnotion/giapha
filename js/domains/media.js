@@ -3,7 +3,7 @@
 // Vai trò  : Nghiệp vụ ảnh và tư liệu (không tự tải lên — việc đó của services)
 // Lớp      : domains — HÀM THUẦN, được gọi bởi: pages · được phép gọi: utils
 // Phụ thuộc: utils/id, utils/text
-// Phiên bản: 1.0.1 · Cập nhật: 29/08/2026 16:20
+// Phiên bản: 1.1.0 · Cập nhật: 01/09/2026 11:40
 // ============================================================
 //
 // BỐN LUẬT CỦA FILE NÀY
@@ -55,7 +55,7 @@ import { coGiaTri } from '../utils/text.js';
  * @returns {{tree:object, media:object, diff:object}|null}
  *          null khi thiếu mã, hoặc khi `subjectId` không có trong cây.
  */
-export function attachMedia(tree, subjectId, driveFileId, caption, ghiNhan) {
+export function attachMedia(tree, subjectId, driveFileId, caption, ghiNhan, driveFileIdLon) {
   if (!tree || !coGiaTri(subjectId) || !coGiaTri(driveFileId)) return null;
   if (!coChuThe(tree, subjectId)) return null;
 
@@ -68,6 +68,12 @@ export function attachMedia(tree, subjectId, driveFileId, caption, ghiNhan) {
     id:          ma,
     subjectId:   String(subjectId),
     driveFileId: String(driveFileId),
+    // ⚠ **Bản LỚN, chỉ để in và để xem ảnh to** (01/09/2026, xem `PHOTO` ở
+    // `config.js` về vì sao lưu hai file thay vì nhờ kho cắt nhỏ một file).
+    // RỖNG là hợp lệ: ảnh tải lên trước ngày này không có bản lớn, và một lần
+    // tải mà bản lớn hỏng thì bản nhỏ vẫn được giữ. Mọi nơi đọc trường này
+    // phải chịu được rỗng — `driveFileIdLon || driveFileId`.
+    driveFileIdLon: coGiaTri(driveFileIdLon) ? String(driveFileIdLon) : '',
     caption:     coGiaTri(caption) ? String(caption).trim() : '',
     year:        null,
     deleted:     false,
@@ -77,6 +83,7 @@ export function attachMedia(tree, subjectId, driveFileId, caption, ghiNhan) {
   const cayMoi = Object.assign({}, tree, { media: ds.concat([muc]) });
   const diff = {};
   diff[ma + '.driveFileId'] = ['', muc.driveFileId];
+  if (muc.driveFileIdLon) diff[ma + '.driveFileIdLon'] = ['', muc.driveFileIdLon];
 
   return { tree: cayMoi, media: muc, diff };
 }

@@ -4,7 +4,7 @@
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, domains/{person,union,render}, services/repo,
 //            utils/{text,date,image,avatar,glyph}, config
-// Phiên bản: 1.30.0 · Cập nhật: 30/08/2026 06:37
+// Phiên bản: 1.30.1 · Cập nhật: 01/09/2026 11:40
 // ============================================================
 //
 // --- HAI MÀN HÌNH, HAI CÂU HỎI (chốt 20/08/2026) ------------------------
@@ -348,7 +348,9 @@ function veAnhTo(m, nguoiNen) {
     'width:100%;max-height:52vh;object-fit:contain;display:block;' +
     'border-radius:10px;background:#faf8f5';
   im.src = anhMacDinhUri(nguoiNen && nguoiNen.sex, mauVien(nguoiNen));
-  taiAnhVaoThe(im, driveThumbUrl(m.driveFileId, 1200));
+  // ⚠ Xem ảnh TO thì lấy BẢN LỚN (01/09/2026). Ảnh tải lên trước ngày có bản
+  // lớn thì `driveFileIdLon` rỗng — rơi về bản nhỏ, vẫn hiện được, chỉ kém nét.
+  taiAnhVaoThe(im, driveThumbUrl(m.driveFileIdLon || m.driveFileId, 1200));
   boc.append(im);
 
   if (coGiaTri(m.caption)) {

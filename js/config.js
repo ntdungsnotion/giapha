@@ -3,7 +3,7 @@
 // Vai trò  : Hằng số hiển thị phía trình duyệt.
 // Lớp      : config — không gọi file nào khác
 // Phụ thuộc: (không)
-// Phiên bản: 0.13.1 · Cập nhật: 28/08/2026 15:20
+// Phiên bản: 0.14.0 · Cập nhật: 01/09/2026 11:40
 // ============================================================
 //
 // LƯU Ý: từ khi chuyển sang kiến trúc Apps Script, file này KHÔNG còn
@@ -14,8 +14,32 @@ export const APP_NAME     = 'Gia phả';
 export const DATA_VERSION = 1;
 
 export const PHOTO = {
-  maxWidth:    800,   // nén ảnh xuống chiều rộng này trước khi gửi lên
+  // --- HAI BẢN CHO MỖI TẤM ẢNH (01/09/2026) ------------------------------
+  //
+  // Chủ dự án chỉ ra điều này sau khi in thử: một tấm ảnh không phục vụ nổi
+  // cả hai việc. Màn hình cần ảnh NHỎ (tải nhanh trên 4G, và nhất là ít RAM —
+  // RAM tốn theo ảnh ĐÃ GIẢI MÃ, một tấm 1600px ngốn 10MB còn tấm 400px chỉ
+  // 640KB, gấp mười sáu lần). Bản in thì cần ảnh LỚN.
+  //
+  // ⚠ **Vì sao lưu HAI FILE chứ không lưu một file to rồi nhờ kho cắt nhỏ.**
+  // Drive có cắt ảnh theo `sz=w…`, và app đang dựa vào việc ấy ở NĂM chỗ. Nhưng
+  // dự án sẽ chuyển sang Supabase, nơi dịch vụ cắt ảnh nằm ở gói TRẢ PHÍ. Mất
+  // dịch vụ ấy thì lối "một file to" rơi về "tải nguyên ảnh to ở mọi chỗ" —
+  // đúng thảm hoạ 4G và RAM ở trên. Hai file thì chạy được trên bất cứ kho nào,
+  // kể cả kho không biết cắt ảnh: mỗi chỗ trỏ thẳng vào bản nó cần.
+  //
+  // Hai con số dưới đây tính ngược từ chỗ dùng, không phải chọn cho tròn:
+  //
+  //   nhỏ 400px — chỗ hiện to nhất trên màn hình là 240px (thẻ người), và
+  //     vòng thông tin 76px trên màn hình 3× cần 228px. 400 phủ hết còn dư.
+  //     (Bản 200px cũ thực ra ĐANG THIẾU cho màn hình 3×.)
+  //   lớn 1600px — vòng ảnh 52 đơn vị, ở chữ cao 7mm là 47mm trên giấy: 300
+  //     DPI cần 559px, 600 DPI cần 1118px. 1600 phủ tới vòng ảnh 135mm ở 300
+  //     DPI, và đủ nét cho màn hình 4K khi bấm xem ảnh to.
+  maxWidth:    400,   // nén BẢN NHỎ xuống chiều rộng này trước khi gửi lên
   jpegQuality: 0.82,
+  maxWidthLon:    1600,   // bản LỚN, chỉ để in và để xem ảnh to
+  jpegQualityLon: 0.85,
   thumbSize:   200,
 
   // Bán kính vòng ảnh trên ô sơ đồ.
