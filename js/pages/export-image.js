@@ -6,7 +6,7 @@
 // Phụ thuộc: domains/gedcom.js (boDauChoTenFile — tái dùng luật đặt tên file),
 //            domains/render.js (VE.chuTen — cỡ chữ, để tính ngược khổ giấy),
 //            config.js (PHOTO — cỡ hai bản ảnh nhỏ/lớn)
-// Phiên bản: 0.8.0 · Cập nhật: 01/09/2026 11:40
+// Phiên bản: 0.8.1 · Cập nhật: 01/09/2026 (bước 80 — cỡ ảnh xin kho đọc từ PHOTO)
 // ============================================================
 //
 // VIỆC 12 của kế hoạch. Nguồn gốc: mã nháp Antigravity
@@ -683,8 +683,12 @@ export async function xuatPdfNhieuTrang(svgEl, tree, tuyChon) {
   const toRongDonVi = xem.trangRongMm / xem.mmMoiDonVi;
   const toCaoDonVi  = xem.trangCaoMm  / xem.mmMoiDonVi;
 
-  // Vòng ảnh 52 đơn vị (bán kính 26) → xin kho bản vừa đủ cho tờ này.
-  const coAnhCanPx = Math.ceil(52 * (xem.wPx / toRongDonVi));
+  // Vòng ảnh `2 × PHOTO.banKinhTrenO` đơn vị → xin kho bản vừa đủ cho tờ này.
+  //
+  // ⚠ Đọc từ `PHOTO`, đừng gõ lại con số. Bước 80 nâng bán kính 26 → 34; chỗ
+  // này mà còn giữ 52 thì bản in xin ảnh THIẾU 30% điểm ảnh so với chỗ nó
+  // được vẽ ra, và cái thiếu ấy chỉ lộ ra khi cầm tờ giấy lên soi.
+  const coAnhCanPx = Math.ceil(2 * PHOTO.banKinhTrenO * (xem.wPx / toRongDonVi));
   // Dựng MỘT LẦN cho cả mấy chục tờ, không dựng lại mỗi tờ.
   const banDoLon = banDoAnhLon(tree);
 
@@ -1025,9 +1029,11 @@ async function dungBlobPngTuSvg(svgEl, w, h, kieu, tuyChon) {
   nen.setAttribute('fill', NEN_SO_DO);
   ban.insertBefore(nen, ban.firstChild);
 
-  // Vòng ảnh vẽ 52 đơn vị viewBox (bán kính 26 — `PHOTO.banKinhTrenO`), nên ở
-  // bản xuất này nó chiếm `52 × tỷ lệ` điểm ảnh. Xin Drive đúng cỡ ấy.
-  await thayAnhBangDataUri(ban, coAnhCanPxNgoai || Math.ceil(52 * (w / vbW)), banDoLon);
+  // Vòng ảnh vẽ `2 × PHOTO.banKinhTrenO` đơn vị viewBox, nên ở bản xuất này nó
+  // chiếm `2R × tỷ lệ` điểm ảnh. Xin Drive đúng cỡ ấy — xem cảnh báo ở
+  // `xuatNhieuTrang()`, đừng gõ lại con số.
+  await thayAnhBangDataUri(ban, coAnhCanPxNgoai ||
+                                Math.ceil(2 * PHOTO.banKinhTrenO * (w / vbW)), banDoLon);
 
   const chuoiSvg = new XMLSerializer().serializeToString(ban);
   const svgBlob = new Blob([chuoiSvg], { type: 'image/svg+xml;charset=utf-8' });

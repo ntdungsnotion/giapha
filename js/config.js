@@ -3,7 +3,7 @@
 // Vai trò  : Hằng số hiển thị phía trình duyệt.
 // Lớp      : config — không gọi file nào khác
 // Phụ thuộc: (không)
-// Phiên bản: 0.15.0 · Cập nhật: 01/09/2026 16:35
+// Phiên bản: 0.16.0 · Cập nhật: 01/09/2026 (bước 80 — vòng ảnh 34, ô 92/103, khoảng sát chữ)
 // ============================================================
 //
 // LƯU Ý: từ khi chuyển sang kiến trúc Apps Script, file này KHÔNG còn
@@ -33,9 +33,11 @@ export const PHOTO = {
   //   nhỏ 400px — chỗ hiện to nhất trên màn hình là 240px (thẻ người), và
   //     vòng thông tin 76px trên màn hình 3× cần 228px. 400 phủ hết còn dư.
   //     (Bản 200px cũ thực ra ĐANG THIẾU cho màn hình 3×.)
-  //   lớn 1600px — vòng ảnh 52 đơn vị, ở chữ cao 7mm là 47mm trên giấy: 300
-  //     DPI cần 559px, 600 DPI cần 1118px. 1600 phủ tới vòng ảnh 135mm ở 300
-  //     DPI, và đủ nét cho màn hình 4K khi bấm xem ảnh to.
+  //   lớn 1600px — vòng ảnh 68 đơn vị (bước 80; trước đó 52), ở chữ cao 7mm là
+  //     62mm trên giấy: 300 DPI cần 731px, 600 DPI cần 1462px. 1600 vẫn phủ
+  //     hết, và đủ nét cho màn hình 4K khi bấm xem ảnh to.
+  //     ⚠ Con số 1600 này TÍNH TỪ `banKinhTrenO`. Nâng bán kính thêm một nấc
+  //     nữa thì phải tính lại chỗ này, đừng để nó ngồi yên vì "vẫn chạy được".
   maxWidth:    400,   // nén BẢN NHỎ xuống chiều rộng này trước khi gửi lên
   jpegQuality: 0.82,
   maxWidthLon:    1600,   // bản LỚN, chỉ để in và để xem ảnh to
@@ -45,16 +47,46 @@ export const PHOTO = {
   // Bán kính vòng ảnh trên ô sơ đồ.
   //
   // ⚠ **20 → 26 ở bước 28b** — chủ dự án: *"hình đại diện to hơn, chữ nhỏ
-  // hơn"*, học theo cách Quick Family Tree trình bày. Vòng ảnh nay 52px trên
+  // hơn"*, học theo cách Quick Family Tree trình bày. Vòng ảnh lúc ấy 52px trên
   // một ô rộng 120px, to hơn 30%, mà ô lại NGẮN ĐI: bảng tên đè lên đáy vòng.
   //
   // Đã thử 28 (56px) trước. Hỏng: để giữ chiều cao ô thì bảng tên phải đè sâu
   // 14px, và lúc ấy vòng ảnh đọc ra thành hình vòng cung — xem `BONG` trong
   // `utils/image.js`.
   //
-  // ⚠ Vẽ 52px nhưng XIN Drive bản 200px (`thumbSize` ở trên): màn hình điện
-  // thoại có tỷ lệ pixel gấp 2–3, xin đúng 52 thì ảnh rỗ.
-  banKinhTrenO: 26,
+  // ⚠ Vẽ 68px nhưng XIN Drive bản 200px (`thumbSize` ở trên): màn hình điện
+  // thoại có tỷ lệ pixel gấp 2–3, xin đúng 68 thì ảnh rỗ.
+  //
+  // ⚠ Bước 80 làm con số ấy hụt 2%: màn hình 3× cần 68 × 3 = 204px. Giữ 200 —
+  // hụt 2% thì mắt không thấy, mà nâng `thumbSize` là nâng RAM cho MỌI ô của
+  // một sơ đồ 681 người. Nếu có ngày nâng bán kính nữa thì tính lại chỗ này.
+  //
+  // ⚠ **26 → 34 ở bước 80 (01/09/2026, việc D).** Chủ dự án dựng một bản
+  // Photoshop (`tai-lieu/anh/chinh sua ve so do.jpg`, trái = app thật, phải =
+  // bản sửa) và bảo *"ảnh đại diện quá nhỏ so với khung ô"*. Con số 34 **đo ra
+  // từ chính bức ảnh ấy**, không phải chọn cho tròn — `kiem-thu/do-khung-anh.mjs`
+  // đo khung bao từng vòng ảnh:
+  //
+  //     vòng ảnh KHÔNG sửa (Khang, Dũng)      76–78 px ảnh
+  //     vòng ảnh ĐÃ sửa   (Hương Lan, Khôi)   101 px ảnh   → to hơn 1,30 lần
+  //
+  // Vòng ảnh vẽ ra rộng `2R + 1,8` (nét vành 1,8). 53,8 × 1,30 = 69,7, trừ nét
+  // vành còn `R = 34`.
+  //
+  // ⚠ Lời chủ dự án — *"nới bán kính thêm khoảng 1/2 khoảng cách từ viền ảnh
+  // tới tâm nốt cụt số 2"* — cho ra 26 + 11 = **37**, tức hơn con số đo được
+  // 3px. Lấy 34 vì bức ảnh là thứ chủ dự án THẤY, còn câu nói là ước lượng
+  // bằng mắt của chính bức ảnh ấy. Chênh 3px này phải nói ra, đừng giấu.
+  //
+  // ⚠ **Vòng ảnh chỉ NỞ XUỐNG.** `leTrenO` = 0 nên đỉnh vòng ảnh luôn dính mép
+  // trên ô; tăng R là đẩy ĐÁY vòng ảnh xuống 16px, kéo theo bảng tên và hai
+  // hàng chữ dưới nó. Vì thế `nodeHeight` phải tăng theo — xem `LAYOUT`.
+  //
+  // ⚠ Ba chỗ khác đọc lại con số này, đừng đổi một mình nó:
+  //     layout.js  MUC_NET = leTrenO + banKinhTrenO   (mức nét vợ chồng)
+  //     layout.js  LE_ANH  = nodeWidth/2 − banKinhTrenO
+  //     render.js  dinhBang = 2 × R − VE.deLenAnh     (đỉnh bảng tên)
+  banKinhTrenO: 34,
 
   // Cách từ mép trên ô xuống đỉnh vòng ảnh.
   //
@@ -92,7 +124,32 @@ export const LAYOUT = {
   nodeWidth:  120,
 
   // ⚠ Chiều cao khi KHÔNG hiện hàng ngày giỗ.
-  nodeHeight:  88,
+  //
+  // ⚠ **88 → 92 ở bước 80**, và con số ấy **tính ra chứ không đoán**. Từ nóc ô
+  // xuống, mọi thứ nối đuôi nhau — đổi `banKinhTrenO` là cả chuỗi trôi theo:
+  //
+  //     đáy vòng ảnh          2 × 34            = 68
+  //     đỉnh bảng tên         68 − deLenAnh 8   = 60
+  //     đáy bảng tên MỘT DÒNG 60 + (3×2 + 11)   = 77
+  //     chân chữ hàng năm     77 + buocDongPhu  = 88
+  //     mép dưới chữ hàng năm 88 + 9,5 × 0,25   ≈ 90,4   ← chỗ thấp nhất
+  //
+  // 92 chừa 1,6px. Đo tỷ lệ chân chữ 0,25 bằng `kiem-thu/do-cao-chu.mjs`, không
+  // chép từ sách.
+  //
+  // ⚠ **Con số này nay tính cho ô tên MỘT DÒNG, không còn cho ô hai dòng.** Đó
+  // là đổi quan trọng nhất của bước 80 và là gốc rễ của *việc B*: trước bước
+  // này 88 chừa chỗ sẵn cho tên hai dòng, nên **mọi ô một dòng đều thừa 11px
+  // trống ở đáy** — cộng với `vGap/2` = 17 thành khoảng 30px trắng giữa hàng
+  // chữ cuối và đường kẻ ngang. Chủ dự án khoanh đỏ đúng chỗ ấy
+  // (`tai-lieu/anh/duong ke ngang can van linh - nguyen quang hung.png`).
+  //
+  // Bỏ được phần chừa ấy vì `render.js` từ bước 80 **gần như không còn ngắt
+  // tên xuống hai dòng**: đo trên 557 tên thật của cây Nguyễn Phúc
+  // (`kiem-thu/do-ten-dai.mjs`), sau khi nới bảng tên và nén chữ thì **0/557**
+  // tên phải xuống hai dòng. Ca hai dòng vẫn còn, nhưng nay là ngoại lệ thật
+  // sự — và ô ấy chấp nhận chữ tràn xuống khe, không bắt 680 ô kia trả giá.
+  nodeHeight:  92,
 
   // Chiều cao khi công tắc "Ngày giỗ" đang BẬT: thêm đúng một hàng chữ.
   //
@@ -102,7 +159,11 @@ export const LAYOUT = {
   //
   // ⚠ `layout.js` đọc lại hai con số này ở MỖI lần `computeLayout()`, không
   // chụp một lần lúc nạp như trước bước 28. Xem ghi chú `CAO` ở đó.
-  nodeHeightNgayGio: 99,
+  //
+  // ⚠ **99 → 103 ở bước 80.** Luôn đúng bằng `nodeHeight + buocDongPhu` — thêm
+  // một hàng chữ, không hơn. Lệch hai con số này là hàng giỗ hoặc thò khỏi ô,
+  // hoặc để lại một khoảng trống không ai giải thích được.
+  nodeHeightNgayGio: 103,
 
   hGap:        28,   // cách ngang giữa 2 người
 
@@ -130,6 +191,57 @@ export const LAYOUT = {
   // PHẢI hạ `stubLength` trước, đừng hạ một mình.
   vGap:        34,
   spouseGap:   16,
+
+  // --- KHOẢNG SÁT CHỮ — một con số cho MỌI đường kẻ ngang dưới ô ----------
+  //
+  // *Thêm ở bước 80 (01/09/2026), gộp lại BỐN công thức khác nhau.*
+  //
+  // Trước bước này, bốn đường kẻ ngang cùng mang một ý nghĩa — *"cách mép dưới
+  // ô một khoảng"* — mà dùng bốn hệ số khác nhau, sinh ra từ bốn lần sửa riêng
+  // lẻ ở bốn thời điểm:
+  //
+  //     thanh ngang gom con, thường     CAO + vGap/2       = CAO + 17
+  //     thanh ngang gom con, né (netDai) trừ đi vGap/4      = −8,5
+  //     nét vợ chồng RỜI NHAU, võng     CAO + vGap × 0,3   = CAO + 10,2
+  //     trần của nốt cụt dọc            CAO + vGap − r − 2 = CAO + 26
+  //
+  // Hai dòng đầu và dòng ba đều là *"kẻ ngang sát dưới ô"*, nên nay cùng đọc
+  // `khoangSatChu`. Dòng bốn KHÔNG — nó là một cái TRẦN, không phải khoảng
+  // cách sát chữ; giữ nguyên công thức, xem `viTriNotCut()`.
+  //
+  // ⚠ **Nét võng và thanh ngang gom con nay TRÙNG mức nhau, và đó là chủ ý.**
+  // Ảnh `tai-lieu/anh/loi ke ngang trong dung - huong lan khi chon con lam
+  // trung tam.jpg` bắt được đúng lỗi ấy: đo bằng `do-khung-anh.mjs` thì bản
+  // app thật có **HAI đường kẻ ngang song song cách nhau 9px** (10,2 và 17 —
+  // chênh đúng `vGap × 0,2`), còn bản Photoshop của chủ dự án chỉ có MỘT. Cho
+  // hai công thức đọc chung một hằng số là hai đường nhập làm một.
+  //
+  // 12 chọn thế nào: mép dưới chữ ở 90,4 mà ô cao 92, nên khoảng trắng mắt
+  // nhìn thấy là 1,6 + 12 ≈ 14px, thay cho 13,6 + 17 ≈ 31px trước đây.
+  khoangSatChu: 12,
+
+  // Nét của bộ cha mẹ THỨ HAI chạy cao hơn nét của bộ đặt chỗ bấy nhiêu pixel.
+  //
+  // Không phải "khoảng sát chữ" — nó là khoảng NÉ, để hai đường khỏi chồng
+  // khít lên nhau và người xem chỉ thấy một. Trước bước 80 là `vGap/4` = 8,5.
+  lechNetDai:   8,
+
+  // --- NỚI BẢNG TÊN CHO NGƯỜI TÊN DÀI (việc E, bước 80) -------------------
+  //
+  // Bảng tên được phép rộng hơn ô, đè lên đoạn nét kẻ dọc bên cạnh — đúng luật
+  // vẽ hai lượt (QUY-TAC-VE §7: ô vẽ sau tự che nét), và nốt cụt vẽ ở lượt 3
+  // nên không bao giờ bị che. Điều kiện bắt buộc: **không đè lên bảng tên
+  // người khác.**
+  //
+  // `kheBangTen` là khe hở tối thiểu phải chừa giữa hai bảng tên cạnh nhau;
+  // `noiTenToiDa` là trần nới ra MỖI BÊN, để người đứng một mình giữa sơ đồ
+  // không nhận một cái bảng dài ngoẵng.
+  //
+  // 18 tính ngược từ dữ liệu thật: tên dài nhất trong cây Nguyễn Phúc 681
+  // người đo được 144,4px ở cỡ chữ 11 (`kiem-thu/do-ten-dai.mjs`), mà bảng nới
+  // hết cỡ chứa được 120 + 2×18 − 3×2 − 6 = 144px.
+  kheBangTen:   10,
+  noiTenToiDa:  18,
 
   // Độ dài đường kẻ dẫn tới nốt cụt, hướng LÊN và XUỐNG.
   // 34 → 22 ở bước 28d, để `vGap` xuống được 34. Xem ghi chú `vGap` ở trên.

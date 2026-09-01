@@ -3,7 +3,7 @@
 // Vai trò  : Tính TOẠ ĐỘ các ô người, đường nối và nốt cụt. Không vẽ gì cả.
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: config (LAYOUT, PHOTO)
-// Phiên bản: 1.9.0 · Cập nhật: 23/08/2026 (Vòng 2/5 của DAC-TA-RANK_V01)
+// Phiên bản: 1.10.0 · Cập nhật: 01/09/2026 (bước 80 — ảnh to, khoảng sát chữ, bảng tên nới)
 // ============================================================
 //
 // Tách khỏi render.js có chủ ý: chỉnh giao diện (màu, phông, bo góc) không
@@ -128,10 +128,14 @@ let CAO = LAYOUT.nodeHeight;
 const MUC_NET = PHOTO.leTrenO + PHOTO.banKinhTrenO;
 
 /**
- * Khoảng từ MÉP Ô tới MÉP VÒNG ẢNH theo chiều ngang — 40px với ô rộng 120 và
- * vòng ảnh bán kính 20. Vòng ảnh nằm giữa ô nên hai bên bằng nhau.
+ * Khoảng từ MÉP Ô tới MÉP VÒNG ẢNH theo chiều ngang — 26px với ô rộng 120 và
+ * vòng ảnh bán kính 34. Vòng ảnh nằm giữa ô nên hai bên bằng nhau.
  *
  * Dùng để nét vợ chồng chạm được vào khuôn mặt, xem `themNetVoChong()`.
+ *
+ * ⚠ Tính từ `PHOTO.banKinhTrenO`, đừng gõ lại con số: bán kính đổi ở bước 80
+ * (26 → 34) và nếu chỗ này còn giữ 40 thì nét vợ chồng dừng lại cách khuôn mặt
+ * 14px, trôi lơ lửng giữa hai ô mà không có gì báo lỗi.
  */
 const LE_ANH = RONG / 2 - PHOTO.banKinhTrenO;
 
@@ -201,11 +205,61 @@ export function computeLayout(index, focusPersonId, visibleSet, scope, stubPoint
   }
   ct.nodeById = nodeById;
 
+  // Phải chạy SAU khi mọi `x` đã chốt: nó đo khoảng cách thật tới hàng xóm.
+  ganRongTenToiDa(nodes);
+
   const unions = dungDiemTreo(ct);
   const links  = dungDuongNoi(ct, unions);
   const stubs  = dungNotCut(ct, unions, stubPoints);
 
   return { nodes, unions, links, stubs, bounds: tinhBounds(nodes, links, stubs) };
+}
+
+/**
+ * BỀ RỘNG TỐI ĐA CỦA BẢNG TÊN, tính riêng cho từng ô — thêm ở bước 80, việc E.
+ *
+ * ⚠ **Vì sao con số này nằm ở `layout.js` chứ không ở `render.js`.** Nó là một
+ * phép đo KHOẢNG CÁCH GIỮA HAI Ô, mà toàn bộ toạ độ ô chỉ file này biết
+ * (QUY-TAC-VE §11: *"Mọi phép tính toạ độ nằm ở `layout.js`; `render.js` chỉ
+ * vẽ"*). `render.js` đọc con số ra rồi tự trừ lề bảng của nó.
+ *
+ * Nghĩa của con số: **bề rộng ô DÀNH CHO BẢNG TÊN**, tính cả lề bảng, căn giữa
+ * theo tâm ô. Không nới được thì nó đúng bằng `w` — nên `render.js` viết
+ * `node.rongTenToiDa || node.w` là chạy đúng cả với layout cũ.
+ *
+ * Cách đo: hàng xóm gần nhất CÙNG MỘT ĐỜI, bên trái và bên phải. Khe giữa hai
+ * ô chia đôi cho hai bên, sau khi đã chừa `kheBangTen`. Người ngoài cùng một
+ * hàng không có hàng xóm ở phía ấy, nhưng vẫn bị `noiTenToiDa` chặn — nếu
+ * không thì một người đứng lẻ giữa sơ đồ nhận một cái bảng dài ngoẵng.
+ *
+ * ⚠ Chỉ xét CÙNG ĐỜI. Ô hai đời khác nhau không bao giờ đè bảng tên nhau: bảng
+ * tên nằm trong dải `y` riêng của ô mình, mà hai đời cách nhau `vGap`.
+ *
+ * ⚠ Bảng nới ra ĐƯỢC PHÉP đè lên đoạn nét kẻ dọc — luật vẽ hai lượt (§7) lo
+ * phần che, và nốt cụt vẽ ở lượt 3 nên không bao giờ bị bảng tên nuốt mất.
+ */
+function ganRongTenToiDa(nodes) {
+  const theoHang = new Map();
+  for (const n of nodes) {
+    if (!theoHang.has(n.gen)) theoHang.set(n.gen, []);
+    theoHang.get(n.gen).push(n);
+  }
+
+  const tran = LAYOUT.noiTenToiDa;
+  for (const [, ds] of theoHang) {
+    ds.sort((a, b) => a.x - b.x);
+    for (let i = 0; i < ds.length; i++) {
+      const n = ds[i];
+      let khe = Infinity;
+      if (i > 0)              khe = Math.min(khe, n.x - (ds[i - 1].x + ds[i - 1].w));
+      if (i < ds.length - 1)  khe = Math.min(khe, ds[i + 1].x - (n.x + n.w));
+
+      const noi = Number.isFinite(khe)
+        ? Math.max(0, (khe - LAYOUT.kheBangTen) / 2)
+        : tran;
+      n.rongTenToiDa = n.w + 2 * Math.min(noi, tran);
+    }
+  }
 }
 
 // ============================================================
@@ -1096,13 +1150,13 @@ function dungDiemTreo(ct) {
       const nut = ct.nodeById.get(neoId);
       x    = nut.x - dai.dxP + dai.khe.get(uid);
       y    = nut.y + MUC_NET - (dai.mucNet.get(uid) || 0) * dai.buocNet;
-      busY = nut.y + CAO + LAYOUT.vGap / 2;
+      busY = nut.y + CAO + LAYOUT.khoangSatChu;
       kieu = dai.n > 0 ? 'khe' : 'don';
     } else if (u.partners.length === 1) {
       const nut = ct.nodeById.get(u.partners[0]);
       x    = nut.x + RONG / 2;
       y    = nut.y + MUC_NET;
-      busY = nut.y + CAO + LAYOUT.vGap / 2;
+      busY = nut.y + CAO + LAYOUT.khoangSatChu;
       kieu = 'don';
       neoId = u.partners[0];
     } else {
@@ -1115,7 +1169,7 @@ function dungDiemTreo(ct) {
       // giữa hai ô không có ô nào che, nên đoạn kẻ từ tâm hàng xuống sẽ thò
       // hẳn ra ngoài và treo lơ lửng phía trên nét vợ chồng.
       y    = a.y === b.y ? mucVong(a, b) : (a.y + b.y) / 2 + MUC_NET;
-      busY = Math.max(a.y, b.y) + CAO + LAYOUT.vGap / 2;
+      busY = Math.max(a.y, b.y) + CAO + LAYOUT.khoangSatChu;
       kieu = 'cheo';
       neoId = u.partners[0];
     }
@@ -1160,12 +1214,12 @@ function dungDuongNoi(ct, unions) {
       const cx   = netDai ? (treo.x > cxGiua ? con.x + RONG * 0.75 : con.x + RONG * 0.25)
                           : cxGiua;
       const busY = netDai
-        ? Math.min(treo.busY - LAYOUT.vGap / 4, con.y - 1)
+        ? Math.min(treo.busY - LAYOUT.lechNetDai, con.y - 1)
         : Math.min(treo.busY, con.y - 1);
 
       const points = [[treo.x, treo.y]];
       if (Math.abs(treo.x - cx) > 0.5) { points.push([treo.x, busY]); points.push([cx, busY]); }
-      points.push([cx, con.y]);
+      points.push([cx, con.y + chamVongAnh(cx - cxGiua)]);
 
       links.push({
         kind: 'child',
@@ -1181,6 +1235,38 @@ function dungDuongNoi(ct, unions) {
   }
 
   return links;
+}
+
+/**
+ * NÉT ĐI TỪ TRÊN XUỐNG CHẠM VÀO ĐÂU — thêm ở bước 80, việc A.
+ *
+ * Trả về khoảng cách từ NÓC Ô xuống chỗ nét chạm vào VÒNG ẢNH, khi nét vào ô
+ * lệch tâm `dx` pixel.
+ *
+ * ⚠ **Đây là lỗi việc A, và nó không tự khỏi khi vòng ảnh to lên.** §10b bảo
+ * nét của bộ cha mẹ thứ hai vào ô ở 1/4 hay 3/4 bề ngang, kèm lý do: *"chỗ ấy
+ * vẫn nằm trên nóc ô nên nét không hụt ra ngoài"*. Câu ấy đúng cho tới bước 28
+ * — rồi bước 28 **bỏ viền ô**, và từ đó "nóc ô" chỉ còn là một toạ độ, không
+ * còn là một đường kẻ ai nhìn thấy. Thứ mắt thấy ở đầu ô nay là VÒNG ẢNH, mà
+ * vòng ảnh là hình TRÒN: ở chỗ lệch tâm 30px nó thấp hơn nóc ô hẳn 18px.
+ *
+ *     lệch  0px  →  chạm ngay nóc ô          (nét treo con thường, không đổi)
+ *     lệch 30px, R = 34  →  34 − √(34²−30²) = 34 − 16 = 18px dưới nóc ô
+ *     lệch 30px, R = 26  →  30 > 26, không có vòng ảnh nào ở đó cả
+ *
+ * Dòng cuối là bản trước bước 80: nét kết thúc giữa khoảng không, cách vòng
+ * ảnh một quãng — đúng chỗ hở chủ dự án chỉ ra ở ca Nguyễn Thị Hương Lan
+ * (`P0020`, union cha mẹ nuôi `U0025`). Vòng ảnh to lên **thu hẹp** chỗ hở từ
+ * "hụt hẳn" xuống 18px, nên nhìn qua tưởng đã khỏi — đo mới thấy còn.
+ *
+ * Lệch quá bán kính thì kẹp về mép vòng: thà chạm ngang hông vòng ảnh còn hơn
+ * treo lơ lửng. Nay không xảy ra (30 < 34) nhưng hạ `banKinhTrenO` là xảy ra
+ * ngay, và lúc ấy không có gì báo.
+ */
+function chamVongAnh(dx) {
+  const R = PHOTO.banKinhTrenO;
+  const d = Math.min(Math.abs(dx), R);
+  return PHOTO.leTrenO + R - Math.sqrt(R * R - d * d);
 }
 
 /**
@@ -1252,10 +1338,20 @@ function themNetVoChong(ct, links, uid, aId, bId) {
  * chỗ ấy lệch nhau đúng một lần là sinh ra đoạn kẻ treo lơ lửng giữa sơ đồ —
  * lỗi thật của chat 1.7, chủ dự án nhìn ảnh mới thấy.
  *
- * Nằm TRÊN `busY` (= vGap/2) nên chùm con vẫn thả xuống được bình thường.
+ * ⚠ **Từ bước 80 nó TRÙNG `busY`, và đó là chủ ý, không phải sơ ý.** Trước đó
+ * nét võng ở `CAO + vGap × 0,3` còn thanh ngang gom con ở `CAO + vGap/2` —
+ * chênh nhau `vGap × 0,2` ≈ 7px, và trên màn hình thật ra **hai đường kẻ ngang
+ * song song sát nhau**, đúng thứ chủ dự án khoanh trong ảnh `loi ke ngang
+ * trong dung - huong lan khi chon con lam trung tam.jpg` (đo được 9px trên
+ * ảnh). Bản Photoshop của chủ dự án chỉ có MỘT đường. Cho cả hai đọc chung
+ * `LAYOUT.khoangSatChu` là hai đường nhập làm một.
+ *
+ * Hệ quả trong `dungDuongNoi()`: điểm treo và `busY` bằng nhau, nên đoạn kẻ
+ * đầu tiên của nét treo con dài 0px. Vô hại — SVG vẽ đường gấp khúc, một đoạn
+ * dài 0 không sinh ra nét nào.
  */
 function mucVong(a, b) {
-  return Math.max(a.y, b.y) + CAO + LAYOUT.vGap * 0.3;
+  return Math.max(a.y, b.y) + CAO + LAYOUT.khoangSatChu;
 }
 
 // ============================================================
@@ -1387,7 +1483,7 @@ function viTriNotCut(ct, treoCua, sp, nut) {
   // dưới ít nhất 2px. Chặn ở đây chứ không chặn bằng cách bắt người chỉnh
   // config phải nhớ một bất đẳng thức — cái phải nhớ thì sớm muộn cũng quên.
   const tranY = nut.y + CAO + LAYOUT.vGap - LAYOUT.stubRadius - 2;
-  const yDay  = Math.min(nut.y + CAO + LAYOUT.vGap / 2 + L, tranY);
+  const yDay  = Math.min(nut.y + CAO + LAYOUT.khoangSatChu + L, tranY);
   return { x, y: yDay, x1: x, y1, angle: 90 };
 }
 

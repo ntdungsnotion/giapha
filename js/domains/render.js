@@ -3,7 +3,7 @@
 // Vai trò  : Vẽ SVG từ kết quả layout. Chỉ vẽ, không tính toạ độ sơ đồ.
 // Lớp      : domains — được gọi bởi: pages · được phép gọi: utils, config
 // Phụ thuộc: config (LAYOUT, PHOTO), utils/text, utils/image, utils/avatar
-// Phiên bản: 1.6.0 · Cập nhật: 22/08/2026 09:40
+// Phiên bản: 1.7.0 · Cập nhật: 01/09/2026 (bước 80 — ảnh to, bảng tên nới, nén tên)
 // ============================================================
 //
 // Đây là file sẽ sửa nhiều nhất khi chỉnh giao diện. Giữ nó chỉ chứa việc vẽ,
@@ -19,6 +19,12 @@
 //    Ngoại lệ duy nhất, và là ngoại lệ có chủ ý: chữ NẰM TRONG ô — cỡ chữ,
 //    baseline, chỗ ngắt dòng của tên dài. Đó là việc của tầng vẽ, layout.js
 //    chỉ hứa mỗi ô rộng LAYOUT.nodeWidth và cao LAYOUT.nodeHeight.
+//
+//    ⚠ Bước 80 thêm `node.rongTenToiDa` cho BẢNG TÊN NỚI RA NGOÀI Ô. Nó nằm
+//    ngay ranh giới của ngoại lệ trên, nên phải nói rõ ai làm gì: **khoảng
+//    cách tới hàng xóm do `layout.js` đo** và đưa sang; render chỉ trừ lề bảng
+//    của mình rồi vẽ. Đừng để render tự đi tìm ô bên cạnh — nó không có toạ độ
+//    của ai ngoài chính ô đang vẽ.
 //
 // 2. VẼ HAI LƯỢT (QUY-TAC-VE §7): hết đường nối rồi mới đến ô.
 //
@@ -97,6 +103,22 @@ export const VE = {
   // tên ba chữ vượt, một số không, và cả một hàng ô cao thấp so le vô cớ.
   chuTen:      11,
   chuTenNho:   10,     // dùng khi tên dài phải xuống hai dòng
+
+  // --- HAI TRẦN CỦA VIỆC ÉP TÊN CHO VỪA BẢNG (bước 80) -------------------
+  //
+  // Đọc cùng `xepTen()`, đừng đọc riêng — mỗi con số là trần của một tầng.
+  //
+  // `nenToiDaPt` — nén khoảng cách chữ tối đa bấy nhiêu POINT trên mỗi khe
+  // giữa hai ký tự. 1pt là mức chủ dự án chốt, mượn thẳng cách nói của Word
+  // ("Spacing → Condensed by 1 pt"). Ở cỡ chữ 11px, 1pt/khe rút được chừng
+  // 20% bề rộng một cái tên bốn chữ — đủ cho mọi tên trong cây 681 người.
+  //
+  // `sanNen` — co NÉT CHỮ thì không được xuống dưới bấy nhiêu phần bề rộng
+  // gốc. Dưới sàn thì chữ méo hẳn, lúc ấy xuống hai dòng còn đọc được hơn.
+  // ⚠ 0,90 là con số ĐỀ XUẤT, chưa qua mắt chủ dự án. Đo trên cây Nguyễn Phúc
+  // thì chưa tên nào chạm tới sàn này, nên đổi nó hôm nay chưa thấy gì khác.
+  nenToiDaPt:  1,
+  sanNen:      0.90,
   leTrongO:    12,     // tổng lề trái + phải chừa cho chữ dưới bảng tên
   chuNam:      9.5,
   chuDem:      10,     // số đếm cạnh nốt cụt gộp
@@ -277,17 +299,26 @@ function renderPersonNode(node, person, kind, hienGio) {
 
   // --- BẢNG TÊN ------------------------------------------------------------
   // CHỖ DUY NHẤT render.js được tự tính pixel, và chỉ tính BÊN TRONG ô.
-  const ten     = fullName(person) || node.id;
-  const rongChu = node.w - VE.leBangTen * 2 - 6;
-  const dong    = xepTen(ten, rongChu);
-  const coChu   = dong.length > 1 ? VE.chuTenNho : VE.chuTen;
+  //
+  // ⚠ `node.rongTenToiDa` KHÔNG phải render tự nghĩ ra — `layout.js` đo khoảng
+  // cách thật tới hàng xóm rồi đưa sang (QUY-TAC-VE §11). Layout cũ không có
+  // trường ấy thì `|| node.w` đưa về đúng hành vi trước bước 80.
+  const ten       = fullName(person) || node.id;
+  const rongOTen  = Math.max(node.w, Number(node.rongTenToiDa) || node.w);
+  const rongChuan = node.w   - VE.leBangTen * 2 - 6;
+  const rongMax   = rongOTen - VE.leBangTen * 2 - 6;
+
+  const keTen    = xepTen(ten, rongChuan, rongMax);
+  const dong     = keTen.dong;
+  const coChu    = keTen.coChu;
+  const rongBang = keTen.rongChu + 6;
 
   const dinhBang = node.y + PHOTO.leTrenO + 2 * R - VE.deLenAnh;
   const caoBang  = VE.leTrongBang * 2 + dong.length * VE.buocDongTen;
 
   g.append(tao('rect', {
-    x: node.x + VE.leBangTen, y: dinhBang,
-    width: node.w - VE.leBangTen * 2, height: caoBang,
+    x: tamX - rongBang / 2, y: dinhBang,
+    width: rongBang, height: caoBang,
     rx: VE.boBangTen,
     fill: VE.nenBangTen,
     stroke: VE.vienBangTen, 'stroke-width': 1,
@@ -296,7 +327,8 @@ function renderPersonNode(node, person, kind, hienGio) {
   const mauTen = laBien ? VE.chuPhu : VE.chuChinh;
   const dauTen = dinhBang + VE.leTrongBang + coChu * 0.82;
   dong.forEach((chuoi, i) => {
-    g.append(chu(chuoi, tamX, dauTen + i * VE.buocDongTen, coChu, mauTen, rongChu));
+    g.append(chu(chuoi, tamX, dauTen + i * VE.buocDongTen, coChu, mauTen,
+                 keTen.rongChu, keTen.ep));
   });
 
   // --- HAI HÀNG DƯỚI BẢNG, trên nền trang ----------------------------------
@@ -435,31 +467,100 @@ export function mauVien(person) {
   return VE.vienKhongRo;
 }
 
-/**
- * Ngắt tên dài thành tối đa HAI dòng.
- *
- * Trình duyệt không cho đo chiều rộng chữ trước khi vẽ mà không dựng thêm một
- * phần tử tạm, nên ở đây ước lượng bằng số ký tự. Ước lượng chỉ quyết định
- * CHỖ NGẮT DÒNG; phần bảo hiểm nằm ở `chu()`, nơi đặt `textLength` để chuỗi
- * dài quá tự co lại chứ không bao giờ tràn ra khỏi ô.
- *
- * Ngắt ở khoảng trắng CUỐI CÙNG còn vừa dòng trên, nên "Nguyễn Thị Hương Lan"
- * xuống dòng thành "Nguyễn Thị Hương" / "Lan" — tên riêng nằm trọn một dòng.
- */
-function xepTen(ten, rongToiDa) {
-  const s = String(ten || '').trim();
-  if (s === '') return [''];
-  if (beRong(s, VE.chuTen) <= rongToiDa) return [s];
+/** 1pt = 1,3333px. Chỉ dùng để đọc `VE.nenToiDaPt` ra pixel. */
+const PT = 96 / 72;
 
+/**
+ * XẾP TÊN VÀO BẢNG — bậc thang BỐN TẦNG, dựng lại ở bước 80 (việc E).
+ *
+ * ⚠ **Cái đổi là THỨ TỰ ƯU TIÊN, không phải thêm mẹo mới.** Trước bước 80,
+ * `textLength` đã có sẵn — nhưng chỉ làm *dây bảo hiểm cuối cùng*, chạy SAU
+ * khi hàm này đã lỡ ngắt tên xuống hai dòng. Nên "Nguyễn Thị Hương Lan" xuống
+ * hai dòng dù nó chỉ **thừa 4,5px**: đo được 112,5px ở cỡ chữ 11, mà bảng chỉ
+ * cho 108px (`kiem-thu/do-ten-dai.mjs`). Bốn phẩy năm pixel không đáng đổi lấy
+ * một ô cao thêm 11px — và cao thêm cho CẢ SƠ ĐỒ, vì ô phải cao bằng nhau.
+ *
+ * Bốn tầng, dừng ở tầng nào vừa thì thôi:
+ *
+ *   1. MỘT DÒNG trong bảng chuẩn (114px). Không đụng gì tới chữ.
+ *   1b. MỘT DÒNG trong bảng NỚI RIÊNG cho người này — `rongMax` do `layout.js`
+ *      đo từ khoảng cách thật tới hàng xóm. Bảng chỉ nới ĐÚNG BẰNG chữ cần,
+ *      không nới hết cỡ: nới hết thì mỗi ô một bề rộng, hàng ô nhìn răng cưa.
+ *   2. NÉN KHOẢNG CÁCH CHỮ — `lengthAdjust="spacing"`, đúng nghĩa *"Spacing →
+ *      Condensed"* của Word: khoảng cách hẹp lại, nét chữ nguyên vẹn. Trần
+ *      `VE.nenToiDaPt` = 1pt mỗi khe, đúng mức chủ dự án chốt.
+ *   3. CO CẢ NÉT CHỮ — `lengthAdjust="spacingAndGlyphs"`, có **sàn**
+ *      `VE.sanNen`: dưới sàn thì chữ méo, thà xuống dòng.
+ *   4. NGẮT HAI DÒNG — phương án cuối, không phải mặc định.
+ *
+ * ⚠ **Tầng 2 không đi từng nấc 0,1pt như bàn ban đầu, và thế là ĐÚNG HƠN.**
+ * Nấc 0,1pt là hạt của ô nhập trong Word, không phải một luật thẩm mỹ.
+ * `textLength` bảo trình duyệt *"vừa đúng bằng này pixel"*, tức nó tự tìm mức
+ * nén NHỎ NHẤT còn vừa — mịn hơn mọi nấc rời rạc. Cái phải canh là TRẦN, và
+ * trần thì kiểm ngay ở đây: thiếu bao nhiêu pixel, chia cho số khe giữa các
+ * ký tự, phải nằm dưới 1pt.
+ *
+ * Đo trên 557 tên thật của cây Nguyễn Phúc 681 người (`do-ten-dai.mjs`):
+ *
+ *     vượt bảng chuẩn 108px              38/557
+ *     vượt, sau khi nén 1pt              1/557   (mỗi "Nguyễn Trọng Tiến (con nuôi)")
+ *     vượt, sau khi nén 1pt + co glyph   0/557
+ *
+ * Tức tầng 4 nay gần như không bao giờ chạy — và chính vì thế `nodeHeight` mới
+ * hạ được phần chừa cho tên hai dòng. Hai việc D/E và B dính nhau ở đúng đây.
+ *
+ * @param {string} ten
+ * @param {number} rongChuan  bề rộng chữ trong bảng CHUẨN (mọi ô như nhau)
+ * @param {number} rongMax    bề rộng chữ khi bảng nới hết cỡ cho riêng ô này
+ * @returns {{dong:string[], coChu:number, rongChu:number, ep:string|null}}
+ *          `ep` là `lengthAdjust` phải dùng nếu chữ vẫn tràn — `null` nghĩa là
+ *          không cần ép, cứ để `chu()` lo bằng dây bảo hiểm mặc định.
+ */
+function xepTen(ten, rongChuan, rongMax) {
+  const s = String(ten || '').trim();
+  const vua = (dong, coChu, rongChu, ep) => ({ dong, coChu, rongChu, ep });
+
+  if (s === '') return vua([''], VE.chuTen, rongChuan, null);
+
+  const w = beRong(s, VE.chuTen);
+
+  // --- Tầng 1 — vừa bảng chuẩn, không đụng gì tới chữ ---------------------
+  if (w <= rongChuan) return vua([s], VE.chuTen, rongChuan, null);
+
+  // --- Tầng 1b — nới bảng riêng, vẫn một dòng, chữ vẫn nguyên -------------
+  if (w <= rongMax) return vua([s], VE.chuTen, Math.ceil(w), null);
+
+  // Từ đây bảng đã nới hết cỡ; phần còn thiếu phải lấy ở chính hàng chữ.
+  const khe   = Math.max(1, s.length - 1);
+  const thieu = w - rongMax;
+
+  // --- Tầng 2 — nén khoảng cách chữ, trần 1pt mỗi khe ---------------------
+  if (thieu / khe <= VE.nenToiDaPt * PT) {
+    return vua([s], VE.chuTen, rongMax, 'spacing');
+  }
+
+  // --- Tầng 3 — co cả nét chữ, có sàn -------------------------------------
+  if (rongMax / w >= VE.sanNen) {
+    return vua([s], VE.chuTen, rongMax, 'spacingAndGlyphs');
+  }
+
+  // --- Tầng 4 — hết cách, mới ngắt hai dòng -------------------------------
+  //
+  // Ngắt ở khoảng trắng CUỐI CÙNG còn vừa dòng trên, nên "Nguyễn Thị Hương Lan"
+  // xuống dòng thành "Nguyễn Thị Hương" / "Lan" — tên riêng nằm trọn một dòng.
+  //
+  // ⚠ Ô này sẽ cao hơn phần `nodeHeight` chừa sẵn, tức hàng năm sinh của riêng
+  // nó tụt xuống khe. Chấp nhận: đổi lại 680 ô kia không phải cao thêm 11px.
   const tu = s.split(/\s+/);
-  if (tu.length === 1) return [s];          // một từ dài — để textLength lo
+  if (tu.length === 1) return vua([s], VE.chuTen, rongMax, 'spacingAndGlyphs');
 
   let cat = -1;
   for (let i = 1; i < tu.length; i++) {
-    if (beRong(tu.slice(0, i).join(' '), VE.chuTenNho) <= rongToiDa) cat = i;
+    if (beRong(tu.slice(0, i).join(' '), VE.chuTenNho) <= rongMax) cat = i;
   }
   if (cat <= 0) cat = tu.length - 1;
-  return [tu.slice(0, cat).join(' '), tu.slice(cat).join(' ')];
+  return vua([tu.slice(0, cat).join(' '), tu.slice(cat).join(' ')],
+             VE.chuTenNho, rongMax, 'spacingAndGlyphs');
 }
 
 /**
@@ -659,7 +760,7 @@ function chuCoNen(noiDung, x, y, coChu, mau) {
   ];
 }
 
-function chu(noiDung, x, y, coChu, mau, rongToiDa) {
+function chu(noiDung, x, y, coChu, mau, rongToiDa, cachEp) {
   const t = tao('text', {
     x, y,
     'text-anchor': 'middle',
@@ -667,8 +768,11 @@ function chu(noiDung, x, y, coChu, mau, rongToiDa) {
     fill: mau,
   });
   if (rongToiDa && beRong(noiDung, coChu) > rongToiDa) {
+    // `spacing` chỉ bóp KHOẢNG CÁCH giữa các chữ, nét chữ nguyên vẹn — đúng
+    // nghĩa "condensed". `spacingAndGlyphs` bóp cả nét chữ. Nơi gọi chọn;
+    // không nói gì thì lấy bản bóp cả nét, đúng như trước bước 80.
     t.setAttribute('textLength', String(rongToiDa));
-    t.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+    t.setAttribute('lengthAdjust', cachEp === 'spacing' ? 'spacing' : 'spacingAndGlyphs');
   }
   t.textContent = noiDung;
   return t;
