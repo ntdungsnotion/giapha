@@ -3,7 +3,7 @@
 // Vai trò  : Hằng số hiển thị phía trình duyệt.
 // Lớp      : config — không gọi file nào khác
 // Phụ thuộc: (không)
-// Phiên bản: 0.14.0 · Cập nhật: 01/09/2026 11:40
+// Phiên bản: 0.15.0 · Cập nhật: 01/09/2026 16:35
 // ============================================================
 //
 // LƯU Ý: từ khi chuyển sang kiến trúc Apps Script, file này KHÔNG còn
@@ -170,11 +170,19 @@ export const LAYOUT = {
 //   spouseOfDescendants có vẽ vợ/chồng của hậu duệ không
 //   k                   đi lên tới đời thứ mấy thì còn rẽ ngang sang anh chị em
 //
-// ancestors để 0 (không phải 3) vì ảnh hinh_3.jpg vẽ liền 5 đời tổ tiên.
-// k = 1 là con số Quick Family Tree đang dùng, đã đối chiếu cả bốn ảnh.
+// ⚠ ĐỔI 01/09/2026 — chủ dự án chốt: mặc định **2 đời trên và 2 đời dưới**.
+//
+// Trước ngày này cả hai để 0, tức KHÔNG GIỚI HẠN, theo ảnh `hinh_3.jpg` vẽ
+// liền 5 đời tổ tiên. Con số ấy hợp với gia phả 32 người dùng để đối chiếu
+// thuật toán, nhưng gia phả thật của chủ dự án có **681 người, 17 đời**: mở
+// app ra là 661 người đổ vào một sơ đồ, trên màn hình điện thoại thì không
+// còn là sơ đồ nữa.
+//
+// k = 1 là con số Quick Family Tree đang dùng, đã đối chiếu cả bốn ảnh —
+// KHÔNG đụng vào.
 export const DEFAULT_SCOPE = {
-  ancestors:           0,
-  descendants:         0,
+  ancestors:           2,
+  descendants:         2,
   spouseOfDescendants: true,
   k:                   1,
 };

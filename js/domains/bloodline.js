@@ -4,7 +4,7 @@
 //            trung tâm, ai chỉ là nút biên, và nhánh nào thu về nốt cụt.
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: utils/graph
-// Phiên bản: 1.0.0 · Cập nhật: 15/08/2026 23:52
+// Phiên bản: 1.1.0 · Cập nhật: 01/09/2026 16:20
 // ============================================================
 //
 // ⚠ ĐẶC TẢ CŨ ĐÃ BỊ CHỨNG MINH SAI bằng dữ liệu thật (xem NK-B04):
@@ -116,6 +116,29 @@ export function computeVisibleSet(index, focusPersonId, scope) {
 
   for (const [unionId, d] of trucHe) {
     if (d > s.k) continue;
+
+    // ⚠ d = 0 LÀ UNION CỦA CHÍNH NGƯỜI TRUNG TÂM, và nó phải đứng ngoài vòng
+    // này. Sửa 01/09/2026 — lỗi chủ dự án gặp trên gia phả Nguyễn Phúc 681
+    // người: chọn "chỉ hiện đời con" mà app vẫn vẽ TẤT CẢ hậu duệ.
+    //
+    // Vì sao d = 0 lọt được vào `trucHe`: điều kiện là *mọi* partner đều nằm
+    // trong tập tổ tiên, mà một UNION MỘT NGƯỜI của chính focus thoả điều
+    // kiện ấy — partner duy nhất là focus, đời 0. Loại union này không hiếm:
+    // đường nhập Excel sinh ra nó mỗi khi người cha có nhiều vợ mà dòng con
+    // không nói rõ mẹ nào (56 union một người trong file thật của chủ dự án).
+    //
+    // Rơi vào đó thì công thức dưới đây cho `sauNhat = descendants + 0 - 1`,
+    // tức 0 khi người dùng chọn "chỉ đời con" — mà **0 trong `bfsLevels`
+    // nghĩa là KHÔNG GIỚI HẠN**, đúng cái ngược lại điều họ vừa bấm. Đây là
+    // một con số đúng về số học nhưng sai về mã hoá: "còn 0 bước nữa" và
+    // "không giới hạn" dùng chung một ký hiệu.
+    //
+    // Bỏ qua ở đây KHÔNG mất người nào: hậu duệ của chính focus đã do
+    // `themHauDue(index, [focusPersonId], s.descendants, full)` ở trên lo
+    // trọn, và `conCuaNguoi()` đi qua MỌI union của một người, kể cả union
+    // một người.
+    if (d === 0) continue;
+
     // Con của union trực hệ đời d nằm ở đời (d - 1) tính từ người trung tâm:
     // d = 1 là anh chị em ruột, cùng đời với focus. Muốn xuống tới đúng
     // `descendants` đời DƯỚI focus thì phải đi thêm (d - 1) bước.
