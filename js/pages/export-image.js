@@ -4,7 +4,7 @@
 //            cao theo khổ giấy + DPI · in ra PDF qua hộp thoại in
 // Lớp      : pages — được gọi bởi: tree-view (có `svgEl`) · settings (nút + link)
 // Phụ thuộc: domains/gedcom.js (boDauChoTenFile — tái dùng luật đặt tên file)
-// Phiên bản: 0.6.0 · Cập nhật: 01/09/2026 09:10
+// Phiên bản: 0.7.0 · Cập nhật: 01/09/2026 10:30
 // ============================================================
 //
 // VIỆC 12 của kế hoạch. Nguồn gốc: mã nháp Antigravity
@@ -138,6 +138,76 @@
 // ============================================================
 
 import { boDauChoTenFile } from '../domains/gedcom.js';
+import { VE } from '../domains/render.js';
+
+// ============================================================
+// XUẤT THEO CHIỀU CAO CHỮ — lối MicroStation (chốt 01/09/2026)
+// ============================================================
+//
+// Chủ dự án đối chiếu MicroStation và chỉ ra chỗ thiết kế của app đang NGƯỢC:
+//
+//   · MicroStation: cố định **chữ cao bao nhiêu mm trên giấy** → tính NGƯỢC
+//     ra khổ giấy cần in.
+//   · App (tới b75): hỏi **khổ giấy** → chữ to nhỏ là hệ quả, không ai tính.
+//
+// Và chính chỗ ngược ấy đẻ ra sự cố: chủ dự án gõ 84cm vì đó là khổ giấy
+// quen, không ai nói cho biết 84cm với cây 400 người nghĩa là chữ cao 0,08mm.
+//
+// ⚠ **`TY_LE_CHU_HOA` là số ĐO ĐƯỢC, không phải chép sách** —
+// `kiem-thu/do-cao-chu.mjs`, đo bằng chính bộ chữ `VE.phong` trong Chrome
+// thật: chữ hoa không dấu cao đúng **0,70** lần cỡ chữ. (Chữ hoa CÓ DẤU —
+// "Ê", "Ố" — cao tới 0,92 vì dấu đội lên trên, nên bản in ra luôn NHỈNH HƠN
+// số người dùng gõ, không bao giờ thấp hơn. Đó là chiều sai an toàn.)
+//
+// Vì sao hỏi chữ HOA chứ không hỏi cỡ chữ: người cầm thước đo chữ trên giấy
+// là đo chiều cao chữ hoa. Hỏi "cỡ chữ" thì họ gõ 7 rồi đo ra 4,9mm và tưởng
+// app tính sai.
+const TY_LE_CHU_HOA = 0.70;
+
+/** Khuyến nghị: đọc thoải mái khi đứng cách 1–1,5m (chữ cao ≈ khoảng cách/200). */
+export const CHU_CAO_KHUYEN_NGHI_MM = 7;
+
+/** Khổ giấy chuẩn, mm, dạng DỌC. Xoay ngang thì đảo hai số. */
+export const KHO_GIAY = {
+  A4: [210, 297],
+  A3: [297, 420],
+  A2: [420, 594],
+  A1: [594, 841],
+  A0: [841, 1189],
+};
+
+/**
+ * Từ chiều cao chữ hoa MONG MUỐN trên giấy, tính ngược ra khổ giấy cần cho
+ * CẢ sơ đồ. Hàm THUẦN.
+ *
+ * @param {number} vbW  bề ngang viewBox (đơn vị sơ đồ)
+ * @param {number} vbH  bề cao viewBox
+ * @param {number} chuCaoMm  chiều cao chữ HOA mong muốn, mm
+ * @returns {{rongMm:number, caoMm:number, mmMoiDonVi:number}}
+ */
+export function tinhKhoTuChuCao(vbW, vbH, chuCaoMm) {
+  const mmMoiDonVi = chuCaoMm / (VE.chuTen * TY_LE_CHU_HOA);
+  return { rongMm: vbW * mmMoiDonVi, caoMm: vbH * mmMoiDonVi, mmMoiDonVi };
+}
+
+/**
+ * Cả sơ đồ khổ `rongMm × caoMm` thì phải chia làm bao nhiêu tờ giấy
+ * `trangRongMm × trangCaoMm`. Hàm THUẦN.
+ *
+ * ⚠ Chia trang là cách DUY NHẤT để xuất khổ vài mét: trần canvas của trình
+ * duyệt là 268 triệu điểm ảnh (đo ở `do-canvas-lon.mjs`), một tấm 19m thì
+ * không đời nào dựng nổi trong MỘT ảnh. Nhưng dựng TỪNG TỜ thì mỗi tờ chỉ là
+ * một tấm A0 bình thường — cách này không có trần.
+ */
+export function tinhSoTrang(rongMm, caoMm, trangRongMm, trangCaoMm) {
+  if (!(rongMm > 0) || !(caoMm > 0) || !(trangRongMm > 0) || !(trangCaoMm > 0)) {
+    return { cot: 0, hang: 0, tong: 0 };
+  }
+  // Trừ hao 1e-6 để một sơ đồ rộng đúng bằng một tờ không bị làm tròn thành hai.
+  const cot = Math.max(1, Math.ceil(rongMm / trangRongMm - 1e-6));
+  const hang = Math.max(1, Math.ceil(caoMm / trangCaoMm - 1e-6));
+  return { cot, hang, tong: cot * hang };
+}
 
 const NEN_SO_DO   = '#faf8f5';  // khớp VE.nenTrang ở domains/render.js
 const TY_LE_PNG   = 2;          // ảnh nét gấp đôi màn hình thường (Retina)
@@ -366,6 +436,32 @@ const PT_MOI_INCH = 72;
  * @returns {Blob}            file PDF
  */
 export function goiJpegThanhPdf(jpeg, wPx, hPx, rongMm, caoMm) {
+  return goiNhieuJpegThanhPdf([jpeg], wPx, hPx, rongMm, caoMm);
+}
+
+/**
+ * Gói NHIỀU tấm JPEG thành một PDF NHIỀU TRANG, mọi trang cùng khổ giấy, mỗi
+ * ảnh phủ kín một trang.
+ *
+ * Bố trí đối tượng (bảng `xref` đòi vị trí byte tuyệt đối nên phải đếm dọc
+ * đường, không nối chuỗi rồi mới đổi sang byte):
+ *
+ *   1        Catalog
+ *   2        Pages — `/Kids` kể tên mọi trang
+ *   3        Contents — MỘT luồng dùng CHUNG cho mọi trang, vì mọi trang cùng
+ *            khổ nên câu lệnh vẽ y hệt nhau. Mỗi trang tự trỏ `/Im0` sang ảnh
+ *            của riêng nó qua `/Resources`.
+ *   4+2i     Trang thứ i
+ *   5+2i     Ảnh của trang thứ i
+ *
+ * @param {Uint8Array[]} danhSachJpeg  ảnh từng trang, theo thứ tự
+ * @param {number} wPx  bề ngang ảnh mỗi trang, điểm ảnh (mọi trang bằng nhau)
+ * @param {number} hPx  bề cao ảnh mỗi trang
+ * @param {number} rongMm  bề ngang KHỔ GIẤY, mm
+ * @param {number} caoMm   bề cao KHỔ GIẤY, mm
+ * @returns {Blob}
+ */
+export function goiNhieuJpegThanhPdf(danhSachJpeg, wPx, hPx, rongMm, caoMm) {
   const rongPt = rongMm / MM_MOI_INCH * PT_MOI_INCH;
   const caoPt  = caoMm  / MM_MOI_INCH * PT_MOI_INCH;
   const so = (n) => n.toFixed(4).replace(/\.?0+$/, '');
@@ -387,31 +483,48 @@ export function goiJpegThanhPdf(jpeg, wPx, hPx, rongMm, caoMm) {
   // Dòng bốn byte cao — quy ước để phần mềm cũ nhận ra đây là file NHỊ PHÂN.
   them(new Uint8Array([0x25, 0xE2, 0xE3, 0xCF, 0xD3, 0x0A]));
 
+  const soTrang = danhSachJpeg.length;
+  if (!soTrang) throw new Error('Không có trang nào để gói vào PDF.');
+
+  // Số hiệu đối tượng của trang thứ i và ảnh của nó.
+  const maTrang = (i) => 4 + 2 * i;
+  const maAnh   = (i) => 5 + 2 * i;
+  const tongDoiTuong = 3 + 2 * soTrang;
+
   doiTuong(1, '<< /Type /Catalog /Pages 2 0 R >>');
-  doiTuong(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
-  doiTuong(3,
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + so(rongPt) + ' ' + so(caoPt) + ']' +
-    ' /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>');
 
-  // Ảnh. `/DCTDecode` = luồng JPEG nguyên xi.
-  viTri[4] = daiHienTai;
-  them('4 0 obj\n<< /Type /XObject /Subtype /Image /Width ' + wPx + ' /Height ' + hPx +
-       ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' +
-       jpeg.length + ' >>\nstream\n');
-  them(jpeg);
-  them('\nendstream\nendobj\n');
+  const kids = [];
+  for (let i = 0; i < soTrang; i++) kids.push(maTrang(i) + ' 0 R');
+  doiTuong(2, '<< /Type /Pages /Kids [' + kids.join(' ') + '] /Count ' + soTrang + ' >>');
 
-  // Vẽ ảnh phủ kín trang: ma trận [rộng 0 0 cao 0 0] rồi `Do`.
+  // MỘT luồng nội dung dùng chung cho mọi trang — mọi trang cùng khổ nên câu
+  // lệnh vẽ y hệt; mỗi trang tự trỏ `/Im0` sang ảnh riêng qua `/Resources`.
   const noiDung = 'q\n' + so(rongPt) + ' 0 0 ' + so(caoPt) + ' 0 0 cm\n/Im0 Do\nQ\n';
-  doiTuong(5, '<< /Length ' + noiDung.length + ' >>\nstream\n' + noiDung + 'endstream');
+  doiTuong(3, '<< /Length ' + noiDung.length + ' >>\nstream\n' + noiDung + 'endstream');
+
+  for (let i = 0; i < soTrang; i++) {
+    doiTuong(maTrang(i),
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + so(rongPt) + ' ' + so(caoPt) + ']' +
+      ' /Resources << /XObject << /Im0 ' + maAnh(i) + ' 0 R >> >> /Contents 3 0 R >>');
+
+    // Ảnh. `/DCTDecode` = luồng JPEG nguyên xi, chép byte không giải nén.
+    const jpeg = danhSachJpeg[i];
+    viTri[maAnh(i)] = daiHienTai;
+    them(maAnh(i) + ' 0 obj\n<< /Type /XObject /Subtype /Image /Width ' + wPx +
+         ' /Height ' + hPx + ' /ColorSpace /DeviceRGB /BitsPerComponent 8' +
+         ' /Filter /DCTDecode /Length ' + jpeg.length + ' >>\nstream\n');
+    them(jpeg);
+    them('\nendstream\nendobj\n');
+  }
 
   const viTriXref = daiHienTai;
-  let xref = 'xref\n0 6\n0000000000 65535 f \n';
-  for (let i = 1; i <= 5; i++) {
+  let xref = 'xref\n0 ' + (tongDoiTuong + 1) + '\n0000000000 65535 f \n';
+  for (let i = 1; i <= tongDoiTuong; i++) {
     xref += String(viTri[i]).padStart(10, '0') + ' 00000 n \n';
   }
   them(xref);
-  them('trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n' + viTriXref + '\n%%EOF\n');
+  them('trailer\n<< /Size ' + (tongDoiTuong + 1) + ' /Root 1 0 R >>\nstartxref\n' +
+       viTriXref + '\n%%EOF\n');
 
   // Ghép: chuỗi đổi sang byte theo latin1 (mọi ký tự đều < 256 — đã cố ý
   // không cho một chữ tiếng Việt nào vào phần cấu trúc).
@@ -504,6 +617,90 @@ export async function xuatPdfDoPhanGiaiCao(svgEl, tree, rongCm, dpi) {
     h,
     rongMm,
     caoMm,
+  };
+}
+
+/**
+ * Xem TRƯỚC một lần xuất nhiều trang sẽ ra cái gì — KHÔNG dựng ảnh nào.
+ *
+ * Có hàm này để màn hình nói được *"sẽ ra 6 trang A3, ghép lại thành 84×22cm"*
+ * NGAY LÚC người dùng còn đang gõ, chứ không phải sau khi bấm và chờ. Chủ dự
+ * án đòi đúng điều này: *"hộp xuất pdf thông báo luôn số trang pdf sẽ xuất"*.
+ *
+ * @returns {{rongMm, caoMm, mmMoiDonVi, cot, hang, tong,
+ *            trangRongMm, trangCaoMm, wPx, hPx}|null}
+ */
+export function xemTruocNhieuTrang(svgEl, chuCaoMm, tenKho, nam, dpi) {
+  const co = docCoSoDo(svgEl);
+  if (!co || !(chuCaoMm > 0) || !(dpi > 0)) return null;
+  const kho = KHO_GIAY[tenKho];
+  if (!kho) return null;
+
+  const [trangRongMm, trangCaoMm] = nam ? [kho[1], kho[0]] : [kho[0], kho[1]];
+  const { rongMm, caoMm, mmMoiDonVi } = tinhKhoTuChuCao(co.vbW, co.vbH, chuCaoMm);
+  const { cot, hang, tong } = tinhSoTrang(rongMm, caoMm, trangRongMm, trangCaoMm);
+
+  return {
+    rongMm, caoMm, mmMoiDonVi, cot, hang, tong, trangRongMm, trangCaoMm,
+    wPx: Math.max(1, Math.round(trangRongMm / MM_MOI_INCH * dpi)),
+    hPx: Math.max(1, Math.round(trangCaoMm / MM_MOI_INCH * dpi)),
+  };
+}
+
+/**
+ * Xuất cả sơ đồ thành PDF NHIỀU TRANG, chữ in ra đúng chiều cao yêu cầu.
+ *
+ * ⚠ **Dựng TỪNG TỜ một, không dựng một tấm khổng lồ rồi cắt.** Đây là chỗ
+ * phá được trần canvas: một sơ đồ 19 mét thì không đời nào nằm vừa 268 triệu
+ * điểm ảnh, nhưng mỗi TỜ A3 ở 300dpi chỉ là 3508×4961 — bình thường. Cắt tờ
+ * bằng cách đổi `viewBox` của bản sao SVG sang đúng ô lưới của tờ ấy; phần
+ * thò ra ngoài sơ đồ thì nền tự phủ.
+ *
+ * @param {SVGSVGElement} svgEl
+ * @param {object} [tree]
+ * @param {{chuCaoMm:number, tenKho:string, nam:boolean, dpi:number,
+ *          onTien?:function}} tuyChon
+ *        `onTien(daXong, tong)` gọi sau mỗi tờ, để màn hình đếm cho người dùng
+ *        thấy — xuất 20 tờ mất khá lâu, im lặng là người ta tưởng treo.
+ * @returns {Promise<{blob, tenFile, tong, cot, hang, rongMm, caoMm,
+ *                    trangRongMm, trangCaoMm}>}
+ */
+export async function xuatPdfNhieuTrang(svgEl, tree, tuyChon) {
+  const { chuCaoMm, tenKho, nam, dpi, onTien } = tuyChon || {};
+  const co = docCoSoDoBatBuoc(svgEl);
+  const xem = xemTruocNhieuTrang(svgEl, chuCaoMm, tenKho, nam, dpi);
+  if (!xem) throw new Error('Chưa đủ thông tin để xuất (chiều cao chữ, khổ giấy, độ phân giải).');
+
+  kiemTranCanvas(xem.wPx, xem.hPx);
+
+  // Một tờ chiếm bao nhiêu ĐƠN VỊ sơ đồ.
+  const toRongDonVi = xem.trangRongMm / xem.mmMoiDonVi;
+  const toCaoDonVi  = xem.trangCaoMm  / xem.mmMoiDonVi;
+
+  // Vòng ảnh 52 đơn vị (bán kính 26) → xin Drive bản vừa đủ cho tờ này.
+  const coAnhCanPx = Math.ceil(52 * (xem.wPx / toRongDonVi));
+
+  const trang = [];
+  for (let h = 0; h < xem.hang; h++) {
+    for (let c = 0; c < xem.cot; c++) {
+      const blob = await dungBlobPngTuSvg(svgEl, xem.wPx, xem.hPx, 'image/jpeg', {
+        vbX: co.vbX + c * toRongDonVi,
+        vbY: co.vbY + h * toCaoDonVi,
+        vbW: toRongDonVi,
+        vbH: toCaoDonVi,
+      }, coAnhCanPx);
+      trang.push(new Uint8Array(await blob.arrayBuffer()));
+      if (typeof onTien === 'function') onTien(trang.length, xem.tong);
+    }
+  }
+
+  return {
+    blob: goiNhieuJpegThanhPdf(trang, xem.wPx, xem.hPx, xem.trangRongMm, xem.trangCaoMm),
+    tenFile: tenFileAnh(tree, 'pdf',
+                        chuCaoMm + 'mm-' + tenKho + (nam ? '-ngang' : '') + '-' + xem.tong + 'trang'),
+    tong: xem.tong, cot: xem.cot, hang: xem.hang,
+    rongMm: xem.rongMm, caoMm: xem.caoMm,
+    trangRongMm: xem.trangRongMm, trangCaoMm: xem.trangCaoMm,
   };
 }
 
@@ -793,10 +990,14 @@ export function docCoSoDo(svgEl) {
  * Chép hai bản là để hai bản trôi dần khỏi nhau: sửa lỗi CORS ở bản này quên
  * bản kia thì đường xuất khổ lớn lặng lẽ mất ảnh mà không ai biết.
  */
-async function dungBlobPngTuSvg(svgEl, w, h, kieu) {
-  const { vbX, vbY, vbW, vbH } = docCoSoDoBatBuoc(svgEl);
+async function dungBlobPngTuSvg(svgEl, w, h, kieu, vungCat, coAnhCanPxNgoai) {
+  const coGoc = docCoSoDoBatBuoc(svgEl);
+  // `vungCat` — một Ô LƯỚI của lối xuất nhiều trang: vẽ đúng khúc ấy của sơ
+  // đồ thay vì cả sơ đồ. Không truyền thì vẽ trọn, y như cũ.
+  const { vbX, vbY, vbW, vbH } = vungCat || coGoc;
 
   const ban = svgEl.cloneNode(true);
+  ban.setAttribute('viewBox', vbX + ' ' + vbY + ' ' + vbW + ' ' + vbH);
   ban.setAttribute('width', String(vbW));
   ban.setAttribute('height', String(vbH));
 
@@ -813,8 +1014,7 @@ async function dungBlobPngTuSvg(svgEl, w, h, kieu) {
 
   // Vòng ảnh vẽ 52 đơn vị viewBox (bán kính 26 — `PHOTO.banKinhTrenO`), nên ở
   // bản xuất này nó chiếm `52 × tỷ lệ` điểm ảnh. Xin Drive đúng cỡ ấy.
-  const tyLeXuat = w / vbW;
-  await thayAnhBangDataUri(ban, Math.ceil(52 * tyLeXuat));
+  await thayAnhBangDataUri(ban, coAnhCanPxNgoai || Math.ceil(52 * (w / vbW)));
 
   const chuoiSvg = new XMLSerializer().serializeToString(ban);
   const svgBlob = new Blob([chuoiSvg], { type: 'image/svg+xml;charset=utf-8' });

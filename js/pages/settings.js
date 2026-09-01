@@ -4,7 +4,7 @@
 //            đường sang Chọn gia phả · Sao lưu & khôi phục · Xuất/Nhập GEDCOM
 // Lớp      : pages — được phép gọi mọi lớp dưới
 // Phụ thuộc: state, services/gas, utils/text, pages/export-image
-// Phiên bản: 1.22.0 · Cập nhật: 01/09/2026 09:10
+// Phiên bản: 1.23.0 · Cập nhật: 01/09/2026 10:30
 // ============================================================
 //
 // Màn hình này tồn tại vì MỘT việc: đặt và bỏ người trung tâm mặc định của
@@ -56,7 +56,8 @@
 import { state, notify } from '../state.js';
 import { coMayChu, datNguoiTrungTamMacDinh, xoaNguoiTrungTamMacDinh } from '../services/gas.js';
 import { fullName, coGiaTri, doiSongNguoi } from '../utils/text.js';
-import { veLinkTai, inAnhRaster, dpiConDungDuoc, laManHinhMayTinh, DAI_DPI }
+import { veLinkTai, inAnhRaster, dpiConDungDuoc, laManHinhMayTinh, DAI_DPI,
+         KHO_GIAY, CHU_CAO_KHUYEN_NGHI_MM }
   from './export-image.js';
 import { rongHop, caoHop, leLopPhu, RONG_NUT_TOI_DA } from '../config.js';
 
@@ -519,74 +520,174 @@ function veKhoiXuatAnh(khoi) {
     nutIn.dataset.viec = 'in-so-do';
     nutIn.style.marginTop = '8px';
     khoi.append(nutIn);
-
-    veKhoiInKhoLon(khoi);
   }
 
-  // Gate RIÊNG với `onInSoDo` — đường ảnh raster độ phân giải cao không dùng
-  // chung một callback nào với hai nút trên, thiếu cái này không kéo mất cái kia.
+  // Hai khối lớn, gate RIÊNG với nhau và với `onInSoDo` — thiếu một cái không
+  // kéo mất hai cái kia.
+  veKhoiPdfNhieuTrang(khoi);
   veKhoiAnhDpi(khoi);
 }
 
 /**
- * In khổ LỚN — áp phích, bản vẽ kỹ thuật. Thêm 31/08/2026 sau khi chủ dự án
- * đối chiếu MapInfo/MicroStation (đã ĐO trước khi xây, xem
- * `kiem-thu/do-khong-lon.mjs` và ghi chú đầu `export-image.js`).
+ * XUẤT PDF NHIỀU TRANG theo CHIỀU CAO CHỮ — lối MicroStation.
  *
- * ⚠ **Chỉ hỏi MỘT số — bề ngang.** Hỏi thêm bề cao rồi để người dùng tự gõ
- * là mời họ BÓP MÉO sơ đồ nếu hai số không đúng tỷ lệ; `inSoDo()` tự tính bề
- * cao theo đúng tỷ lệ sơ đồ đang có (như máy in cuộn: khổ rộng cố định theo
- * cuộn giấy, khổ dài cắt theo nội dung).
+ * Chốt 01/09/2026, sau khi chủ dự án chỉ ra app đang làm NGƯỢC: MicroStation
+ * cố định chữ cao bao nhiêu mm trên giấy rồi tính ngược ra khổ; app thì hỏi
+ * khổ giấy rồi để chữ muốn ra sao thì ra. Chính chỗ ngược ấy làm chủ dự án gõ
+ * 84cm và nhận về một bản in chữ cao 0,08mm.
+ *
+ * Khối này thay hẳn khối "In khổ LỚN" cũ — đường ấy đi qua hộp thoại in, mà
+ * máy in PDF ảo thì áp khổ giấy của chính nó, không nghe app (sự cố novaPDF).
+ *
+ * Ba điều chủ dự án đòi, đều có ở đây:
+ *   1. Hỏi **chữ in ra cao bao nhiêu mm**, khuyến nghị sẵn 7mm.
+ *   2. **Tự chia nhiều trang** để vượt trần canvas của trình duyệt.
+ *   3. **Nói trước số trang** ngay lúc đang gõ, không phải bấm xong mới biết.
  */
-function veKhoiInKhoLon(khoi) {
+function veKhoiPdfNhieuTrang(khoi) {
+  if (!xuLyNgoai.onXuatPdfNhieuTrang || !xuLyNgoai.onXemTruocPdf) return;
+
   const boc = document.createElement('div');
+  boc.dataset.viec = 'khoi-pdf-nhieu-trang';
   boc.style.cssText =
     'margin-top:10px;padding:10px;border:1px solid #e6e0d8;border-radius:8px;' +
     'background:#faf8f5';
 
   const nhan = document.createElement('label');
-  nhan.textContent = 'In khổ LỚN (áp phích, bản vẽ) — bề ngang khổ giấy, cm:';
+  nhan.textContent = 'In treo tường — chữ in ra cao bao nhiêu mm?';
   nhan.style.cssText = 'display:block;font-size:12px;color:#8a8078;margin-bottom:6px';
   boc.append(nhan);
 
   const hang = document.createElement('div');
-  hang.style.cssText = 'display:flex;gap:8px;align-items:stretch';
+  hang.style.cssText = 'display:flex;gap:8px;align-items:stretch;flex-wrap:wrap';
 
-  const oNhap = document.createElement('input');
-  oNhap.type = 'number';
-  oNhap.min = '10';
-  oNhap.max = '800';   // đã ĐO an toàn tới 800cm (8m) — xem do-khong-lon.mjs
-  oNhap.step = '1';
-  oNhap.value = '100';
-  oNhap.dataset.viec = 'rong-kho-lon-cm';
-  oNhap.style.cssText =
+  const oChu = document.createElement('input');
+  oChu.type = 'number';
+  oChu.min = '1';
+  oChu.max = '100';
+  oChu.step = '0.5';
+  oChu.value = String(CHU_CAO_KHUYEN_NGHI_MM);
+  oChu.dataset.viec = 'chu-cao-mm';
+  oChu.style.cssText =
     'width:80px;min-height:38px;padding:6px 8px;font-size:14px;font-family:inherit;' +
     'border-radius:8px;border:1px solid #e6e0d8;box-sizing:border-box';
 
-  const nutInLon = nut('In khổ lớn (PDF)', false, true, () => {
-    const cm = Number(oNhap.value);
-    if (!(cm > 0)) { oNhap.focus(); return; }
-    xuLyNgoai.onInSoDo(cm * 10);   // cm -> mm
-  });
-  nutInLon.dataset.viec = 'in-kho-lon';
-  nutInLon.style.flex = '1';
+  // Khổ giấy: mỗi khổ hai chiều, gộp thành một ô chọn cho gọn.
+  const oKho = document.createElement('select');
+  oKho.dataset.viec = 'kho-giay';
+  oKho.style.cssText =
+    'flex:1;min-width:150px;min-height:38px;padding:6px 8px;font-size:14px;' +
+    'font-family:inherit;border-radius:8px;border:1px solid #e6e0d8;box-sizing:border-box';
+  for (const ten of Object.keys(KHO_GIAY)) {
+    for (const nam of [false, true]) {
+      const o = document.createElement('option');
+      o.value = ten + (nam ? '|ngang' : '|doc');
+      const [a, b] = KHO_GIAY[ten];
+      const [r, c] = nam ? [b, a] : [a, b];
+      o.textContent = ten + (nam ? ' ngang' : ' dọc') + ' — ' + r + '×' + c + 'mm';
+      oKho.append(o);
+    }
+  }
+  oKho.value = 'A4|ngang';
 
-  hang.append(oNhap, nutInLon);
+  hang.append(oChu, oKho);
   boc.append(hang);
 
+  const oDpi = document.createElement('select');
+  oDpi.dataset.viec = 'dpi-nhieu-trang';
+  oDpi.style.cssText =
+    'width:100%;min-height:38px;margin-top:8px;padding:6px 8px;font-size:14px;' +
+    'font-family:inherit;border-radius:8px;border:1px solid #e6e0d8;box-sizing:border-box';
+  for (const dpi of DAI_DPI) {
+    const o = document.createElement('option');
+    o.value = String(dpi);
+    o.textContent = dpi + ' DPI' + (dpi === 150 ? ' — đủ cho tranh treo tường' : '');
+    oDpi.append(o);
+  }
+  oDpi.value = '150';
+
+  boc.append(oDpi);
+
+  // Dòng nói TRƯỚC sẽ ra cái gì — thứ chủ dự án đòi đích danh.
+  const xemTruoc = document.createElement('div');
+  xemTruoc.dataset.viec = 'xem-truoc-pdf';
+  xemTruoc.style.cssText = 'font-size:12px;line-height:1.5;color:#8a8078;margin-top:8px';
+  boc.append(xemTruoc);
+
+  const ketQua = document.createElement('div');
+
+  function capNhat() {
+    const [tenKho, chieu] = String(oKho.value).split('|');
+    const xem = xuLyNgoai.onXemTruocPdf(
+      Number(oChu.value), tenKho, chieu === 'ngang', Number(oDpi.value));
+    if (!xem) {
+      xemTruoc.textContent = 'Chưa tính được — sơ đồ chưa vẽ xong hoặc số chưa hợp lệ.';
+      return null;
+    }
+    const cm = (mm) => (mm / 10).toFixed(0);
+    xemTruoc.textContent =
+      'Cả sơ đồ sẽ là ' + cm(xem.rongMm) + '×' + cm(xem.caoMm) + 'cm, ' +
+      'chia thành ' + xem.tong + ' trang (' + xem.cot + ' ngang × ' + xem.hang + ' dọc), ' +
+      'mỗi trang ' + xem.wPx + '×' + xem.hPx + ' điểm ảnh. Dán ' + xem.cot + ' tờ ' +
+      'cạnh nhau, ' + xem.hang + ' hàng.' +
+      (xem.tong > 30
+        ? ' ⚠ Nhiều trang quá — thu bớt số đời đang hiện, hoặc chọn khổ giấy lớn hơn.'
+        : '');
+    return xem;
+  }
+
+  oChu.addEventListener('input', capNhat);
+  oKho.addEventListener('change', capNhat);
+  oDpi.addEventListener('change', capNhat);
+  capNhat();
+
+  const nutXuat = nut('Tải PDF nhiều trang', true, true, async () => {
+    const xem = capNhat();
+    if (!xem) return;
+    nutXuat.disabled = true;
+    nutXuat.style.opacity = '0.6';
+    nutXuat.style.cursor = 'wait';
+    ketQua.style.cssText = 'font-size:13px;color:#8a8078;margin-top:8px';
+    ketQua.textContent = 'Đang dựng trang 1/' + xem.tong + '...';
+    try {
+      const [tenKho, chieu] = String(oKho.value).split('|');
+      const pdf = await xuLyNgoai.onXuatPdfNhieuTrang({
+        chuCaoMm: Number(oChu.value),
+        tenKho,
+        nam: chieu === 'ngang',
+        dpi: Number(oDpi.value),
+        onTien: (xong, tong) => {
+          ketQua.textContent = 'Đang dựng trang ' + Math.min(xong + 1, tong) + '/' + tong + '...';
+        },
+      });
+      ketQua.textContent = '';
+      const doDuoc = document.createElement('div');
+      doDuoc.dataset.viec = 'co-pdf-nhieu-trang';
+      doDuoc.textContent =
+        'Xong: ' + pdf.tong + ' trang, ghép lại thành ' + (pdf.rongMm / 10).toFixed(0) +
+        '×' + (pdf.caoMm / 10).toFixed(0) + 'cm. Chữ in ra cao đúng ' +
+        oChu.value + 'mm.';
+      doDuoc.style.cssText = 'font-size:12px;line-height:1.5;color:#8a8078;margin-top:8px';
+      ketQua.append(doDuoc, veLinkTai(pdf.blob, pdf.tenFile, 'Tải file PDF về máy'));
+    } catch (e) {
+      ketQua.textContent = 'Không dựng được PDF: ' + (e && e.message ? e.message : String(e));
+    } finally {
+      nutXuat.disabled = false;
+      nutXuat.style.opacity = '1';
+      nutXuat.style.cursor = 'pointer';
+    }
+  });
+  nutXuat.dataset.viec = 'tai-pdf-nhieu-trang';
+  nutXuat.style.marginTop = '8px';
+
+  boc.append(nutXuat, ketQua);
+
   const giaiThich = document.createElement('div');
-  // ⚠ Câu này sửa 01/09/2026 sau sự cố novaPDF: bản cũ nói "chọn Lưu thành
-  // PDF HOẶC máy in PDF ảo" như thể hai đường ngang nhau. KHÔNG ngang nhau —
-  // chỉ "Lưu thành PDF" của Chrome mới nghe khổ giấy app đặt. Xem khối
-  // "SỰ CỐ novaPDF" ở đầu `export-image.js`.
   giaiThich.textContent =
-    'Bề dài tự tính theo đúng tỷ lệ sơ đồ, không bóp méo. ⚠ Trong hộp thoại ' +
-    'in phải chọn đúng "Lưu thành PDF" (Save as PDF) của trình duyệt thì mới ' +
-    'ra đúng khổ trên. Nếu chọn một máy in PDF khác (novaPDF, Microsoft Print ' +
-    'to PDF…) thì khổ giấy do chính máy in ấy quyết định — phải vào cài đặt ' +
-    'của nó đặt khổ tuỳ chỉnh trước, không thì sơ đồ sẽ co lại vừa khổ mặc ' +
-    'định (thường là A4/Letter). Ảnh đại diện thật có thể mờ ở khổ lớn — chữ ' +
-    'và đường kẻ vẫn nét.';
+    'Khuyến nghị ' + CHU_CAO_KHUYEN_NGHI_MM + 'mm — đọc thoải mái khi đứng cách ' +
+    '1–1,5m. Chữ càng cao thì khổ giấy càng lớn và càng nhiều trang. Khổ giấy ' +
+    'ghi thẳng trong file PDF nên mang ra tiệm in là đúng cỡ, không phụ thuộc ' +
+    'máy in nào.';
   giaiThich.style.cssText = 'font-size:11px;line-height:1.5;color:#8a8078;margin-top:6px';
   boc.append(giaiThich);
 

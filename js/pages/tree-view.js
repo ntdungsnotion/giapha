@@ -6,7 +6,7 @@
 //            utils/{text,glyph}, config,
 //            pages/{person-detail,person-edit,person-list,review,settings,
 //            backup,chon-gia-pha,import-export,export-image}
-// Phiên bản: 1.36.1 · Cập nhật: 01/09/2026 08:20
+// Phiên bản: 1.37.0 · Cập nhật: 01/09/2026 10:30
 // ============================================================
 //
 // Ba bước, gọi liền nhau, KHÔNG được đảo thứ tự (QUY-TAC-VE §11):
@@ -83,7 +83,8 @@ import { openBackup, closeBackup } from './backup.js';
 import { openChonGiaPha, closeChonGiaPha } from './chon-gia-pha.js';
 import { openXuatGedcom, closeXuatGedcom, openNhapGedcom, closeNhapGedcom }
   from './import-export.js';
-import { xuatAnhPNG, inSoDo, xuatAnhDoPhanGiaiCao, xuatPdfDoPhanGiaiCao, docCoSoDo }
+import { xuatAnhPNG, inSoDo, xuatAnhDoPhanGiaiCao, xuatPdfDoPhanGiaiCao, docCoSoDo,
+         xuatPdfNhieuTrang, xemTruocNhieuTrang }
   from './export-image.js';
 import { veBieuTuongTron } from '../utils/glyph.js';
 import { rongHop, caoHop, leLopPhu } from '../config.js';
@@ -849,6 +850,13 @@ function veHopNutTrenPhai() {
       // 01/09/2026, xem `export-image.js`).
       onXuatPdfDpi: (rongCm, dpi) =>
         xuatPdfDoPhanGiaiCao(svgEl, state.tree, rongCm, dpi),
+      // Lối MicroStation (01/09/2026): hỏi chữ cao bao nhiêu mm, tính ngược
+      // ra khổ giấy, rồi CHIA NHIỀU TRANG để vượt trần canvas. `onXemTruocPdf`
+      // chỉ TÍNH, không dựng ảnh nào — để màn hình nói trước số trang.
+      onXemTruocPdf: (chuCaoMm, tenKho, nam, dpi) =>
+        xemTruocNhieuTrang(svgEl, chuCaoMm, tenKho, nam, dpi),
+      onXuatPdfNhieuTrang: (tuyChon) =>
+        xuatPdfNhieuTrang(svgEl, state.tree, tuyChon),
       // Chỉ ĐỌC tỷ lệ sơ đồ, không vẽ gì. `settings.js` cần nó để tự biết mức
       // DPI nào vượt trần canvas mà mờ đi TRƯỚC khi người dùng bấm — nó không
       // được chạm vào `svgEl`, `svgEl` là của file này.
