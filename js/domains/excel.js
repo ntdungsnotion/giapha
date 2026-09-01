@@ -5,17 +5,20 @@
 //            CÙNG KHUÔN với `parseGedcom()` để đi chung đường "tạo gia phả
 //            mới" đã có (`mergeImported(tree, kq, {che:'moi'})`).
 // Lớp      : domains — được gọi bởi: pages · được phép gọi: utils, config
-// Phụ thuộc: utils/date · CDN: SheetJS (`xlsx`), đọc `.xlsb`/`.xlsx`
-// Phiên bản: 0.1.0 · Cập nhật: 31/08/2026 08:00
+// Phụ thuộc: utils/date · vendor/xlsx.mjs (SheetJS), đọc `.xlsb`/`.xlsx`
+// Phiên bản: 0.2.0 · Cập nhật: 01/09/2026 15:30
 // ============================================================
 //
 // ⚠ HÀM `parseExcel` KHÔNG THUẦN TUYỆT ĐỐI như `parseGedcom`: nó nạp một thư
-// viện đọc Excel qua mạng (SheetJS, CDN) vì `.xlsb` là định dạng nhị phân nén,
-// trình duyệt không tự đọc được như đọc chữ thuần của `.ged`. Đây là chỗ duy
-// nhất trong tầng `domains` làm vậy — chủ dự án đã chọn đường này (30/08/2026)
-// thay vì bắt xuất trước sang CSV. Để bài kiểm chạy trong Node (không có
-// mạng), `_datThuVienXlsx()` cho phép cắm thư viện đã nạp sẵn — xem
-// `kiem-thu/kiem-nhap-excel.mjs`.
+// viện đọc Excel (SheetJS) vì `.xlsb` là định dạng nhị phân nén, trình duyệt
+// không tự đọc được như đọc chữ thuần của `.ged`. Đây là chỗ duy nhất trong
+// tầng `domains` làm vậy — chủ dự án đã chọn đường này (30/08/2026) thay vì
+// bắt xuất trước sang CSV.
+//
+// Từ 01/09/2026 thư viện ấy nằm **trong repo** (`js/vendor/xlsx.mjs`), không
+// còn nạp từ `cdn.sheetjs.com`. Nhờ vậy app, bộ kiểm và Node đều chạy đúng một
+// bản, và chức năng nhập không chết theo một máy chủ của người lạ. Xem
+// `js/vendor/DOC-VENDOR.md` — ở đó có mã băm, giấy phép và cách nâng cấp.
 //
 // --- VÌ SAO DỰNG UNION TỪ DÒNG NGƯỜI, KHÔNG TỪ DÒNG "FAM" NHƯ GEDCOM -------
 //
@@ -57,25 +60,20 @@ const COT = {
 };
 
 // ============================================================
-// Chỗ cắm thư viện đọc Excel — CDN khi chạy thật, cắm tay khi chạy Node
+// Thư viện đọc Excel — nằm trong repo, nạp chậm
 // ============================================================
 
-let _xlsxDaCam = null;
-
-/** Chỉ dùng cho bài kiểm: cắm sẵn thư viện `xlsx` đã nạp bằng cách khác. */
-export function _datThuVienXlsx(lib) {
-  _xlsxDaCam = lib;
-}
+let _xlsxDaNap = null;
 
 async function layThuVienXlsx() {
-  if (_xlsxDaCam) return _xlsxDaCam;
-  // SheetJS (Community Edition) đọc được `.xlsb`/`.xlsx`/`.xls`/`.csv`…
-  // CDN CHÍNH CHỦ (`cdn.sheetjs.com`), KHÔNG dùng bản mirror qua npm/jsdelivr:
-  // bản npm mới nhất công khai chỉ tới 0.18.5 và mang lỗi prototype-pollution
-  // đã biết (CVE-2023-30533) khi đọc file cố ý làm hỏng; bản 0.20.3 trên CDN
-  // chính chủ đã vá. Ghim cố định phiên bản — đổi bản lặng lẽ giữa hai lần
-  // nhập là đúng loại lỗi không ai đoán được từ đâu ra.
-  return import('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs');
+  // SheetJS Community Edition (Apache-2.0) đọc được `.xlsb`/`.xlsx`/`.xls`/
+  // `.csv`… Bản 0.20.3, chép nguyên vào `js/vendor/` ngày 01/09/2026.
+  //
+  // `import()` ĐỘNG chứ không phải `import` ở đầu file: 1 MB này chỉ tải khi
+  // người dùng thật sự bấm nhập Excel, đường khởi động app không đụng tới.
+  // Đường dẫn tương đối nên chạy đúng cả trên GitHub Pages lẫn trong Node.
+  if (!_xlsxDaNap) _xlsxDaNap = await import('../vendor/xlsx.mjs');
+  return _xlsxDaNap;
 }
 
 // ============================================================
@@ -94,8 +92,9 @@ export async function parseExcel(arrayBuffer) {
   try {
     XLSX = await layThuVienXlsx();
   } catch (e) {
-    return ketQuaLoi('Không nạp được thư viện đọc Excel (cần mạng internet ' +
-      'lúc nhập). ' + (e && e.message ? e.message : String(e)));
+    return ketQuaLoi('Không nạp được thư viện đọc Excel (file ' +
+      'js/vendor/xlsx.mjs của chính ứng dụng). Thử tải lại trang. ' +
+      (e && e.message ? e.message : String(e)));
   }
 
   let wb;
