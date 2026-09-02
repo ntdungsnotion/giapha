@@ -3,7 +3,7 @@
 // Vai trò  : Tính TOẠ ĐỘ các ô người, đường nối và nốt cụt. Không vẽ gì cả.
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: config (LAYOUT, PHOTO)
-// Phiên bản: 1.12.0 · Cập nhật: 02/09/2026 (bước 83 — nốt cụt đã né có đường gấp khúc)
+// Phiên bản: 1.13.0 · Cập nhật: 02/09/2026 (bước 84 — mỗi cuộc hôn nhân một mức thanh ngang gom con)
 // ============================================================
 //
 // Tách khỏi render.js có chủ ý: chỉnh giao diện (màu, phông, bo góc) không
@@ -209,7 +209,7 @@ export function computeLayout(index, focusPersonId, visibleSet, scope, stubPoint
   // Phải chạy SAU khi mọi `x` đã chốt: nó đo khoảng cách thật tới hàng xóm.
   ganRongTenToiDa(nodes);
 
-  const unions = dungDiemTreo(ct);
+  const unions = dungDiemTreo(ct, stubPoints);
   const links  = dungDuongNoi(ct, unions);
   const stubs  = dungNotCut(ct, unions, stubPoints);
 
@@ -1206,7 +1206,160 @@ function deLenNhau(ct, viTriX, cum, d) {
  * Công thức không đổi (trung điểm vẫn là trung điểm, hàng sâu hơn vẫn là hàng
  * sâu hơn — nay hai hàng bằng nhau), chỉ cái tên là hẹp hơn sự thật.
  */
-function dungDiemTreo(ct) {
+/**
+ * Union này có người phối ngẫu bị ẩn không?
+ *
+ * ⚠ Đọc từ dữ liệu GỐC chứ không đọc `unionHT` — `unionHT` đã lọc mất đúng
+ * những người đang bị ẩn, hỏi nó thì bao giờ cũng nghe "đủ cả".
+ */
+function thieuBanDoiCua(ct, unionId) {
+  const uGoc = ct.index.unionById.get(unionId);
+  const ds = (uGoc && Array.isArray(uGoc.partners)) ? uGoc.partners : [];
+  return ds.some((pid) => pid && !ct.visibleSet.has(pid));
+}
+
+/**
+ * NHỮNG UNION SẼ MỌC NỐT CỤT "CẶP ĐỦ, THIẾU CON" — trả `Map<unionId, hướng>`.
+ *
+ * ⚠ **Vì sao `xepMucThanhNgang()` phải biết trước.** Nốt cụt ấy nối tiếp thanh
+ * ngang gom con và chạy thêm ra ngoài ô con ngoài cùng (b83), tức nó KÉO DÀI
+ * thanh ngang thêm `RONG/2 + hGap` px về phía ấy. Không đếm phần kéo dài thì
+ * phép xếp mức tưởng hai thanh không đè nhau, mà trên hình thì có: bài kiểm
+ * `kiem-buoc-80.mjs` nhóm 10 bắt được đúng ca này (P0631, U0072 ∩ U0180 chồng
+ * 40px) trong khi phép đo chỉ nhìn đường nối nói 0 cặp.
+ *
+ * Điều kiện phải KHỚP `viTriNotCut()`, nếu không hai nơi tính hai hình khác
+ * nhau — xem nếp 68 của b83.
+ */
+function unionCoNotNeXuong(ct, stubPoints) {
+  const ra = new Map();
+  if (!Array.isArray(stubPoints)) return ra;
+
+  for (const sp of stubPoints) {
+    if (!sp || sp.direction === 'up') continue;
+    const u = ct.unionHT.get(sp.unionId);
+    if (!u || thieuBanDoiCua(ct, sp.unionId)) continue;
+    if (!u.children.some((c) => ct.nodeById.has(c.personId))) continue;
+    const dai = ct.dai.get(sp.personId);
+    ra.set(sp.unionId, dai ? dai.huong : 1);
+  }
+  return ra;
+}
+
+/**
+ * BỀ NGANG THANH NGANG GOM CON của một union — trả `null` nếu union ấy không
+ * vẽ đoạn ngang nào (con duy nhất nằm đúng dưới điểm treo, hoặc chưa con nào
+ * hiển thị).
+ *
+ * ⚠ Bỏ qua con của BỘ CHA MẸ THỨ HAI (`netDai`): đoạn ngang của họ chạy cao
+ * hơn `lechNetDai` pixel, tức đã ở một mức khác rồi.
+ */
+function nhipThanhNgang(ct, t, neXuong) {
+  const u = ct.unionHT.get(t.id);
+  if (!u) return null;
+
+  let a = t.x, b = t.x, co = false;
+  for (const c of u.children) {
+    const con = ct.nodeById.get(c.personId);
+    if (!con) continue;
+    if (ct.unionSoHuu.get(c.personId) !== t.id) continue;   // netDai → mức khác
+    const cx = con.x + RONG / 2;
+    if (Math.abs(t.x - cx) <= 0.5) continue;                // nét thả thẳng
+    a = Math.min(a, cx);
+    b = Math.max(b, cx);
+    co = true;
+  }
+
+  // Nốt cụt "cặp đủ, thiếu con" kéo thanh ngang chạy thêm ra ngoài ô con ngoài
+  // cùng — xem `unionCoNotNeXuong()`. Đo từ MỌI con hiển thị, đúng như
+  // `viTriNotCut()` đo, kể cả con của bộ cha mẹ thứ hai.
+  if (neXuong && neXuong.has(t.id)) {
+    const huong = neXuong.get(t.id);
+    let mep = null;
+    for (const c of u.children) {
+      const con = ct.nodeById.get(c.personId);
+      if (!con) continue;
+      const cx = con.x + RONG / 2;
+      if (mep === null || (huong > 0 ? cx > mep : cx < mep)) mep = cx;
+    }
+    if (mep !== null) {
+      const ngoai = mep + huong * (RONG / 2 + LAYOUT.hGap);
+      a = Math.min(a, mep, ngoai);
+      b = Math.max(b, mep, ngoai);
+      co = true;
+    }
+  }
+
+  return co ? { a, b } : null;
+}
+
+/**
+ * XẾP MỨC CHO THANH NGANG GOM CON — bước 84, chỉ đụng union nào THẬT SỰ đè
+ * nhau. Sửa `busY` tại chỗ.
+ *
+ * ⚠ **Lỗi được sửa.** Hai union của cùng một người có hai chùm con xếp cạnh
+ * nhau, nhưng cái DẢI (ông cùng các bà) lại được căn vào GIỮA cả hai chùm —
+ * nên hai điểm treo nằm sát nhau ở giữa, còn hai chùm con toả ra hai bên. Hai
+ * thanh ngang vì thế **bắc chéo qua nhau**, và vì cùng một mức nên chúng chồng
+ * lên nhau thành MỘT nét liền: đo được **770 cặp** trên cây Nguyễn Phúc 681
+ * người, chỗ trùm dài nhất **608px** (NK-B83 mục 2.3). Người xem đọc ra một
+ * chùm con chung, tức mất đúng thông tin mẹ mà QUY-TAC-VE §5 sinh ra để giữ.
+ *
+ * ⚠ **Xếp theo BỀ NGANG THẬT, không theo "người này có mấy vợ".** Bản đầu của
+ * bước 84 phát mức theo thứ tự các bà trong dải, và nó **sót một ca**: bà
+ * P0313 vừa là vợ trong dải của ông P0311 (U0072) vừa có cuộc hôn nhân riêng
+ * U0180 nằm NGOÀI dải ấy — hai union không chung một dải nên không ai phát mức
+ * cho chúng, mà thanh ngang thì vẫn trùm nhau 228px. Hỏi thẳng *"hai đoạn này
+ * có đè nhau không"* thì mọi ca đều lọt, kể cả ca chưa ai nghĩ ra.
+ *
+ * ⚠ **Union không đè ai thì KHÔNG bị hạ.** Người một vợ — 99% số ca — giữ
+ * nguyên từng pixel như trước bước 84. Hạ cả những union đang đứng yên chỗ tốt
+ * là bắt cả sơ đồ trả giá cho một ca hiếm.
+ *
+ * Cách xếp là tô màu đồ thị khoảng: sắp theo mép trái rồi lấy mức thấp nhất
+ * còn trống. Với đồ thị khoảng, cách tham lam này cho SỐ MỨC ÍT NHẤT có thể.
+ *
+ * ⚠ Bước tự CO khi một hàng cần từ ba mức — xem ghi chú `buocThanhNgang` ở
+ * `config.js`. Đó là van an toàn, không phải thiết kế: ba đường cách nhau 4px
+ * là *"bóng đôi"* chủ dự án đã bác ở b80. Ca ấy chưa từng xảy ra trên dữ liệu
+ * thật.
+ */
+function xepMucThanhNgang(ct, unions, neXuong) {
+  // Trần: mép TRÊN của nốt cụt hướng lên mọc từ hàng dưới, trừ 2px hở.
+  const tran = LAYOUT.vGap - LAYOUT.stubLength - LAYOUT.stubRadius - 2;
+
+  const theoHang = new Map();              // busY gốc -> các thanh ngang cùng mức
+  for (const t of unions) {
+    const nhip = nhipThanhNgang(ct, t, neXuong);
+    if (!nhip) continue;
+    const khoa = Math.round(t.busY);
+    if (!theoHang.has(khoa)) theoHang.set(khoa, []);
+    theoHang.get(khoa).push({ t, a: nhip.a, b: nhip.b, muc: 0 });
+  }
+
+  for (const [, ds] of theoHang) {
+    ds.sort((p, q) => (p.a - q.a) || (p.t.id < q.t.id ? -1 : 1));
+
+    const daXep = [];                      // mức -> các thanh đã nhận mức ấy
+    let caoNhat = 0;
+    for (const it of ds) {
+      let m = 0;
+      while (daXep[m] && daXep[m].some(
+        (k) => Math.min(it.b, k.b) - Math.max(it.a, k.a) > 0.5)) m += 1;
+      if (!daXep[m]) daXep[m] = [];
+      daXep[m].push(it);
+      it.muc = m;
+      if (m > caoNhat) caoNhat = m;
+    }
+    if (caoNhat === 0) continue;
+
+    const buoc = Math.min(LAYOUT.buocThanhNgang,
+                          (tran - LAYOUT.khoangSatChu) / caoNhat);
+    for (const it of ds) it.t.busY += it.muc * buoc;
+  }
+}
+
+function dungDiemTreo(ct, stubPoints) {
   const neoTheoUnion = new Map();          // unionId -> neoId, dựng một lần
   for (const [, ht] of ct.hapThuBoi) neoTheoUnion.set(ht.unionId, ht.neoId);
 
@@ -1247,6 +1400,9 @@ function dungDiemTreo(ct) {
 
     ra.push({ id: uid, x, y, busY, kieu, neoId, partnerIds: u.partners.slice() });
   }
+
+  // Mọi `busY` mới xong ở MỨC GỐC; giờ mới hạ những thanh đang đè nhau.
+  xepMucThanhNgang(ct, ra, unionCoNotNeXuong(ct, stubPoints));
   return ra;
 }
 
@@ -1501,12 +1657,8 @@ function viTriNotCut(ct, treoCua, sp, nut) {
   const u    = ct.unionHT.get(sp.unionId);
   const treo = treoCua.get(sp.unionId);
   const dai  = ct.dai.get(sp.personId);
-  const uGoc = ct.index.unionById.get(sp.unionId);
 
-  // Thiếu hẳn người phối ngẫu? Đọc từ dữ liệu gốc chứ không đọc `unionHT` —
-  // `unionHT` đã lọc mất đúng những người đang bị ẩn.
-  const partnersGoc = (uGoc && Array.isArray(uGoc.partners)) ? uGoc.partners : [];
-  const thieuBanDoi = partnersGoc.some((pid) => pid && !ct.visibleSet.has(pid));
+  const thieuBanDoi = thieuBanDoiCua(ct, sp.unionId);
 
   if (thieuBanDoi || !u) {
     // HAI thứ phải đúng cùng lúc, thiếu một là nốt tròn nằm đè lên ô người
@@ -1565,8 +1717,21 @@ function viTriNotCut(ct, treoCua, sp, nut) {
   // Nay chặn thẳng bằng trần: mép DƯỚI của nốt tròn phải còn cách nóc ô hàng
   // dưới ít nhất 2px. Chặn ở đây chứ không chặn bằng cách bắt người chỉnh
   // config phải nhớ một bất đẳng thức — cái phải nhớ thì sớm muộn cũng quên.
+  //
+  // ⚠ **Bước 84: nốt này nằm SÁT SÀN khe, không còn treo `stubLength` dưới
+  // thanh ngang.** Hai công thức ấy cho cùng một kết quả suốt từ b28 tới b83
+  // vì trần luôn thắng (`khoangSatChu 12 + L 14 = 26 = vGap 34 − r 6 − 2`),
+  // nên không ai phải chọn. `vGap` nới lên 42 thì chúng tách ra, và bài kiểm
+  // nhóm 8 chỉ ngay chỗ sai: giữ công thức cũ thì nốt đứng ở CAO + 26, mà
+  // thanh ngang MỨC 1 của một union khác chạy qua đúng CAO + 20 — nốt lại bị
+  // xâu vào dây, đúng lỗi b82 vừa sửa xong.
+  //
+  // Chọn sàn vì nghĩa của nốt: nó **thay cho một người con chưa vẽ**, mà con
+  // thì ở hàng dưới. Bám sàn thì mọi thứ trong khe giữ nguyên khoảng cách tới
+  // hàng dưới dù `vGap` có nới bao nhiêu, và nốt tự tránh được mọi mức thanh
+  // ngang — mức sâu nhất còn cách mép trên nốt 8px.
   const tranY = nut.y + CAO + LAYOUT.vGap - LAYOUT.stubRadius - 2;
-  const yDay  = Math.min(nut.y + CAO + LAYOUT.khoangSatChu + L, tranY);
+  const yDay  = tranY;
 
   // ⚠ **KHI ĐÃ NÉ SANG BÊN thì đoạn kẻ phải GẤP KHÚC, không được đi thẳng.**
   //
