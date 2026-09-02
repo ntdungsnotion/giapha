@@ -3,7 +3,7 @@
 // Vai trò  : Hằng số hiển thị phía trình duyệt.
 // Lớp      : config — không gọi file nào khác
 // Phụ thuộc: (không)
-// Phiên bản: 0.19.0 · Cập nhật: 02/09/2026 (bước 84 — vGap 34→42, mỗi cuộc hôn nhân một mức thanh ngang)
+// Phiên bản: 0.20.0 · Cập nhật: 02/09/2026 (bước 84 — vGap 34→38, mỗi cuộc hôn nhân một mức thanh ngang)
 // ============================================================
 //
 // LƯU Ý: từ khi chuyển sang kiến trúc Apps Script, file này KHÔNG còn
@@ -203,10 +203,15 @@ export const LAYOUT = {
   // được bằng `vGap − khoangSatChu`, nếu không mọi nốt cụt hướng lên rơi đúng
   // trên thanh ngang gom con của đời trên. Xem ghi chú `stubLength`.
   //
-  // ⚠ **34 → 42 ở bước 84, và đây là lần ĐẦU con số này ĐI LÊN.** Chủ dự án
-  // quyết ngày 02/09/2026 sau khi đọc số đo ở NK-B83 mục 2.3: *"tôi chấp nhận
-  // sơ đồ cao thêm 7–8pt để nét kẻ con của người nhiều vợ/chồng không đè
-  // nhau."*
+  // ⚠ **34 → 38 ở bước 84, và đây là lần ĐẦU con số này ĐI LÊN.** Chủ dự án
+  // duyệt hai lần, và con số CUỐI là lần thứ hai:
+  //
+  //   lượt 1  *"tôi chấp nhận sơ đồ cao thêm 7–8pt"*  → thử 42
+  //   lượt 2  **xem app thật**: *"thấy giãn nhiều quá, đổi thành thêm 4px"* → 38
+  //
+  // ⚠ Ghi cả hai lượt vì lượt 1 là con số TÍNH RA (nhỏ nhất chừa đủ chỗ mà
+  // không xê dịch gì đang có), lượt 2 là con số MẮT CHỌN — và mắt thắng. Bộ số
+  // tính ra vẫn còn giá trị: nó nói cái giá của 38 là gì (xem `buocThanhNgang`).
   //
   // Lỗi được đo: người có HAI union cùng có con thì hai thanh ngang gom con
   // nằm ĐÚNG một mức và trùm lên nhau — **770 cặp** trên cây Nguyễn Phúc 681
@@ -221,17 +226,17 @@ export const LAYOUT = {
   //     tâm nốt cụt hướng lên  CAO + 20     (vGap − stubLength)
   //     nóc ô hàng dưới        CAO + 34
   //
-  // 42 chừa đúng 8px cho một mức thứ hai, và giữ NGUYÊN mọi quan hệ khác:
+  // 38 chừa 4px cho một mức thứ hai:
   //
   //     thanh ngang, mức 0     CAO + 12     ← không đổi
-  //     thanh ngang, mức 1     CAO + 20     (khoangSatChu + buocThanhNgang)
-  //     mép trên nốt hướng lên CAO + 22     ← vẫn cách thanh ngang 2px, y như
-  //     tâm nốt cụt hướng lên  CAO + 28       bộ số cũ cách mức 0 hai pixel
-  //     nóc ô hàng dưới        CAO + 42
+  //     thanh ngang, mức 1     CAO + 16     (khoangSatChu + buocThanhNgang)
+  //     mép trên nốt hướng lên CAO + 18     ← vẫn cách thanh ngang 2px
+  //     tâm nốt cụt hướng lên  CAO + 24
+  //     nóc ô hàng dưới        CAO + 38
   //
-  // Cái giá: **bước hàng 98 + 42 = 140px**, cao hơn 8px mỗi đời. Cây 17 đời
-  // cao thêm 128px — vẫn ngắn hơn thời chưa có ảnh (154px một bước hàng).
-  vGap:        42,
+  // Cái giá: **bước hàng 98 + 38 = 136px**, cao hơn 4px mỗi đời. Cây 17 đời
+  // cao thêm 64px — vẫn ngắn hơn thời chưa có ảnh (154px một bước hàng).
+  vGap:        38,
   spouseGap:   16,
 
   // --- KHOẢNG SÁT CHỮ — một con số cho MỌI đường kẻ ngang dưới ô ----------
@@ -273,16 +278,25 @@ export const LAYOUT = {
   // thanh ngang cùng một mức mà trùm lên nhau thì luật ấy bị phá ngay trên
   // hình, dù dữ liệu vẫn đúng.
   //
-  // 8 chọn thế nào: nó là toàn bộ chỗ trống `vGap` mới cấp thêm (42 − 34), và
+  // 4 chọn thế nào: nó là toàn bộ chỗ trống `vGap` mới cấp thêm (38 − 34), và
   // vừa khít cho HAI mức — đúng số bạn đời nhiều nhất có con trong cả ba cây
   // dữ liệu (đo `kiem-thu/kiem-buoc-80.mjs` nhóm 10; không ai có ba).
+  //
+  // ⚠ **4px là mức TỐI THIỂU đọc ra được, và nó nằm sát ranh giới "bóng đôi"**
+  // — hai đường song song cách nhau 4px, đúng thứ chủ dự án đã bác ở b80 khi
+  // nét vợ chồng chạy song song thanh ngang gom con. Ở đây chấp nhận được vì
+  // hai thanh chỉ **chạy song song trên phần trùm nhau**, còn hai đầu thì rẽ đi
+  // hai chùm con khác nhau, nên mắt vẫn tách được. Chủ dự án đã xem app thật
+  // với `vGap` 42 (bước 8px) và bảo *"giãn nhiều quá"* — 38 là lựa chọn của
+  // mắt, không phải của phép cộng. Muốn 6px hay 8px thì phải nới `vGap` lên 40
+  // hoặc 42, không có đường nào khác: trần bị nốt cụt hướng lên chặn.
   //
   // ⚠ Người có BA union cùng có con thì bước tự co lại (xem `dungMucThanhNgang`
   // trong `layout.js`) — ba mức nhét vào 8px là ba đường cách nhau 4px, đúng
   // thứ chủ dự án gọi *"bóng đôi"* và đã bác ở b80. Ca ấy **chưa từng xảy ra**
   // trên dữ liệu thật; ngày nào xảy ra thì phải nới `vGap` thêm một nấc nữa
   // chứ đừng để nó tự co.
-  buocThanhNgang: 8,
+  buocThanhNgang: 4,
 
   // MỨC NÉT VỢ CHỒNG VÕNG — chỉ dùng cho cặp cùng hàng mà giữa hai người CÓ Ô
   // NGƯỜI KHÁC CHẮN NGANG (hôn nhân đồng huyết, hai nhánh xa nhau).
@@ -349,9 +363,9 @@ export const LAYOUT = {
   //     TÂM NỐT               nóc ô − 14
   //     mép dưới nốt          nóc ô − 8
   //
-  // ⚠ **Bước 84 nới `vGap` 34 → 42, và phép cộng trên vẫn đúng nguyên** — chỉ
+  // ⚠ **Bước 84 nới `vGap` 34 → 38, và phép cộng trên vẫn đúng nguyên** — chỉ
   // đổi vai người đứng gần: nay thanh ngang sát nốt cụt nhất là thanh MỨC SÂU
-  // NHẤT của người nhiều bạn đời, ở `khoangSatChu + buocThanhNgang` = 20, tức
+  // NHẤT của người nhiều bạn đời, ở `khoangSatChu + buocThanhNgang` = 16, tức
   // cách nóc ô hàng dưới đúng 22 như cũ. Đọc lại bằng con số mới:
   //
   //     thanh ngang mức sâu nhất   nóc ô − 22   (vGap − khoangSatChu − buocThanhNgang)
@@ -370,7 +384,7 @@ export const LAYOUT = {
   // Nốt cụt nằm NGANG phải ngắn hơn, và đây là lý do — đừng gộp lại làm một
   // con số (16/08/2026, chat 1.4).
   //
-  // Chiều dọc có vGap (nay 42px) để mọc ra, chiều ngang chỉ có hGap = 28px giữa
+  // Chiều dọc có vGap (nay 38px) để mọc ra, chiều ngang chỉ có hGap = 28px giữa
   // hai khối anh em. Dùng chung 34px thì nốt tròn rơi hẳn vào trong ô người
   // bên cạnh: đo trên bản 57 người, 14/120 nốt đè lên ô, và ĐÚNG BẰNG toàn bộ
   // số nốt nằm ngang — tức mọi nốt ngang đều hỏng. Sáu bất biến của chat 1.3
