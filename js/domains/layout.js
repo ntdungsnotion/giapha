@@ -3,7 +3,7 @@
 // Vai trò  : Tính TOẠ ĐỘ các ô người, đường nối và nốt cụt. Không vẽ gì cả.
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: config (LAYOUT, PHOTO)
-// Phiên bản: 1.15.0 · Cập nhật: 02/09/2026 (bước 85 — nốt cụt nối tiếp thanh ngang · cặp một con lệch nửa ô · khối phụ xếp sau)
+// Phiên bản: 1.16.0 · Cập nhật: 02/09/2026 (bước 85 — nốt cụt · cặp một con lệch nửa ô · khối phụ đúng bên và đứng TRÊN con)
 // ============================================================
 //
 // Tách khỏi render.js có chủ ý: chỉnh giao diện (màu, phông, bo góc) không
@@ -1204,7 +1204,29 @@ function keoKhoiPhuVeGanCon(ct, viTriX) {
           // Điều 1: chỉ khối nhỏ chạy tới khối lớn.
           if ((ct.thanhVienKhoi.get(khoiCon) || []).length <= ids.length) continue;
 
-          const d = dichVeGan(viTriX, cum, viTriX.get(c.personId));
+          // ⚠ **CHA MẸ RUỘT CỦA NGƯỜI BỊ HẤP THỤ ĐỨNG LÊN TRÊN CON, KHÔNG
+          // CHỈ ĐỨNG KỀ BÊN CẠNH — bước 85d.**
+          //
+          // `dichVeGan()` chỉ kéo khối tới **sát cạnh** ô con, tức lệch hẳn
+          // một ô so với chỗ đáng lẽ phải đứng. Chủ dự án xem ảnh và hỏi
+          // đúng chỗ ấy: *"tại sao bố mẹ Lê Thị Bích bị đẩy tít sang bên
+          // phải, tôi thấy không có lý do gì đặc biệt"*. Không có thật —
+          // chỗ trống ngay trên đầu bà vẫn còn.
+          //
+          // Ca cha mẹ NUÔI (b20) thì giữ nguyên `dichVeGan()`: người con ấy
+          // đã đứng dưới bộ cha mẹ ĐẺ của mình rồi, bộ nuôi mà leo lên trên
+          // đầu con thì hai bộ chồng nhau. Chỉ ca HẤP THỤ (b81) mới có chỗ
+          // trống đó, vì cha mẹ ruột của người bị hấp thụ không đặt chỗ cho
+          // ai cả.
+          //
+          // Đích: NGƯỜI NEO của khối phụ đứng đúng trên tâm ô người con —
+          // cùng một luật với b85b (*"con đứng dưới người neo của dải cha
+          // mẹ"*), nên hai chỗ ra cùng một hình.
+          const xNeo = viTriX.get(neo);
+          const xCon = viTriX.get(c.personId);
+          const d = (ct.hapThuBoi.has(c.personId) && xNeo !== undefined && xCon !== undefined)
+            ? xCon - xNeo
+            : dichVeGan(viTriX, cum, xCon);
           if (d !== null && (dMuon === null || Math.abs(d) < Math.abs(dMuon))) dMuon = d;
         }
       }
