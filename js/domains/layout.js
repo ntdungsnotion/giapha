@@ -3,7 +3,7 @@
 // Vai trò  : Tính TOẠ ĐỘ các ô người, đường nối và nốt cụt. Không vẽ gì cả.
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: config (LAYOUT, PHOTO)
-// Phiên bản: 1.13.0 · Cập nhật: 02/09/2026 (bước 84 — mỗi cuộc hôn nhân một mức thanh ngang gom con)
+// Phiên bản: 1.15.0 · Cập nhật: 02/09/2026 (bước 85 — nốt cụt nối tiếp thanh ngang · cặp một con lệch nửa ô · khối phụ xếp sau)
 // ============================================================
 //
 // Tách khỏi render.js có chủ ý: chỉnh giao diện (màu, phông, bo góc) không
@@ -871,7 +871,40 @@ function datCum(ct, neoId) {
   // nhất (gần như mọi ca thật) thì thành "khe nằm đúng giữa chùm con".
   const trai = tamChum[0];
   const phai = tamChum[tamChum.length - 1];
-  const lech = (trai.tam + phai.tam) / 2 - (dai.khe.get(trai.unionId) + dai.khe.get(phai.unionId)) / 2;
+  let lech = (trai.tam + phai.tam) / 2 - (dai.khe.get(trai.unionId) + dai.khe.get(phai.unionId)) / 2;
+
+  // ⚠ **CẶP CHỈ CÓ MỘT NGƯỜI CON THÌ ĐẨY LỆCH NỬA Ô — bước 85.**
+  //
+  // Căn giữa xong, một chùm con duy nhất gồm đúng MỘT khối thì KHE của cặp rơi
+  // trúng tâm ô người con. Nét cha mẹ – con thành một đường **thẳng đứng một
+  // mạch** từ nét vợ chồng xuống tận nóc ô con, không có khuỷu nào:
+  //
+  //     Thêm ⎯⎯┬⎯⎯ chồng          Thêm ⎯⎯┬⎯⎯ chồng
+  //            │                         │
+  //            │   ← không khuỷu         └────┐   ← có khuỷu, đọc ra ngay
+  //            │                              │
+  //          Hùng                           Hùng
+  //
+  // Chủ dự án xem ảnh app thật và nói nét ấy *"không giống mẫu QFT"*, rồi vẽ
+  // lại có khuỷu (`tai-lieu/anh/net cut - con.jpg`, đoạn tô đỏ bên trái). Đúng:
+  // trong mọi sơ đồ Quick Family Tree, nét cha mẹ – con đều đổ xuống mức thanh
+  // ngang rồi mới rẽ vào con — vì QFT **không căn cha mẹ vào giữa đàn con**,
+  // nó xếp chặt từng đời nên khe không bao giờ rơi trúng tâm ô con.
+  //
+  // Ta giữ luật căn giữa (nó đúng và mọi ca nhiều con đều nhờ nó), chỉ chữa
+  // đúng ca sinh ra đường thẳng: **đẩy dải sang nửa bước bạn đời, để người con
+  // đứng dưới NGƯỜI NEO của dải cha mẹ thay vì đứng dưới khe.** Nửa bước là
+  // `(RONG + spouseGap) / 2` = 68px, và chọn người neo chứ không chọn bừa một
+  // bên vì người neo là người **giữ dải** — thường là người mang huyết thống
+  // của nhánh đang vẽ, nên "con đứng dưới cha/mẹ ruột của mình" đọc ra có nghĩa.
+  //
+  // ⚠ Chỉ áp dụng khi chùm con có ĐÚNG MỘT khối. Nhiều con thì thanh ngang gom
+  // con đã có sẵn, khuỷu đã lộ, đẩy thêm chỉ làm sơ đồ rộng ra vô ích — và nếu
+  // một đứa con ở GIỮA rơi trúng khe thì nét thẳng của riêng nó là bình thường,
+  // đúng như QFT vẫn vẽ (ca `10+9 → 11` trong ảnh đối chiếu).
+  if (chum.length === 1 && chum[0].khoi.length === 1) {
+    lech += dai.khe.get(chum[0].unionId) - dai.dxP - RONG / 2;
+  }
 
   const bienTrai = Math.min(0, lech);
   const bienPhai = Math.max(rongCon, lech + dai.rong);
@@ -893,26 +926,92 @@ function datCum(ct, neoId) {
  * Trong sơ đồ quanh một người trung tâm thường chỉ có MỘT gốc; nhiều gốc xảy
  * ra khi tập hiển thị gồm những nhánh chưa nối được với nhau.
  */
+/**
+ * KHỐI PHỤ là khối chẳng đặt chỗ cho người con nào — nó chỉ có mặt để nối một
+ * nét cha mẹ tới người con đang đứng nhờ chỗ khác: cha mẹ ruột của người bị
+ * hấp thụ (§9b, b81), hoặc cha mẹ nuôi (§10b, b20).
+ *
+ * Trả `null` nếu là khối chính. Nếu là khối phụ thì trả kèm `ben`:
+ *   +1 · phải đứng BÊN PHẢI phần còn lại
+ *   −1 · phải đứng BÊN TRÁI
+ *    0 · không biết (ca cha mẹ nuôi) — cứ xếp cuối rồi để
+ *        `keoKhoiPhuVeGanCon()` trượt về gần con.
+ *
+ * ⚠ **`ben` đọc từ DẢI, không đọc từ toạ độ.** Lúc gọi hàm này chưa ai có toạ
+ * độ. Người bị hấp thụ đứng bên nào của người neo trong dải thì cha mẹ ruột của
+ * họ phải đứng bên ấy — nếu không, nét từ cha mẹ tới con **bắt chéo** qua cha
+ * mẹ của người kia (lỗi b85c, xem `datMoiKhoi`).
+ */
+function khoiPhuBen(ct, neoId) {
+  const dai = layDai(ct, neoId);
+  let coCon = false, ben = 0;
+  for (const uid of dai.thuTuUnion) {
+    const u = ct.unionHT.get(uid);
+    if (!u) continue;
+    for (const c of u.children) {
+      coCon = true;
+      if (ct.unionSoHuu.get(c.personId) === uid && !ct.roiChoCha.has(c.personId)) return null;
+      const ht = ct.hapThuBoi.get(c.personId);
+      if (!ht || ben !== 0) continue;
+      const daiCon = layDai(ct, ht.neoId);
+      const dCon = daiCon.dx.get(c.personId);
+      const dNeo = daiCon.dx.get(ht.neoId);
+      if (dCon === undefined || dNeo === undefined || dCon === dNeo) continue;
+      ben = dCon > dNeo ? 1 : -1;
+    }
+  }
+  return coCon ? { ben } : null;
+}
+
 function datMoiKhoi(ct) {
   const viTri = new Map();
-  let x = 0;
+  let xPhai = 0, xTrai = 0;
 
-  const datMot = (id) => {
+  const datMot = (id, ben) => {
     const k = datCum(ct, id);
     if (!k) return;
+    const x = ben < 0 ? xTrai - LAYOUT.blockGap - k.w : xPhai;
     for (const it of k.items) viTri.set(it.id, it.x + x);
     // Nhớ ai thuộc khối nào: `keoKhoiPhuVeGanCon()` cần dịch cả khối một lượt,
     // và cần biết khối nào to hơn khối nào.
     ct.thanhVienKhoi.set(id, k.items.map((it) => it.id));
-    x += k.w + LAYOUT.blockGap;
+    if (ben < 0) xTrai = x; else xPhai = x + k.w + LAYOUT.blockGap;
   };
 
+  // ⚠ **KHỐI CHÍNH TRƯỚC, KHỐI PHỤ SAU — VÀ ĐÚNG BÊN. Bước 85c.**
+  //
+  // Trước b85 thứ tự xếp khối là thứ tự người trong file dữ liệu, và mọi khối
+  // đều nối đuôi nhau sang phải. Khối phụ nào tình cờ đứng trước thì bị **kẹt
+  // giữa hai khối chính**, và `keoKhoiPhuVeGanCon()` không cứu được: nó chỉ
+  // trượt trong chỗ trống, không được phép chui qua khối khác.
+  //
+  // Hình sai chủ dự án bắt được từ ảnh chụp: ô Lê Thị Bích ở BÊN PHẢI, mà cha
+  // mẹ bà — Lê Văn Trác + Trịnh Thị Thịnh — lại vẽ tít BÊN TRÁI, nét bắt chéo
+  // qua cả cha mẹ của ông Nguyễn Quang Hùng:
+  //
+  //     Trác ⎯ Thịnh   chồng ⎯ Thêm          chồng ⎯ Thêm   Trác ⎯ Thịnh
+  //        └──────╮        └──╮        →        └──╮        └──╮
+  //          Hùng ┴ Bích ◄────╯                Hùng ┴ Bích ◄───╯
+  //          (nét bắt chéo)                    (không bắt chéo)
+  //
+  // Hai việc, thiếu một là vẫn chéo:
+  //   1. khối phụ đặt SAU mọi khối chính, để nó luôn ra rìa;
+  //   2. ra rìa NÀO thì hỏi `khoiPhuBen()` — người con đứng bên phải người neo
+  //      của dải thì cha mẹ ruột của họ đứng bên phải. Xếp hết sang phải như
+  //      bản đầu của b85 thì ca soi gương lại chéo y hệt.
+  const goc = [];
   for (const id of ct.dsNguoi) {
     if (ct.unionSoHuu.has(id) || ct.hapThuBoi.has(id)) continue;
-    datMot(id);
+    goc.push({ id, phu: khoiPhuBen(ct, id) });
   }
+  for (const g of goc) if (!g.phu) datMot(g.id, 1);
+  for (const g of goc) if (g.phu)  datMot(g.id, g.phu.ben);
+
   // Lưới an toàn: dữ liệu lạ có thể để sót ai đó. Thà lệch chỗ còn hơn mất ô.
-  for (const id of ct.dsNguoi) if (!ct.daDat.has(id)) datMot(id);
+  for (const id of ct.dsNguoi) if (!ct.daDat.has(id)) datMot(id, 1);
+
+  // Khối phụ bên trái đẩy toạ độ xuống âm — kéo cả sơ đồ về mốc 0 cho gọn.
+  if (xTrai < 0) for (const [id, x] of viTri) viTri.set(id, x - xTrai);
 
   return viTri;
 }
@@ -1254,6 +1353,38 @@ function unionCoNotNeXuong(ct, stubPoints) {
  * ⚠ Bỏ qua con của BỘ CHA MẸ THỨ HAI (`netDai`): đoạn ngang của họ chạy cao
  * hơn `lechNetDai` pixel, tức đã ở một mức khác rồi.
  */
+/**
+ * ĐOẠN NGANG CỦA NỐT CỤT "cặp đủ, thiếu con" — nó nối tiếp thanh ngang gom con
+ * nên phải tính chung với thanh ngang ở mọi phép đo.
+ *
+ * ⚠ **Một chỗ tính, hai chỗ dùng.** `viTriNotCut()` dùng để VẼ, còn
+ * `nhipThanhNgang()` dùng để XẾP MỨC. Trước b85 hai chỗ tự tính riêng, và khi
+ * luật đặt nốt đổi thì phép xếp mức vẫn đo theo luật cũ — hai thanh ngang lại
+ * đè nhau, đúng cái lỗi bước 84 vừa dẹp xong.
+ *
+ * @returns {{goc:number, x:number}|null}  `goc` = chỗ rẽ ra khỏi thanh ngang,
+ *          `x` = toạ độ ngang của nốt. `null` khi cặp chưa vẽ được con nào.
+ */
+function nhipNotCut(ct, u, xTreo, huong) {
+  let lo = xTreo, hi = xTreo, coCon = false;
+  for (const c of u.children) {
+    const con = ct.nodeById.get(c.personId);
+    if (!con) continue;
+    coCon = true;
+    const cx = con.x + RONG / 2;
+    if (cx < lo) lo = cx;
+    if (cx > hi) hi = cx;
+  }
+  if (!coCon) return null;
+
+  let ra, goc;
+  if (xTreo >= hi - 0.5)      { ra =  1; goc = hi; }
+  else if (xTreo <= lo + 0.5) { ra = -1; goc = lo; }
+  else                        { ra = huong; goc = huong > 0 ? hi : lo; }
+
+  return { goc, x: goc + ra * (RONG / 2 + LAYOUT.hGap) };
+}
+
 function nhipThanhNgang(ct, t, neXuong) {
   const u = ct.unionHT.get(t.id);
   if (!u) return null;
@@ -1270,22 +1401,13 @@ function nhipThanhNgang(ct, t, neXuong) {
     co = true;
   }
 
-  // Nốt cụt "cặp đủ, thiếu con" kéo thanh ngang chạy thêm ra ngoài ô con ngoài
-  // cùng — xem `unionCoNotNeXuong()`. Đo từ MỌI con hiển thị, đúng như
-  // `viTriNotCut()` đo, kể cả con của bộ cha mẹ thứ hai.
+  // Nốt cụt "cặp đủ, thiếu con" kéo thanh ngang chạy thêm ra ngoài — xem
+  // `unionCoNotNeXuong()`. Đo bằng ĐÚNG hàm mà `viTriNotCut()` dùng để vẽ.
   if (neXuong && neXuong.has(t.id)) {
-    const huong = neXuong.get(t.id);
-    let mep = null;
-    for (const c of u.children) {
-      const con = ct.nodeById.get(c.personId);
-      if (!con) continue;
-      const cx = con.x + RONG / 2;
-      if (mep === null || (huong > 0 ? cx > mep : cx < mep)) mep = cx;
-    }
-    if (mep !== null) {
-      const ngoai = mep + huong * (RONG / 2 + LAYOUT.hGap);
-      a = Math.min(a, mep, ngoai);
-      b = Math.max(b, mep, ngoai);
+    const nhip = nhipNotCut(ct, u, t.x, neXuong.get(t.id));
+    if (nhip) {
+      a = Math.min(a, nhip.goc, nhip.x);
+      b = Math.max(b, nhip.goc, nhip.x);
       co = true;
     }
   }
@@ -1689,20 +1811,40 @@ function viTriNotCut(ct, treoCua, sp, nut) {
     return { x: mepDai + huong * LN, y, x1: mepDai, y1: y, angle: huong > 0 ? 0 : 180 };
   }
 
-  // Cặp đủ, thiếu con. Né sang bên cạnh chùm con đang vẽ nếu có.
+  // Cặp đủ, thiếu con.
+  //
+  // ⚠ **NỐT CỤT LÀ MỘT CHỖ CON NỮA NỐI TIẾP THANH NGANG: CHẠY NGANG RA KHỎI
+  // ĐẦU NGOÀI CỦA THANH NGANG, RỒI MỚI THẢ DỌC XUỐNG NỐT.**
+  //
+  // Chốt ở bước 85, theo đúng hình chủ dự án vẽ lại bằng Photoshop:
+  // `tai-lieu/anh/net cut - con.jpg` — bản phần mềm vẽ nằm bên TRÁI, bản chủ
+  // dự án vẽ lại nằm bên PHẢI (đoạn tô đỏ chính là nét cụt phải vẽ thế nào).
+  //
+  // Luật cũ đặt nốt **cạnh ô con NGOÀI CÙNG theo chiều dải**, cách một chỗ
+  // `RONG/2 + hGap`. Nó đúng khi điểm treo và ô con nằm gần nhau, và sai hẳn
+  // khi **điểm treo ở xa hẳn một bên chùm con**: lúc ấy thanh ngang gom con
+  // trải dài từ ô con tới tận điểm treo, mà chỗ né lại rơi vào **KHOẢNG GIỮA**
+  // đoạn ấy:
+  //
+  //     SAI (tới b84)                     ĐÚNG (b85)
+  //
+  //     Trác ⎯⎯ Thịnh                     Trác ⎯⎯ Thịnh
+  //        ┌───────┘                         ┌──────┼──────┐
+  //        │   ╵ ●3                          │      (khuỷu) ╵ ●3
+  //      Bích                              Bích
+  //
+  // Nốt mọc ra từ **giữa một nét liền** thì mắt đọc thành *"chỗ này rẽ đi đâu
+  // đó"*, chứ không đọc ra *"cặp còn 3 người con chưa vẽ"*.
+  //
+  // Luật mới, một câu: **đoạn ngang của nốt cụt nối tiếp thanh ngang từ ĐẦU
+  // NGOÀI của nó, đi tiếp một chỗ con nữa (`RONG/2 + hGap`), rồi thả dọc.**
+  // Thanh ngang tính cả điểm treo, nên đầu ngoài thường CHÍNH LÀ điểm treo —
+  // khi ấy hình ra đúng như bản vẽ tay: nét ngang chạy quá điểm treo một đoạn
+  // rồi mới có nét dọc cụt.
   const huong = dai ? dai.huong : 1;
-  let x = treo ? treo.x : nut.x + RONG / 2;
-  const y1 = treo ? treo.y : nut.y + MUC_NET;
-  let mep = null;
-  if (u.children.length > 0) {
-    for (const c of u.children) {
-      const cn = ct.nodeById.get(c.personId);
-      if (!cn) continue;
-      const cx = cn.x + RONG / 2;
-      if (mep === null || (huong > 0 ? cx > mep : cx < mep)) mep = cx;
-    }
-    if (mep !== null) x = mep + huong * (RONG / 2 + LAYOUT.hGap);
-  }
+  const xTreo = treo ? treo.x : nut.x + RONG / 2;
+  const y1    = treo ? treo.y : nut.y + MUC_NET;
+  const busY  = treo ? treo.busY : nut.y + MUC_NET;
 
   // ⚠ **NỐT PHẢI NẰM GỌN TRONG KHE GIỮA HAI ĐỜI.** Công thức cũ là
   // `CAO + vGap/2 + L` và nó đúng suốt từ chat 1.4 — nhưng chỉ đúng khi
@@ -1733,32 +1875,19 @@ function viTriNotCut(ct, treoCua, sp, nut) {
   const tranY = nut.y + CAO + LAYOUT.vGap - LAYOUT.stubRadius - 2;
   const yDay  = tranY;
 
-  // ⚠ **KHI ĐÃ NÉ SANG BÊN thì đoạn kẻ phải GẤP KHÚC, không được đi thẳng.**
-  //
-  // Đây là lỗi bước 83, và nó nằm im từ ngày có phép né. Bản cũ trả về
-  // `x1 = x, y1 = treo.y` — tức đoạn kẻ dựng đứng ở **toạ độ ngang ĐÃ NÉ**
-  // nhưng bắt đầu từ **độ cao của điểm treo**. Điểm treo lại nằm ở `treo.x`,
-  // cách đó cả trăm pixel. Kết quả: đầu trên của đoạn kẻ **treo giữa không
-  // trung**, không dính vào ô nào, nét nào (ảnh chủ dự án chụp trên điện thoại:
-  // `tai-lieu/anh/sai ke doc cut le van trac.jpg`, ông Lê Văn Trác).
-  //
-  // Nốt cụt này nói *"cặp còn con chưa vẽ"*, nên nó phải **nối tiếp thanh ngang
-  // gom con** — đúng như một người con nữa: chạy ngang từ ô con ngoài cùng ra
-  // thêm một chỗ, rồi thả xuống nốt. Ba điểm, không phải hai.
-  //
-  // ⚠ Bắt đầu từ `mep` (tâm ô con NGOÀI CÙNG) chứ không từ `treo.x`: từ
-  // `treo.x` thì đoạn ngang chạy ĐÈ lên chính thanh ngang gom con đang có —
-  // một nét gạch–chấm phủ lên một nét liền, nhìn ra thành nét đứt quãng vô cớ.
-  //
-  // Ca không né (cặp chưa có người con nào được vẽ) giữ nguyên đoạn thẳng: lúc
-  // ấy `x === treo.x`, đầu trên dính đúng điểm treo giữa hai vòng ảnh.
-  if (mep !== null && treo) {
-    return {
-      x, y: yDay, x1: mep, y1: treo.busY, angle: 90,
-      duong: [[mep, treo.busY], [x, treo.busY], [x, yDay]],
-    };
-  }
-  return { x, y: yDay, x1: x, y1, angle: 90 };
+  // Mọi phép đo đoạn ngang của nốt cụt đều đi qua `nhipNotCut()` — xem ghi chú
+  // ở hàm đó: trước b85 chỗ Vẽ và chỗ XẾP MỨC tự tính riêng, và chúng đã lệch nhau.
+  const nhip = nhipNotCut(ct, u, xTreo, huong);
+
+  // Ca chưa vẽ được người con nào: không có thanh ngang, nên đoạn kẻ đi thẳng
+  // từ ĐIỂM TREO giữa hai vòng ảnh xuống nốt — lúc này chính nó thay cho cả
+  // chùm con.
+  if (!nhip) return { x: xTreo, y: yDay, x1: xTreo, y1, angle: 90 };
+
+  return {
+    x: nhip.x, y: yDay, x1: nhip.goc, y1: busY, angle: 90,
+    duong: [[nhip.goc, busY], [nhip.x, busY], [nhip.x, yDay]],
+  };
 }
 
 // ============================================================
