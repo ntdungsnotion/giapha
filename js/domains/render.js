@@ -3,7 +3,7 @@
 // Vai trò  : Vẽ SVG từ kết quả layout. Chỉ vẽ, không tính toạ độ sơ đồ.
 // Lớp      : domains — được gọi bởi: pages · được phép gọi: utils, config
 // Phụ thuộc: config (LAYOUT, PHOTO), utils/text, utils/image, utils/avatar
-// Phiên bản: 1.7.0 · Cập nhật: 01/09/2026 (bước 80 — ảnh to, bảng tên nới, nén tên)
+// Phiên bản: 1.8.0 · Cập nhật: 02/09/2026 (bước 82 — nền đặc cho chữ dưới bảng và ảnh nút biên)
 // ============================================================
 //
 // Đây là file sẽ sửa nhiều nhất khi chỉnh giao diện. Giữ nó chỉ chứa việc vẽ,
@@ -52,9 +52,20 @@
 //    trắng. Đấy là chủ ý: nét vợ chồng nay chạy ngang tầm khuôn mặt, nên nếu ô
 //    che cả dải trên thì nét bị nuốt mất, chỉ hở 16px ở khe giữa hai ô.
 //
-//    ⚠ Hệ quả phải nhớ: **hai hàng chữ DƯỚI bảng tên không có nền**. Chúng nằm
-//    trong khoảng vGap, nơi không nét nào chạy qua — nên hiện tại không sao.
-//    Bao giờ có nét chạy ngang ở tầm ấy thì phải cho chúng nền, xem `chuCoNen()`.
+//    ⚠ **Câu này ở bước 28 nói SAI, và đã trả giá ở bước 82:** *"hai hàng chữ
+//    DƯỚI bảng tên không có nền — chúng nằm trong khoảng vGap, nơi không nét
+//    nào chạy qua, nên hiện tại không sao."* **CÓ nét chạy qua**, và không phải
+//    ca hiếm:
+//      · nét dọc của hôn nhân đồng huyết đi từ tâm vòng ảnh xuống mức võng —
+//        nó xuyên qua đúng hàng năm sinh (ca Nguyễn Quang Hùng);
+//      · đoạn kẻ gạch–chấm của nốt cụt cũng đi từ tâm vòng ảnh xuống.
+//    Nay hai hàng ấy vẽ bằng `chuDuoiBang()`, có nền đặc.
+//
+//    ⚠ **VÀ CÁI THỨ BA, khó thấy nhất: NỀN ĐẶC KHÔNG CHỈ LÀ THỨ TỰ VẼ, NÓ LÀ
+//    ĐỘ ĐỤC.** Ảnh của nút biên vẽ với `opacity 0.7` cho nhạt đi — nên dù nó
+//    nằm ở lượt 2, tức TRÊN mọi đường nối, nét bên dưới vẫn lộ qua 30% và chạy
+//    ngang mặt người (ca Trần Thị Hoài, `kiem-thu/nd-truoc-a.png`). Vẽ sau
+//    KHÔNG cứu được một hình trong suốt. Nay có một đĩa nền đặc lót dưới.
 //
 // 3. BA LOẠI NÉT CỐ ĐỊNH (QUY-TAC-VE §8), đọc từ `kind` + `relation`. Không
 //    đổi nét theo mật độ: cùng một nốt mà lúc nét này lúc nét kia thì người
@@ -146,6 +157,10 @@ export const VE = {
   // khối. Thử 14 trước và hỏng đúng thế. 8 thì đáy vòng ảnh chỉ mất 15%, vẫn
   // đọc ra là hình tròn, mà vẫn tiết kiệm được 8px mỗi ô.
   deLenAnh:      8,
+
+  // Lề trái/phải của ĐĨA NỀN sau hai hàng chữ dưới bảng tên. Nền phải rộng hơn
+  // chữ một chút, nếu không nét chạy qua vẫn ló ra hai đầu chữ.
+  leNenChu:      3,
 
   buocDongPhu:  11,    // cách hai hàng chữ DƯỚI bảng tên
   chuGio:       9.5,
@@ -339,14 +354,15 @@ function renderPersonNode(node, person, kind, hienGio) {
   const doi = doiSongTuoi(person);
   let y = dinhBang + caoBang + VE.buocDongPhu;
   if (doi) {
-    g.append(chu(doi, tamX, y, VE.chuNam, VE.chuPhu, node.w - VE.leTrongO));
+    for (const el of chuDuoiBang(doi, tamX, y, VE.chuNam, VE.chuPhu,
+                                 node.w - VE.leTrongO)) g.append(el);
     y += VE.buocDongPhu;
   }
 
   const gio = hienGio ? ngayGio(person) : '';
   if (gio) {
-    g.append(chu('Giỗ: ' + gio, tamX, y, VE.chuGio, VE.chuGioMau,
-                 node.w - VE.leTrongO));
+    for (const el of chuDuoiBang('Giỗ: ' + gio, tamX, y, VE.chuGio, VE.chuGioMau,
+                                 node.w - VE.leTrongO)) g.append(el);
   }
 
   // Nhãn rê chuột: nói ĐỦ, kể cả những thứ ô không đủ chỗ vẽ.
@@ -397,6 +413,17 @@ function renderAnhTrongO(node, person, laBien, laTrungTam) {
   const cat = tao('clipPath', { id: ma });
   cat.append(tao('circle', { cx, cy, r: R }));
   g.append(cat);
+
+  // ⚠ **ĐĨA NỀN ĐẶC LÓT DƯỚI, và nó là việc thật chứ không phải trang trí.**
+  // Ảnh nút biên vẽ với `opacity 0.7` cho nhạt đi. Vẽ ở lượt 2 nên nó nằm TRÊN
+  // mọi đường nối — nhưng *trên* mà *trong suốt* thì nét vẫn lộ qua 30%, và với
+  // người có nhiều bạn đời thì nét vợ chồng của bà thứ hai chạy thẳng ngang MẶT
+  // bà thứ nhất (ca Trần Thị Hoài, ảnh `kiem-thu/nd-truoc-a.png`).
+  //
+  // Lót đĩa màu NỀN TRANG thì phần nhạt của ảnh hoà với nền trang đúng như
+  // trước, mà nét bên dưới bị chặn hẳn. Chỉ lót cho nút biên: ảnh của nút
+  // thường đã đục hoàn toàn.
+  if (laBien) g.append(tao('circle', { cx, cy, r: R, fill: VE.nenTrang }));
 
   const oAnh = {
     x: cx - R, y: cy - R, width: 2 * R, height: 2 * R,
@@ -757,6 +784,39 @@ function chuCoNen(noiDung, x, y, coChu, mau) {
   return [
     tao('circle', { cx: x, cy: y, r, fill: VE.nenTrang }),
     chu(noiDung, x, y + coChu * 0.35, coChu, mau),
+  ];
+}
+
+/**
+ * MỘT HÀNG CHỮ DƯỚI BẢNG TÊN — có NỀN ĐẶC. Thêm ở bước 82.
+ *
+ * Hai hàng ấy nằm trong khoảng `vGap`, và bước 28 tưởng chỗ đó không nét nào
+ * chạy qua nên để chữ trần. Sai: nét dọc của hôn nhân đồng huyết và đoạn kẻ
+ * gạch–chấm của nốt cụt đều đi từ tâm vòng ảnh XUỐNG, tức xuyên qua đúng hàng
+ * năm sinh. Chủ dự án nhìn app thật rồi chỉ ra (ảnh `Net gạch chay ngang hinh
+ * dai dien.png`).
+ *
+ * ⚠ Nền là hình CHỮ NHẬT bám theo bề rộng chữ, không phải đĩa tròn như
+ * `chuCoNen()`: hàng chữ này dài và dẹt, đĩa tròn bọc nổi nó sẽ to quá, xoá
+ * mất cả đoạn nét dài hai bên.
+ *
+ * ⚠ Bề rộng phải tính theo bề rộng THẬT SẼ VẼ RA, tức `min(beRong, rongToiDa)`
+ * — `chu()` bóp chữ lại bằng `textLength` khi tràn, nền rộng hơn thế là xoá lem
+ * sang hai bên.
+ *
+ * @returns {SVGElement[]} [nền, chữ] — nơi gọi append theo đúng thứ tự
+ */
+function chuDuoiBang(noiDung, x, y, coChu, mau, rongToiDa) {
+  const rong = Math.min(beRong(noiDung, coChu), rongToiDa) + VE.leNenChu * 2;
+  return [
+    tao('rect', {
+      x: x - rong / 2,
+      y: y - coChu * 0.95,          // đủ cao cho dấu mũ đội trên chữ hoa
+      width: rong,
+      height: coChu * 1.28,         // 0,95 trên + 0,33 dưới, chừa chân chữ 'g'
+      fill: VE.nenTrang,
+    }),
+    chu(noiDung, x, y, coChu, mau, rongToiDa),
   ];
 }
 

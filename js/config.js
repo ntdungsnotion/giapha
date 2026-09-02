@@ -3,7 +3,7 @@
 // Vai trò  : Hằng số hiển thị phía trình duyệt.
 // Lớp      : config — không gọi file nào khác
 // Phụ thuộc: (không)
-// Phiên bản: 0.17.0 · Cập nhật: 02/09/2026 (bước 81 — vòng ảnh 37, ô 98/109, mức nét võng riêng)
+// Phiên bản: 0.18.0 · Cập nhật: 02/09/2026 (bước 82 — nốt cụt hướng lên rời khỏi thanh ngang)
 // ============================================================
 //
 // LƯU Ý: từ khi chuyển sang kiến trúc Apps Script, file này KHÔNG còn
@@ -196,8 +196,12 @@ export const LAYOUT = {
   //
   // ⚠ **Sàn của con số này là `stubLength + stubRadius`** — nốt cụt mọc thẳng
   // xuống phải nằm gọn trong khe giữa hai đời, không thì nốt tròn rơi vào ô
-  // người ở đời dưới. Nay 22 + 6 = 28 < 34, còn chừa 6px. Hạ `vGap` nữa thì
+  // người ở đời dưới. Nay 14 + 6 = 20 < 34, còn chừa 14px. Hạ `vGap` nữa thì
   // PHẢI hạ `stubLength` trước, đừng hạ một mình.
+  //
+  // ⚠ **Và còn một ràng buộc thứ hai, thêm ở bước 82:** `stubLength` KHÔNG
+  // được bằng `vGap − khoangSatChu`, nếu không mọi nốt cụt hướng lên rơi đúng
+  // trên thanh ngang gom con của đời trên. Xem ghi chú `stubLength`.
   vGap:        34,
   spouseGap:   16,
 
@@ -274,7 +278,33 @@ export const LAYOUT = {
 
   // Độ dài đường kẻ dẫn tới nốt cụt, hướng LÊN và XUỐNG.
   // 34 → 22 ở bước 28d, để `vGap` xuống được 34. Xem ghi chú `vGap` ở trên.
-  stubLength:  22,
+  //
+  // ⚠ **22 → 14 ở bước 82, và lý do là một phép cộng chứ không phải con mắt.**
+  // Nốt cụt hướng LÊN mọc từ nóc ô, nên tâm nốt nằm cách nóc ô hàng dưới đúng
+  // `stubLength`. Thanh ngang gom con của hàng TRÊN nằm cách nóc ô hàng dưới
+  // đúng `vGap − khoangSatChu`. Hai con số ấy trước bước 82 bằng nhau chằn chặn:
+  //
+  //     stubLength 22  =  vGap 34 − khoangSatChu 12
+  //
+  // tức **MỌI nốt cụt hướng lên đều rơi ĐÚNG TRÊN thanh ngang gom con của đời
+  // trên** — không phải ca hiếm, mà là mọi ca. Chủ dự án nhìn app thật rồi chỉ
+  // đúng chỗ ấy (bà Vũ Thị Ngọc). Nốt vẽ ở lượt 3 nên nó nằm trên nét, không bị
+  // che — nhưng nhìn ra thì cái nốt như bị XÂU vào sợi dây.
+  //
+  // 14 đặt tâm nốt xuống dưới thanh ngang 8px, mép nốt còn cách thanh ngang 2px
+  // và cách nóc ô hàng dưới 8px:
+  //
+  //     thanh ngang gom con   nóc ô − 22
+  //     mép trên nốt          nóc ô − 20
+  //     TÂM NỐT               nóc ô − 14
+  //     mép dưới nốt          nóc ô − 8
+  //
+  // ⚠ Đổi `vGap` hoặc `khoangSatChu` thì PHẢI xét lại phép cộng này. Bài kiểm
+  // gác nó: `kiem-buoc-80.mjs` nhóm 8.
+  //
+  // ⚠ Nốt cụt hướng XUỐNG không đổi gì: nó bị `tranY` kẹp trước khi `stubLength`
+  // kịp có tác dụng — xem `viTriNotCut()`.
+  stubLength:  14,
   stubRadius:   6,
 
   // Nốt cụt nằm NGANG phải ngắn hơn, và đây là lý do — đừng gộp lại làm một
