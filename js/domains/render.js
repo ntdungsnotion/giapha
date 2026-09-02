@@ -3,7 +3,7 @@
 // Vai trò  : Vẽ SVG từ kết quả layout. Chỉ vẽ, không tính toạ độ sơ đồ.
 // Lớp      : domains — được gọi bởi: pages · được phép gọi: utils, config
 // Phụ thuộc: config (LAYOUT, PHOTO), utils/text, utils/image, utils/avatar
-// Phiên bản: 1.8.0 · Cập nhật: 02/09/2026 (bước 82 — nền đặc cho chữ dưới bảng và ảnh nút biên)
+// Phiên bản: 1.9.0 · Cập nhật: 02/09/2026 (bước 83 — nốt cụt đã né vẽ bằng đường gấp khúc)
 // ============================================================
 //
 // Đây là file sẽ sửa nhiều nhất khi chỉnh giao diện. Giữ nó chỉ chứa việc vẽ,
@@ -682,13 +682,23 @@ function renderLink(link) {
 function renderStub(stub, onClick) {
   if (!stub || !Number.isFinite(stub.x) || !Number.isFinite(stub.y)) return null;
 
-  const net = tao('line', {
-    x1: stub.x1, y1: stub.y1, x2: stub.x, y2: stub.y,
+  // `duong` là đường GẤP KHÚC, chỉ có ở nốt cụt đã né sang bên cạnh chùm con
+  // (bước 83). Không có nó thì đoạn kẻ là một nét thẳng như từ trước tới nay —
+  // nên layout cũ vẫn vẽ đúng, không cần đổi cùng lúc.
+  const kieuNet = {
     stroke: VE.notCut,
     'stroke-width': VE.dayNetVo,
     'stroke-dasharray': VE.motNetGachCham,
     'stroke-linecap': 'round',
-  });
+  };
+  const net = Array.isArray(stub.duong) && stub.duong.length >= 2
+    ? tao('polyline', Object.assign({
+        points: stub.duong.map((p) => p[0] + ',' + p[1]).join(' '),
+        fill: 'none',
+      }, kieuNet))
+    : tao('line', Object.assign({
+        x1: stub.x1, y1: stub.y1, x2: stub.x, y2: stub.y,
+      }, kieuNet));
 
   const nut = tao('g', {
     'data-not-cut': (stub.personId || '') + '|' + (stub.unionId || ''),

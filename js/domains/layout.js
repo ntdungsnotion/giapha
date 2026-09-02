@@ -3,7 +3,7 @@
 // Vai trò  : Tính TOẠ ĐỘ các ô người, đường nối và nốt cụt. Không vẽ gì cả.
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: config (LAYOUT, PHOTO)
-// Phiên bản: 1.11.0 · Cập nhật: 02/09/2026 (bước 81 — hôn nhân trong họ đứng liền nhau, nét võng mức riêng)
+// Phiên bản: 1.12.0 · Cập nhật: 02/09/2026 (bước 83 — nốt cụt đã né có đường gấp khúc)
 // ============================================================
 //
 // Tách khỏi render.js có chủ ý: chỉnh giao diện (màu, phông, bo góc) không
@@ -1481,6 +1481,7 @@ function dungNotCut(ct, unions, stubPoints) {
       direction: sp.direction,
       hiddenCount: sp.hiddenCount || 0,
       x: diem.x, y: diem.y, x1: diem.x1, y1: diem.y1, angle: diem.angle,
+      duong: diem.duong || null,      // đường gấp khúc, chỉ có ở nốt đã né
       nguon: [{ personId: sp.personId, unionId: sp.unionId,
                 direction: sp.direction, hiddenCount: sp.hiddenCount }],
     });
@@ -1540,8 +1541,8 @@ function viTriNotCut(ct, treoCua, sp, nut) {
   const huong = dai ? dai.huong : 1;
   let x = treo ? treo.x : nut.x + RONG / 2;
   const y1 = treo ? treo.y : nut.y + MUC_NET;
+  let mep = null;
   if (u.children.length > 0) {
-    let mep = null;
     for (const c of u.children) {
       const cn = ct.nodeById.get(c.personId);
       if (!cn) continue;
@@ -1566,6 +1567,32 @@ function viTriNotCut(ct, treoCua, sp, nut) {
   // config phải nhớ một bất đẳng thức — cái phải nhớ thì sớm muộn cũng quên.
   const tranY = nut.y + CAO + LAYOUT.vGap - LAYOUT.stubRadius - 2;
   const yDay  = Math.min(nut.y + CAO + LAYOUT.khoangSatChu + L, tranY);
+
+  // ⚠ **KHI ĐÃ NÉ SANG BÊN thì đoạn kẻ phải GẤP KHÚC, không được đi thẳng.**
+  //
+  // Đây là lỗi bước 83, và nó nằm im từ ngày có phép né. Bản cũ trả về
+  // `x1 = x, y1 = treo.y` — tức đoạn kẻ dựng đứng ở **toạ độ ngang ĐÃ NÉ**
+  // nhưng bắt đầu từ **độ cao của điểm treo**. Điểm treo lại nằm ở `treo.x`,
+  // cách đó cả trăm pixel. Kết quả: đầu trên của đoạn kẻ **treo giữa không
+  // trung**, không dính vào ô nào, nét nào (ảnh chủ dự án chụp trên điện thoại:
+  // `tai-lieu/anh/sai ke doc cut le van trac.jpg`, ông Lê Văn Trác).
+  //
+  // Nốt cụt này nói *"cặp còn con chưa vẽ"*, nên nó phải **nối tiếp thanh ngang
+  // gom con** — đúng như một người con nữa: chạy ngang từ ô con ngoài cùng ra
+  // thêm một chỗ, rồi thả xuống nốt. Ba điểm, không phải hai.
+  //
+  // ⚠ Bắt đầu từ `mep` (tâm ô con NGOÀI CÙNG) chứ không từ `treo.x`: từ
+  // `treo.x` thì đoạn ngang chạy ĐÈ lên chính thanh ngang gom con đang có —
+  // một nét gạch–chấm phủ lên một nét liền, nhìn ra thành nét đứt quãng vô cớ.
+  //
+  // Ca không né (cặp chưa có người con nào được vẽ) giữ nguyên đoạn thẳng: lúc
+  // ấy `x === treo.x`, đầu trên dính đúng điểm treo giữa hai vòng ảnh.
+  if (mep !== null && treo) {
+    return {
+      x, y: yDay, x1: mep, y1: treo.busY, angle: 90,
+      duong: [[mep, treo.busY], [x, treo.busY], [x, yDay]],
+    };
+  }
   return { x, y: yDay, x1: x, y1, angle: 90 };
 }
 
