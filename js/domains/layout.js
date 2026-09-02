@@ -3,7 +3,7 @@
 // Vai trò  : Tính TOẠ ĐỘ các ô người, đường nối và nốt cụt. Không vẽ gì cả.
 // Lớp      : domains — HÀM THUẦN. Không gọi services, không chạm DOM.
 // Phụ thuộc: config (LAYOUT, PHOTO)
-// Phiên bản: 1.17.0 · Cập nhật: 02/09/2026 (bước 85e — BA KHỐI: tổ tiên mỗi người né sang phía đối diện bạn đời)
+// Phiên bản: 1.19.0 · Cập nhật: 02/09/2026 (bước 86b — luật BA KHỐI là luật ĐỆ QUY: mỗi cặp đứng giữa hai khối tổ tiên của mình)
 // ============================================================
 //
 // Tách khỏi render.js có chủ ý: chỉnh giao diện (màu, phông, bo góc) không
@@ -187,6 +187,7 @@ export function computeLayout(index, focusPersonId, visibleSet, scope, stubPoint
   keoKhoiVeGanBanDoi(ct, viTriX);
   canChumConVaoGiua(ct, viTriX);
   keoKhoiPhuVeGanCon(ct, viTriX);
+  canCapVaoGiuaOngBa(ct, viTriX);
 
   const nodes = [];
   const nodeById = new Map();
@@ -293,6 +294,9 @@ function dungNguCanh(index, visibleSet) {
     toTien:        new Map(),    // personId -> Set tổ tiên hiển thị (đệm, xem toTienDong)
     cumCon:        new Map(),    // unionId -> [personId] cả cụm con cháu đặt dưới union đó
     thanhVienKhoi: new Map(),    // neoId của khối gốc -> [personId] mọi người trong khối
+    khoiPhuCon:    new Map(),    // neoId của KHỐI PHỤ -> personId người con nó nối tới
+                                  // (`canCapVaoGiuaOngBa()` cần: dịch một cặp thì khối
+                                  //  tổ tiên treo dưới cặp ấy phải dịch theo)
     tamId:         null,         // người trung tâm — khối chứa họ không bao giờ là khối phụ
     daDat:         new Set(),
   };
@@ -991,8 +995,12 @@ function thanhVienDuKien(ct, neoId, ra = new Set(), daVao = new Set()) {
  * Khối chứa NGƯỜI TRUNG TÂM không bao giờ là khối phụ: sơ đồ vẽ quanh người ấy
  * thì người ấy đứng yên, mọi thứ khác chạy tới.
  *
- * Trả `null` nếu là khối chính. Nếu là khối phụ thì kèm `ben`:
+ * Trả `null` nếu là khối chính. Nếu là khối phụ thì kèm `ben` và `chaMeIds`:
  *   +1 · đứng BÊN PHẢI phần còn lại   −1 · BÊN TRÁI   0 · không biết (cha mẹ nuôi)
+ *
+ * `chaMeIds` là **CỬA của khối** — đúng hai người (cha và mẹ) mà nét cha mẹ – con
+ * mọc ra từ đó. Xem `datMoiKhoi()`: khối tổ tiên nhiều đời phải căn theo CỬA,
+ * không căn theo bao hình.
  *
  * ⚠ **`ben` đọc từ DẢI, không đọc từ toạ độ** — lúc gọi chưa ai có toạ độ.
  * Người bị hấp thụ đứng bên nào của người neo thì cha mẹ ruột của họ đứng bên
@@ -1002,7 +1010,7 @@ function khoiPhuBen(ct, neoId) {
   const tv = thanhVienDuKien(ct, neoId);
   if (ct.tamId && tv.has(ct.tamId)) return null;
 
-  let la = false, ben = 0, conId = null;
+  let la = false, ben = 0, conId = null, chaMeIds = [];
   for (const id of tv) {
     for (const uid of ct.unionLamVo.get(id) || []) {
       const u = ct.unionHT.get(uid);
@@ -1013,6 +1021,7 @@ function khoiPhuBen(ct, neoId) {
         const ht = ct.hapThuBoi.get(c.personId);
         if (!ht || ben !== 0) continue;
         conId = c.personId;
+        chaMeIds = (u.partners || []).filter((x) => tv.has(x));
         const daiCon = layDai(ct, ht.neoId);
         const dCon = daiCon.dx.get(c.personId);
         const dNeo = daiCon.dx.get(ht.neoId);
@@ -1021,7 +1030,72 @@ function khoiPhuBen(ct, neoId) {
       }
     }
   }
-  return la ? { ben, conId } : null;
+  return la ? { ben, conId, chaMeIds } : null;
+}
+
+/**
+ * KHOÁ THỨ TỰ TỔ TIÊN — mỗi người một dãy 0/1, đọc từ người trung tâm đi LÊN.
+ *
+ * `0` = người này đứng bên TRÁI bạn đời, `1` = bên PHẢI. Đi lên một đời thì
+ * nối thêm một số vào đuôi. So hai khoá theo lối từ điển thì ra đúng **thứ tự
+ * trái–phải mà luật BA KHỐI đòi**: toàn bộ nhánh của người bên trái đứng trước
+ * toàn bộ nhánh của người bên phải, ở MỌI đời — vì đó chính là luật đệ quy.
+ *
+ * Ca đã sinh ra nó (`cu bị day ra ria.ged`, bước 86b): trước đó `datMoiKhoi()`
+ * xếp khối tổ tiên theo TOẠ ĐỘ người con. Toạ độ ấy đo ở những HÀNG KHÁC NHAU
+ * (bà Hương Lan ở hàng 5, bà Thịnh ở hàng 3) nên so với nhau là vô nghĩa: khối
+ * cụ của bà Thịnh bị xếp sau khối cụ của bà Hương Lan, trong khi bà Thịnh
+ * thuộc nhánh bên trái. Kết quả là hai nhánh cài răng lược vào nhau ở hàng cụ,
+ * và không cặp nào ở dưới còn xê dịch được nữa.
+ *
+ * ⚠ Có tập đã-thăm (`khoa` chính là nó): gia phả là ĐỒ THỊ, hai nhánh cưới
+ * nhau làm một người có hai đường đi tới. Thiếu nó là lặp không đáy.
+ */
+function khoaToTien(ct) {
+  const khoa = new Map();
+  const tam  = ct.tamId;
+  if (!tam || !ct.visibleSet.has(tam)) return khoa;
+
+  const ben = (id) => (phiaBanDoi(ct, id) > 0 ? 0 : 1);
+
+  // Người trung tâm có bạn đời hiển thị thì CẢ CẶP là gốc — hai nhánh tổ tiên
+  // của họ là hai khối con 2 và 3 của chính cặp ấy.
+  const uVo = (ct.unionLamVo.get(tam) || [])
+    .find((uid) => (ct.unionHT.get(uid) || { partners: [] }).partners.length === 2);
+  const hang = [];
+  if (uVo) {
+    for (const p of ct.unionHT.get(uVo).partners) {
+      if (khoa.has(p)) continue;
+      khoa.set(p, [ben(p)]);
+      hang.push(p);
+    }
+  } else {
+    khoa.set(tam, []);
+    hang.push(tam);
+  }
+
+  for (let i = 0; i < hang.length; i++) {
+    const c  = hang[i];
+    const pu = ct.unionSoHuu.get(c);
+    const u  = pu ? ct.unionHT.get(pu) : null;
+    if (!u) continue;
+    for (const p of u.partners) {
+      if (khoa.has(p)) continue;
+      khoa.set(p, khoa.get(c).concat(ben(p)));
+      hang.push(p);
+    }
+  }
+  return khoa;
+}
+
+/** So hai khoá tổ tiên theo lối từ điển. Không có khoá thì xếp sau cùng. */
+function soKhoa(a, b) {
+  if (!a && !b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) if (a[i] !== b[i]) return a[i] - b[i];
+  return a.length - b.length;
 }
 
 function datMoiKhoi(ct) {
@@ -1066,8 +1140,35 @@ function datMoiKhoi(ct) {
   }
   for (const g of goc) if (!g.phu) datMot(g.id, 1);
 
-  for (const g of goc) {
-    if (!g.phu) continue;
+  // ⚠ **THỨ TỰ ĐẶT KHỐI PHỤ THEO CHỖ ĐỨNG CỦA NGƯỜI CON — bước 86b.**
+  //
+  // Trước b86 thứ tự là thứ tự người trong file dữ liệu. Khối nào tình cờ đứng
+  // trước thì chiếm chỗ trước, nên hàng cụ xếp lộn so với hàng ông bà bên dưới:
+  // ở ca `cu bị day ra ria.ged`, cha mẹ bà Hương Lan chen vào GIỮA cha mẹ ông
+  // Hùng và cha mẹ bà Bích, trong khi bà Hương Lan đứng ngoài cùng bên phải.
+  // Nét cha mẹ – con bắt chéo qua nhau.
+  //
+  // Luật: khối phụ chạy sang PHẢI thì phục vụ người con TRÁI NHẤT trước; chạy
+  // sang trái thì ngược lại. Đặt từng cái một rồi hỏi lại, vì người con của
+  // khối này có thể nằm trong khối vừa đặt xong (chuỗi tổ tiên nhiều đời).
+  const khoa = khoaToTien(ct);
+  const khoaKhoi = (g) => {
+    let k = null;
+    for (const id of g.phu.chaMeIds || []) {
+      const kk = khoa.get(id);
+      if (kk && (k === null || soKhoa(kk, k) < 0)) k = kk;
+    }
+    return k;
+  };
+  const conLai = goc.filter((g) => g.phu);
+  conLai.sort((a, b) => {
+    if (a.phu.ben !== b.phu.ben) return a.phu.ben - b.phu.ben;
+    const d = soKhoa(khoaKhoi(a), khoaKhoi(b));
+    if (d !== 0) return a.phu.ben < 0 ? -d : d;
+    return a.id < b.id ? -1 : 1;
+  });
+  for (const g of conLai) {
+    ct.khoiPhuCon.set(g.id, g.phu.conId);
     const ben = g.phu.ben;
     const xCon = g.phu.conId === null ? undefined : viTri.get(g.phu.conId);
 
@@ -1076,10 +1177,36 @@ function datMoiKhoi(ct) {
     const k = datCum(ct, g.id);
     if (!k) continue;
 
-    // Mép GẦN của khối trùng tâm ô con. `ben > 0` là khối nằm bên PHẢI người
-    // con, nên mép gần là mép TRÁI của nó.
+    // ⚠ **ĐO TỪ CỬA CỦA KHỐI, KHÔNG ĐO TỪ BAO HÌNH — bước 86.**
+    //
+    // "Cửa" là đúng hai người mà nét cha mẹ – con mọc ra từ đó. Với khối hai
+    // người (cha mẹ nuôi, b20) cửa CHÍNH LÀ bao hình, nên luật cũ đúng. Với
+    // một **chuỗi tổ tiên nhiều đời** thì hai thứ ấy khác nhau **136px mỗi
+    // đời**: bao hình bắt đầu ở CỤ TỔ trên cùng, còn người phải đứng trên đầu
+    // đứa con lại là người CUỐI chuỗi, tức mép của bậc thang ở tận đáy.
+    //
+    //     BAO HÌNH (tới b85)            CỬA (b86)
+    //     ┌─ cụ ─┐  ← mép trái          ┌─ cụ ─┐
+    //       ┌─ ông ─┐                     ┌─ ông ─┐
+    //         ┌─ cha ─┐                     ┌ cha ─┐   ← mép trái ĐO Ở ĐÂY
+    //     con                                con
+    //
+    // Ca thật `tai-lieu/cu bị day ra ria.ged`: nhánh ngoại của bà Hương Lan
+    // dài 5 đời, nên khối bị đặt lệch đúng 4 × 136 = 544px sang phải, rồi nó
+    // chiếm mất chỗ của khối cụ bên nội và đẩy khối ấy ra tận rìa sơ đồ.
+    //
+    // ⚠ Và **chỉ tìm chỗ về ĐÚNG BÊN**. Luật ba khối (§9) nói tổ tiên né sang
+    // phía đối diện bạn đời; quét sang cả hai bên thì chỗ trống bên kia gần
+    // hơn vài chục pixel là cả nhánh nhảy sang bên sai, nét bắt chéo qua nhánh
+    // bên kia. Đo được: quét hai bên làm `cu bị day ra ria` có 4 lần cha mẹ
+    // đứng NGƯỢC BÊN với con, quét một bên thì 0.
+    const cua = new Set(g.phu.chaMeIds || []);
     let lo = Infinity, hi = -Infinity;
-    for (const it of k.items) { if (it.x < lo) lo = it.x; if (it.x > hi) hi = it.x; }
+    for (const it of k.items) {
+      if (cua.size && !cua.has(it.id)) continue;
+      if (it.x < lo) lo = it.x;
+      if (it.x > hi) hi = it.x;
+    }
     const x = ben > 0 ? xCon - lo : xCon - hi;
 
     // Đúng chỗ ấy có người rồi thì **dắt sang chỗ trống GẦN NHẤT**, chứ không
@@ -1089,7 +1216,7 @@ function datMoiKhoi(ct) {
     let xDat = null;
     if (Number.isFinite(x)) {
       for (let b = 0; b <= 900 && xDat === null; b += 4) {
-        for (const thu of (b === 0 ? [x] : [x + b, x - b])) {
+        for (const thu of (b === 0 ? [x] : [x + ben * b])) {
           if (!deChoNay(ct, viTri, k, thu)) { xDat = thu; break; }
         }
       }
@@ -1362,6 +1489,149 @@ function keoKhoiPhuVeGanCon(ct, viTriX) {
     if (!Number.isFinite(d) || Math.abs(d) < 1) continue;
 
     for (const id of ids) viTriX.set(id, viTriX.get(id) + d);
+  }
+}
+
+/**
+ * CẶP VỢ CHỒNG CÓ ĐỦ ÔNG BÀ NỘI NGOẠI THÌ ĐỨNG GIỮA HAI KHỐI ẤY — bước 86b.
+ *
+ * --- Ca đã sinh ra luật này ----------------------------------------------
+ *
+ * `tai-lieu/cu bị day ra ria.ged`, xem ở nấc *không giới hạn số đời*. Ông
+ * Nguyễn Quang Hùng và bà Lê Thị Bích mỗi người có một nhánh tổ tiên riêng.
+ * Hàng cụ bên trên cần BA khối (6 ô ≈ 888px), hàng ông bà bên dưới chỉ có
+ * BỐN ô (≈ 660px). Hàng trên rộng hơn hàng dưới 228px — mà hàng dưới lại bị
+ * GHIM vào đúng một khối cụ, nên toàn bộ phần dôi ra dồn hết về một phía và
+ * khối cụ bên kia bị đẩy ra rìa sơ đồ.
+ *
+ * --- Luật -----------------------------------------------------------------
+ *
+ * Chủ dự án phát biểu: **luật BA KHỐI (§9) là luật ĐỆ QUY.** Quanh mỗi cặp vợ
+ * chồng, không riêng cặp ở giữa sơ đồ, lại chia làm ba khối con:
+ *
+ *   khối con 1 · chính cặp ấy và con cháu       — ở giữa, dưới
+ *   khối con 2 · toàn bộ tổ tiên người bên TRÁI — né sang trái
+ *   khối con 3 · toàn bộ tổ tiên người bên PHẢI — né sang phải
+ *
+ * Ở ảnh `tai-lieu/anh/cu bi day ra ria.png`: cặp Hùng × Bích là khối con 1,
+ * tổ tiên ông Hùng là khối con 2, tổ tiên bà Bích là khối con 3.
+ *
+ * Và **khối con 1 nằm GIỮA hai khối kia**, chứ không dính vào một khối. Đo lại
+ * trên ảnh `tai-lieu/anh-qft/so do 3 khoi.png` để chắc chắn đây là luật của
+ * Quick Family Tree chứ không phải mẹo chữa cháy:
+ *
+ *   · cặp `a × b` — tâm cặp ở 473,5; tâm cả hàng cụ (128 · 380 · 567 · 820)
+ *     ở 474. Lệch NỬA PIXEL.
+ *   · cặp `10 × 9` — số 9 ở 1074, đúng bằng trung điểm hai điểm treo của hai
+ *     khối cha mẹ (473 và 1675).
+ *
+ * --- Bốn điều đã cân nhắc --------------------------------------------------
+ *
+ * 1. **Dịch cặp XUỐNG DƯỚI, không dịch hai khối tổ tiên.** Hai khối ấy đã xếp
+ *    khít nhau ở hàng của chúng rồi; kéo chúng lại thì phải đẩy mọi khối khác
+ *    cùng hàng. Cặp ở dưới thì hàng của nó thưa hơn hẳn — chỗ trống nằm ở đó.
+ * 2. **Dịch cả CON CHÁU và cả KHỐI TỔ TIÊN TREO DƯỚI CON CHÁU.** Bà Hương Lan
+ *    là con dâu trong cụm; cả nhánh ngoại năm đời của bà treo vào ô của bà.
+ *    Dịch cặp mà bỏ quên nhánh ấy thì nét từ ông Cảnh tới con gái dài thêm
+ *    đúng bằng khoảng vừa dịch. `ct.khoiPhuCon` có từ `datMoiKhoi()` là để
+ *    trả lời đúng câu hỏi này.
+ * 3. **Cha mẹ CỦA CHÍNH CẶP thì đứng yên** — chúng là cái mốc để căn giữa.
+ * 4. **Chạy từ ĐỜI TRÊN xuống.** Căn cặp Hùng × Bích xong thì hai ô ấy mới
+ *    yên chỗ, lúc đó căn cặp Dũng × Hương Lan mới đo đúng.
+ *
+ * ⚠ Chỉ áp dụng cho cặp **đứng KỀ NHAU** (§9b). Cặp đứng rời nhau thì nét vợ
+ * chồng của họ đã là nét dài đi vòng, và `keoKhoiVeGanBanDoi()` mới là chỗ lo
+ * — hai phép cùng kéo một cụm thì chúng giằng nhau.
+ *
+ * ⚠ Dịch xong phải KIỂM CHỒNG Ô rồi mới nhận, y như mọi phép dịch khác trong
+ * file này. Bất biến "không ô nào chồng ô nào" đứng trên tính thẩm mỹ.
+ */
+function canCapVaoGiuaOngBa(ct, viTriX) {
+  const khoiTheoCon = new Map();          // personId -> [neoId của khối tổ tiên treo vào]
+  for (const [neo, con] of ct.khoiPhuCon) {
+    if (!con) continue;
+    if (!khoiTheoCon.has(con)) khoiTheoCon.set(con, []);
+    khoiTheoCon.get(con).push(neo);
+  }
+
+  /** Điểm treo chùm con của một union — tâm khe giữa hai ô cha mẹ. */
+  const diemTreo = (uid) => {
+    const u = ct.unionHT.get(uid);
+    if (!u) return null;
+    let lo = Infinity, hi = -Infinity;
+    for (const p of u.partners) {
+      const x = viTriX.get(p);
+      if (x === undefined) continue;
+      if (x < lo) lo = x;
+      if (x > hi) hi = x;
+    }
+    return Number.isFinite(lo) ? (lo + hi) / 2 + RONG / 2 : null;
+  };
+
+  const doiCua = (uid) => {
+    let m = Infinity;
+    for (const p of ct.unionHT.get(uid).partners) {
+      const d = ct.muc.get(p);
+      if (d !== undefined && d < m) m = d;
+    }
+    return Number.isFinite(m) ? m : 0;
+  };
+
+  const dsUnion = [...ct.unionHT.keys()]
+    .filter((uid) => ct.unionHT.get(uid).partners.length === 2)
+    .sort((a, b) => (doiCua(a) - doiCua(b)) || (a < b ? -1 : 1));
+
+  for (const uid of dsUnion) {
+    const u = ct.unionHT.get(uid);
+    const [A, B] = u.partners;
+    const xA = viTriX.get(A), xB = viTriX.get(B);
+    if (xA === undefined || xB === undefined) continue;
+
+    // Ghi chú ⚠ ở trên: chỉ ca cặp KỀ NHAU.
+    if (Math.abs(xA - xB) > RONG + LAYOUT.spouseGap + 1) continue;
+
+    const pA = ct.unionSoHuu.get(A), pB = ct.unionSoHuu.get(B);
+    if (!pA || !pB || pA === pB) continue;
+    if (!ct.unionHT.has(pA) || !ct.unionHT.has(pB)) continue;
+
+    // ⚠ **HAI BỘ CHA MẸ PHẢI LÀ HAI NHÀ KHÁC NHAU.** Ca hôn nhân trong họ ở cây
+    // Nguyễn Phúc: hai vợ chồng cùng là con của một người (ông Nguyễn Trọng Nhự
+    // hai đời vợ), nên "hai khối ông bà" thật ra chỉ là MỘT dải, hai điểm treo
+    // cách nhau 68px. Căn cặp vào giữa hai điểm ấy là kéo họ ra khỏi hàng anh
+    // em ruột của chính họ — 23 ca sai ngay ở nấc mặc định. Luật ba khối nói về
+    // NỘI và NGOẠI, tức hai nhà; cùng một nhà thì luật căn giữa đàn con (§9)
+    // vẫn đúng và phải để yên.
+    if (ct.unionHT.get(pA).partners.some((x) => ct.unionHT.get(pB).partners.includes(x))) continue;
+
+    const tA = diemTreo(pA), tB = diemTreo(pB);
+    if (tA === null || tB === null) continue;
+
+    const dMuon = (tA + tB) / 2 - ((xA + xB) / 2 + RONG / 2);
+    if (Math.abs(dMuon) < 1) continue;
+
+    // Điều 2 và 3: cặp + con cháu + mọi khối tổ tiên treo dưới con cháu ấy,
+    // TRỪ hai khối tổ tiên của chính cặp này.
+    const cum = new Set([A, B]);
+    for (const id of ct.cumCon.get(uid) || []) cum.add(id);
+    let them = true;
+    while (them) {
+      them = false;
+      for (const [con, dsNeo] of khoiTheoCon) {
+        if (con === A || con === B || !cum.has(con)) continue;
+        for (const neo of dsNeo) {
+          for (const id of ct.thanhVienKhoi.get(neo) || []) {
+            if (!cum.has(id)) { cum.add(id); them = true; }
+          }
+        }
+      }
+    }
+
+    const gioiHan = dichToiDa(ct, viTriX, cum, dMuon < 0);
+    let d = dMuon < 0 ? Math.max(dMuon, gioiHan) : Math.min(dMuon, gioiHan);
+    if (Math.abs(d - dMuon) > 0.5 && !deLenNhau(ct, viTriX, cum, dMuon)) d = dMuon;
+    if (!Number.isFinite(d) || Math.abs(d) < 1) continue;
+
+    for (const id of cum) viTriX.set(id, viTriX.get(id) + d);
   }
 }
 
